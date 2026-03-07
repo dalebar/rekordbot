@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build the Python backend with PyInstaller in --onedir mode
-# and rename the output directory with the correct target triple.
+# and place the executable + _internal in the Tauri binaries directory.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -41,7 +41,11 @@ uv run pyinstaller \
 # Create Tauri binaries directory
 mkdir -p "$TAURI_BIN_DIR"
 
-# Copy the output directory with the target-triple name
-cp -r "$DIST_DIR/rekordbot-server" "$TAURI_BIN_DIR/$SIDECAR_NAME"
+# Copy the executable with target-triple name (Tauri externalBin requirement)
+cp "$DIST_DIR/rekordbot-server/rekordbot-server" "$TAURI_BIN_DIR/$SIDECAR_NAME"
+
+# Copy the _internal directory alongside it (PyInstaller --onedir dependencies)
+rm -r "$TAURI_BIN_DIR/_internal" 2>/dev/null || true
+cp -r "$DIST_DIR/rekordbot-server/_internal" "$TAURI_BIN_DIR/_internal"
 
 echo "Backend built successfully: $TAURI_BIN_DIR/$SIDECAR_NAME"

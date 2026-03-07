@@ -94,9 +94,19 @@ async def shutdown() -> dict:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "backend.main:app",
-        host="127.0.0.1",
-        port=settings.port,
-        reload="--reload" in sys.argv,
-    )
+    # When running from PyInstaller, pass the app object directly since
+    # the module can't be imported by name. Use the import string only
+    # when --reload is requested (reload requires an import string).
+    if "--reload" in sys.argv:
+        uvicorn.run(
+            "backend.main:app",
+            host="127.0.0.1",
+            port=settings.port,
+            reload=True,
+        )
+    else:
+        uvicorn.run(
+            app,
+            host="127.0.0.1",
+            port=settings.port,
+        )

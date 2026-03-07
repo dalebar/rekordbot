@@ -93,7 +93,8 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 info!("Window close requested — killing sidecar");
                 let state = window.state::<Mutex<SidecarState>>();
-                if let Some(child) = state.lock().unwrap().child.take() {
+                let mut guard = state.lock().unwrap();
+                if let Some(child) = guard.child.take() {
                     let _ = child.kill();
                     info!("Sidecar kill signal sent");
                 }
