@@ -34,6 +34,15 @@ def db_session(engine):
 async def client():
     """Async HTTP client for testing FastAPI endpoints."""
     from backend.main import app
+    from backend.models.database import init_db
+
+    # Ensure tables exist (lifespan doesn't run with ASGITransport)
+    init_db()
+
+    # Reset module-level queue state between tests
+    import backend.routes.ingest as ingest_module
+
+    ingest_module._queue = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
