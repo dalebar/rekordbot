@@ -1,6 +1,6 @@
 # Feature: Phase 0 — Project Scaffolding
 **Branch:** `feature/phase-0-scaffold`
-**Status:** Not Started
+**Status:** Complete ✅
 
 ## Goal
 A running skeleton: Tauri launches, spawns the Python backend, the React frontend confirms the connection, and it all shuts down cleanly. The database schema is in place. The dev workflow is smooth. Linting, logging, error handling patterns, and configuration management are established from day one.

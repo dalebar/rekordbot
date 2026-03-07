@@ -55,16 +55,26 @@ rekordbot/
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── database.py           ← Engine, session, Base
-│   │   └── track.py              ← Track model
-│   ├── services/                 ← Business logic (converter, tagger, etc.)
-│   ├── routes/                   ← FastAPI route handlers
+│   │   └── track.py              ← Track model (Rekordbox-compatible + ingestion fields)
+│   ├── services/
+│   │   ├── format_inspector.py   ← ffprobe wrapper, FileInfo dataclass
+│   │   ├── conversion.py         ← Conversion decision engine (pure logic)
+│   │   ├── naming.py             ← Output path generation with collision handling
+│   │   ├── converter.py          ← ffmpeg execution, file hashing, pipeline orchestrator
+│   │   └── queue.py              ← Batch processing with concurrency control and SSE
+│   ├── routes/
+│   │   └── ingest.py             ← POST /api/ingest, GET /api/tracks, SSE progress
 │   └── tests/
-│       └── conftest.py           ← Shared fixtures (test DB, API client)
+│       ├── conftest.py           ← Shared fixtures (test DB, API client)
+│       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx
+│   │   ├── App.tsx               ← Main layout with drop zone, queue, track list
+│   │   ├── DropZone.tsx          ← Drag-and-drop + Tauri folder dialog
+│   │   ├── ProcessingQueue.tsx   ← SSE consumer, live file status
+│   │   ├── TrackList.tsx         ← Track table from /api/tracks
 │   │   └── api/
-│   │       └── client.ts         ← Typed API client
+│   │       └── client.ts         ← Typed API client (health, ingest, tracks, SSE)
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── .eslintrc.cjs
@@ -364,6 +374,10 @@ class Settings(BaseSettings):
     db_url: str = "sqlite:///rekordbot_dev.db"
     log_level: str = "INFO"
     ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
+    output_directory: str = "~/rekordbot/library"
+    max_concurrent_conversions: int = 2
+    convert_aac_to_mp3: bool = False
     anthropic_api_key: str = ""
 ```
 
@@ -500,13 +514,24 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 0 — Project Scaffolding
-**State:** Complete. All tasks implemented and integration proof verified.
+**Phase:** 1 — File Ingestion & Conversion
+**State:** Complete. All 10 steps implemented, 114 tests passing.
 
-Phase 0 deliverables:
+Phase 1 deliverables:
+- Format inspector: ffprobe-based inspection for WAV, FLAC, AIFF, MP3, M4A (ALAC/AAC)
+- Conversion decision engine: lossless → AIFF (bit depth preserved, capped at 24), lossy copy/optional convert
+- Converter service: ffmpeg execution pipeline with SHA-256 duplicate detection
+- Processing queue: asyncio.Semaphore concurrency control, SSE progress events, cancellation
+- API routes: POST /api/ingest, GET /api/ingest/progress (SSE), POST /api/ingest/cancel, GET /api/tracks
+- Frontend: DropZone (drag-and-drop + Tauri dialog), ProcessingQueue (live SSE status), TrackList
+- Track model extended with source_path, source_codec, source_bitrate, source_bit_depth, file_hash (unique index), conversion_action, imported_at
+- 8 test audio fixtures committed, integration tests covering all format paths
+- Feature brief: `docs/features/phase-1-file-ingestion-conversion.md`
+
+Phase 0 deliverables (prior):
 - Repo tooling: pyproject.toml, uv.lock, Makefile, pre-commit hooks, scripts
-- Python backend: FastAPI app, config, exceptions, Track model, 8 tests passing
-- React frontend: Vite + React 19 + TypeScript + Tailwind v4, API client, health check UI
+- Python backend: FastAPI app, config, exceptions, Track model
+- React frontend: Vite + React 19 + TypeScript + Tailwind v4, API client
 - Tauri v2 shell: sidecar lifecycle management, health polling, clean shutdown
 - Integration proof: PyInstaller binary builds, Tauri launches sidecar, health check passes
 
@@ -516,14 +541,15 @@ Research completed:
 
 ## Known Issues / Don't Touch
 
-Nothing yet — greenfield project.
+- ffprobe does not report `bits_per_raw_sample` for PCM codecs — format inspector falls back to `bits_per_sample` field. Both fields are checked.
+- sse-starlette has no mypy type stubs — `type: ignore[import-not-found]` used in `routes/ingest.py`.
 
 ## Phased Build Plan
 
 | Phase | Name | Summary |
 |-------|------|---------|
-| **0** | Scaffolding | Repo, tooling, DB schema, Tauri+FastAPI skeleton, sidecar proof ← **CURRENT** |
-| 1 | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
+| **0** | Scaffolding | Repo, tooling, DB schema, Tauri+FastAPI skeleton, sidecar proof |
+| **1** | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
 | 2 | Metadata & Tagging | mutagen tag reading/writing, BPM detection (aubio), key detection, tag review UI |
 | 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, user preference store |
 | 3 | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |

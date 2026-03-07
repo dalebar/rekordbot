@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from backend.config import settings
 from backend.exceptions import RekordBotError
 from backend.models.database import init_db
+from backend.routes.ingest import router as ingest_router
 
 # Configure logging
 logging.basicConfig(
@@ -65,6 +66,9 @@ class UnhandledExceptionMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(UnhandledExceptionMiddleware)
+
+# Register routers
+app.include_router(ingest_router)
 
 
 @app.exception_handler(RekordBotError)

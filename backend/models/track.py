@@ -1,8 +1,8 @@
 """Track model — full schema for Rekordbox-compatible track metadata."""
 
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Float, Integer, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.models.database import Base
@@ -12,14 +12,21 @@ class Track(Base):
     """A music track with all metadata needed for Rekordbox XML export."""
 
     __tablename__ = "tracks"
+    __table_args__ = (Index("ix_tracks_file_hash", "file_hash", unique=True),)
 
     # Core identification
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     file_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    file_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # Audio properties (populated by converter in Phase 1)
+    # Source file provenance (populated by ingestion in Phase 1)
+    source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_format: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_codec: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_bitrate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_bit_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Audio properties
     output_format: Mapped[str | None] = mapped_column(Text, nullable=True)
     codec: Mapped[str | None] = mapped_column(Text, nullable=True)
     bit_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -29,7 +36,9 @@ class Track(Base):
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     channels: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_lossy: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    quality_warning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quality_warning: Mapped[bool] = mapped_column(Boolean, default=False)
+    conversion_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Metadata (populated by tagger in Phase 2, or read from source tags)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)

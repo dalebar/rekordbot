@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     db_url: str = "sqlite:///rekordbot_dev.db"
     log_level: str = "INFO"
     ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
+    output_directory: str = "~/rekordbot/library"
+    max_concurrent_conversions: int = 2
+    convert_aac_to_mp3: bool = False
     anthropic_api_key: str = ""
 
 
