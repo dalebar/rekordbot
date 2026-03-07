@@ -94,9 +94,10 @@ def parse_ffprobe_output(json_output: dict, path: Path) -> FileInfo:
     codec = audio_stream["codec_name"]
     is_lossless = determine_lossless(codec)
 
-    # Extract bit depth from bits_per_raw_sample (present for PCM and lossless)
-    bit_depth_raw = audio_stream.get("bits_per_raw_sample")
-    bit_depth = int(bit_depth_raw) if bit_depth_raw is not None else None
+    # Extract bit depth: bits_per_raw_sample (FLAC/ALAC) or bits_per_sample (PCM)
+    # Treat 0 as absent (MP3 reports bits_per_sample=0)
+    bit_depth_raw = audio_stream.get("bits_per_raw_sample") or audio_stream.get("bits_per_sample")
+    bit_depth = int(bit_depth_raw) if bit_depth_raw else None
 
     # Extract bitrate: prefer format-level, fall back to stream-level
     format_bitrate = format_info.get("bit_rate", "0")
