@@ -20,12 +20,12 @@ Pre-Phase-0 planning. Full project review, research coordination, and decision-m
   - **Chat A:** Rekordbox XML format + CDJ tag compatibility (combined because they're deeply intertwined)
   - **Chat B:** Tauri + Python sidecar architecture, dev workflow, packaging
 - Both research documents completed and synthesised back in the main chat
-- Identified gaps in CLAUDE.md (logging, error handling, linting, config management, git workflow, frontend conventions) and revised before starting Phase 0
+- Identified gaps in CLAUDE.md (logging, error handling, linting, config management, git workflow, frontend conventions, pre-commit hooks, type checking, test infrastructure) and revised before starting Phase 0
 
 ### Key decisions made
 1. Mac-first, Windows-compatible by design
 2. Bundle ffmpeg (as Tauri resource, not sidecar)
-3. pyproject.toml as single dependency source (no requirements.txt), exact version pins
+3. pyproject.toml + uv for dependency management (uv.lock for reproducible builds, no requirements.txt)
 4. PyInstaller `--onedir` mode (avoids zombie processes, easier to sign)
 5. Hardcoded port 8420 with conflict detection
 6. SSE for progress reporting (not WebSocket)
@@ -44,6 +44,12 @@ Pre-Phase-0 planning. Full project review, research coordination, and decision-m
 19. Consistent API error schema: {"error": str, "detail": str} on all non-2xx responses
 20. Custom exception hierarchy: RekordBotError base class with domain-specific subclasses
 21. Project named "rekordbot"
+22. Pre-commit hooks (Ruff, mypy, whitespace, merge conflicts) — prevents unlinted code entering repo
+23. mypy in strict mode — type hints verified at dev time, not just decorative
+24. Test infrastructure from day one: in-memory SQLite per test (conftest.py), httpx async client, pytest-asyncio with auto mode
+25. Sync SQLAlchemy (not async) — async adds complexity for no benefit on a single-user desktop app with local SQLite
+26. Alembic deferred to Phase 6 — during development, schema changes handled by recreating the dev database
+27. mypy normal mode (not strict) — avoids friction with SQLAlchemy/pydantic type stubs while still catching real bugs
 
 ### Unresolved questions / blockers
 - None blocking Phase 0. All foundational decisions are made.

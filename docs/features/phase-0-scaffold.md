@@ -12,17 +12,21 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 - [ ] `develop` branch created from `main`
 - [ ] `feature/phase-0-scaffold` branch created from `develop`
 - [ ] `pyproject.toml` as the single source of truth for Python dependencies — no `requirements.txt`
-  - All dependencies pinned to exact versions (e.g. `fastapi==0.115.0`)
+  - Dependencies with version constraints (uv lockfile handles exact pinning)
   - Ruff configuration in `[tool.ruff]` section (see CLAUDE.md for exact config)
-  - pytest configuration in `[tool.pytest.ini_options]` section
-- [ ] Python virtual environment (`.venv/`) — gitignored
+  - mypy configuration in `[tool.mypy]` section (strict mode, see CLAUDE.md)
+  - pytest configuration in `[tool.pytest.ini_options]` section (asyncio_mode = "auto")
+- [ ] `uv.lock` committed to repo (pins all direct + transitive dependencies)
+- [ ] Python virtual environment (`.venv/`) created via `uv venv` — gitignored
+- [ ] `.pre-commit-config.yaml` with hooks: trailing-whitespace, end-of-file-fixer, check-merge-conflict, check-yaml, check-toml, ruff, ruff-format, mypy
+- [ ] Pre-commit installed (`pre-commit install` — also added to `scripts/dev-setup.sh`)
 - [ ] `Makefile` with targets:
   - `dev-backend` — starts uvicorn with `--reload` on port 8420
   - `dev-frontend` — starts `tauri dev`
   - `build-backend` — runs PyInstaller `--onedir` build + renames output with target triple
   - `build` — full production build (backend then frontend)
   - `test` — runs `pytest`
-  - `lint` — runs `ruff check .` and `ruff format --check .`
+  - `lint` — runs `ruff check .`, `ruff format --check .`, and `mypy backend/`
   - `format` — runs `ruff format .` and `ruff check --fix .`
 - [ ] `.gitignore` covering: `.venv/`, `__pycache__/`, `.env`, `dist/`, `build/`, `*.pyc`, `frontend/src-tauri/binaries/`, `frontend/src-tauri/resources/`, `node_modules/`, `target/`, `rekordbot_dev.db`
 - [ ] `.env.example` with all available config values:
@@ -44,7 +48,7 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
   - `docs/architecture.md` (placeholder — to be fleshed out during Phase 0)
 - [ ] `scripts/` folder:
   - `scripts/build-backend.sh` — PyInstaller build + target-triple rename
-  - `scripts/dev-setup.sh` — one-command dev environment setup (create venv, install deps, install npm packages, confirm ffmpeg available)
+  - `scripts/dev-setup.sh` — one-command dev environment setup (`uv venv`, `uv sync`, `pre-commit install`, install npm packages, confirm ffmpeg available)
 
 ### 2. Python Backend
 
@@ -72,8 +76,11 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 
 - [ ] `backend/models/__init__.py` — SQLAlchemy base setup
 - [ ] `backend/models/database.py` — engine, session factory, Base declarative class
+  - Sync SQLAlchemy (not async — unnecessary complexity for single-user desktop app with local SQLite)
   - SQLite database path from config (`Settings.db_url`)
+  - `init_db()` function that calls `Base.metadata.create_all(engine)` to create tables
   - During development: `./rekordbot_dev.db` in the repo root (gitignored)
+  - Alembic deferred — during development, schema changes are handled by deleting and recreating the dev database. Alembic will be added when real users need schema migrations (Phase 6).
 - [ ] `backend/models/track.py` — Track model with full schema from research:
 
   **Core identification:**
@@ -129,12 +136,14 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
   - `conversion_status` — Text, default "pending" (pending/converted/skipped/error)
   - `organisation_status` — Text, default "pending" (pending/proposed/confirmed/error)
 
-- [ ] Alembic initialised for database migrations
-  - Initial migration creates the tracks table
-  - `alembic.ini` and `alembic/` directory in `backend/`
+- [ ] Dev dependencies added via `uv add --dev`: pytest, pytest-asyncio, httpx, mypy, pre-commit, ruff
+- [ ] `backend/tests/conftest.py` — shared test fixtures:
+  - `engine` fixture (session-scoped): in-memory SQLite, creates all tables, disposes after session
+  - `db_session` fixture (per-test): fresh session with transaction rollback for isolation
+  - `client` fixture: async httpx client with ASGITransport for testing FastAPI endpoints
 - [ ] `backend/tests/test_health.py` — test that `/health` returns 200 with expected payload
-- [ ] `backend/tests/test_models.py` — test that Track model can be created, saved, and queried
-- [ ] `backend/tests/test_exceptions.py` — test that error handler returns correct JSON structure for RekordBotError and for unexpected exceptions
+- [ ] `backend/tests/test_models.py` — test that Track model can be created, saved, and queried (uses `db_session` fixture)
+- [ ] `backend/tests/test_exceptions.py` — test that error handler returns correct JSON structure for RekordBotError and for unexpected exceptions (uses `client` fixture)
 - [ ] `backend/tests/test_config.py` — test that Settings loads defaults and respects env vars
 
 ### 3. React Frontend
@@ -191,11 +200,12 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 - [ ] `make dev-frontend` starts Tauri dev mode with React HMR
 - [ ] Frontend connects to backend and displays health status in both dev modes
 - [ ] `make test` passes — health endpoint, model, exception, and config tests all green
-- [ ] `make lint` passes with no warnings
+- [ ] `make lint` passes with no warnings (Ruff + mypy)
+- [ ] Pre-commit hooks installed and passing on all staged files
 - [ ] `make build-backend` produces a working PyInstaller binary
 - [ ] Full sidecar integration works: launch → health check → display → clean shutdown
 - [ ] No orphan processes after app close
-- [ ] Database migrations run cleanly (`alembic upgrade head` creates the tracks table)
+- [ ] Database creates cleanly (`init_db()` creates the tracks table via `Base.metadata.create_all`)
 - [ ] All files committed with meaningful messages
 - [ ] `CLAUDE.md` reflects current project state
 - [ ] `SESSIONS.md` has entry for the Phase 0 session(s)
@@ -214,6 +224,7 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 ## Dependencies
 
 - Python 3.12 installed
+- uv installed (`brew install uv`)
 - Node.js 18+ installed
 - Rust toolchain installed (for Tauri)
 - ffmpeg installed via Homebrew (for later phases; confirm in Phase 0)
@@ -224,7 +235,7 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 Decisions confirmed in the main project chat before this brief was written:
 
 1. **Mac-first, Windows-compatible by design** — build and test on macOS, keep code OS-agnostic
-2. **pyproject.toml only** — no requirements.txt, exact version pins
+2. **pyproject.toml + uv** — no requirements.txt, uv.lock for reproducible builds
 3. **PyInstaller `--onedir`** — avoids zombie processes, easier to sign
 4. **ffmpeg as Tauri resource** (not sidecar) — Python calls it via subprocess
 5. **Hardcoded port 8420** with conflict detection — add dynamic assignment later if needed
@@ -240,3 +251,9 @@ Decisions confirmed in the main project chat before this brief was written:
 15. **Standard logging module** — INFO default, DEBUG via config, human-readable in dev
 16. **Consistent error response schema** — `{"error": str, "detail": str}` on all non-2xx responses
 17. **Custom exception hierarchy** — RekordBotError base class, subclasses per domain
+18. **Pre-commit hooks** — Ruff, mypy, whitespace, merge conflicts — prevents unlinted code from entering repo
+19. **mypy normal mode** — catches real type bugs without fighting framework type stubs; tighten to strict later
+20. **Test infrastructure from day one** — in-memory SQLite per test, httpx async client, pytest-asyncio with auto mode
+21. **Sync SQLAlchemy** — async adds complexity for no benefit on single-user desktop app with local SQLite
+22. **Alembic deferred** — schema changes during dev handled by recreating the dev database; add Alembic in Phase 6 when real users need migrations
+23. **TDD for pure logic only** — test-first for conversion decisions, notation mapping, validation; test-after for framework integration

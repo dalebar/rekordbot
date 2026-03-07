@@ -11,7 +11,7 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 - **Backend:** Python 3.12, FastAPI, uvicorn
 - **Frontend:** React 18, TypeScript, Vite, Tailwind CSS
 - **Desktop shell:** Tauri v2 (Rust)
-- **Database:** SQLite via SQLAlchemy + Alembic migrations
+- **Database:** SQLite via SQLAlchemy (sync mode) — Alembic deferred until real users need schema migrations
 - **Audio conversion:** ffmpeg (via subprocess), ffprobe for container inspection
 - **Metadata:** mutagen (ID3 tag reading/writing for AIFF and MP3)
 - **BPM/Key detection:** aubio (start here; add librosa only if aubio accuracy insufficient)
@@ -19,7 +19,10 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 - **Rekordbox export:** Custom XML generation via xml.etree.ElementTree
 - **Packaging:** PyInstaller (`--onedir`) for Python backend + Tauri bundler for desktop app
 - **Tag format target:** ID3v2.3 (universal CDJ compatibility)
+- **Package management:** uv (fast resolver, lockfile, venv management)
 - **Linting/Formatting:** Ruff (Python), ESLint + Prettier (TypeScript/React)
+- **Type checking:** mypy in strict mode
+- **Pre-commit:** pre-commit framework (Ruff, mypy, trailing whitespace, merge conflict markers)
 - **Configuration:** pydantic-settings (env vars + .env files with type validation)
 
 ## Architecture
@@ -41,14 +44,14 @@ rekordbot/
 ├── SESSIONS.md                   ← Session log
 ├── README.md
 ├── Makefile
-├── pyproject.toml                ← Python deps, Ruff config, project metadata
+├── pyproject.toml                ← Python deps, Ruff config, mypy config, project metadata
+├── uv.lock                       ← Lockfile (pins all transitive deps, committed)
+├── .pre-commit-config.yaml       ← Pre-commit hooks (Ruff, mypy, whitespace, merge conflicts)
 ├── .env.example
 ├── backend/
 │   ├── main.py                   ← FastAPI entry point
 │   ├── config.py                 ← pydantic-settings configuration
 │   ├── exceptions.py             ← Custom exception hierarchy
-│   ├── alembic/                  ← Database migrations
-│   ├── alembic.ini
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── database.py           ← Engine, session, Base
@@ -56,6 +59,7 @@ rekordbot/
 │   ├── services/                 ← Business logic (converter, tagger, etc.)
 │   ├── routes/                   ← FastAPI route handlers
 │   └── tests/
+│       └── conftest.py           ← Shared fixtures (test DB, API client)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx
@@ -109,7 +113,7 @@ feature/*   ← one branch per feature or phase (e.g. feature/phase-0-scaffold)
 - **Style:** PEP 8, enforced by Ruff
 - **Type hints:** Required on all function signatures (parameters and return types)
 - **Docstrings:** Required on all public methods and classes. Use Google-style docstrings.
-- **Async:** Use `async`/`await` throughout FastAPI routes and services. Blocking I/O (ffmpeg subprocess calls, file operations) must run in thread pool executors via `asyncio.to_thread()` or `run_in_executor()`.
+- **Async:** Use `async`/`await` for FastAPI route handlers. Blocking I/O (ffmpeg subprocess calls, heavy file operations) should run via `asyncio.to_thread()`. **SQLAlchemy uses sync mode** — async SQLAlchemy adds significant complexity (AsyncSession, relationship loading restrictions) for no practical benefit on a single-user desktop app with local SQLite. Database calls are fast enough on local disk that wrapping them in `to_thread()` is not needed unless profiling shows otherwise.
 - **Imports:** Standard library → third-party → local, separated by blank lines. Enforced by Ruff's isort rules.
 - **Naming:** `snake_case` for functions, variables, and modules. `PascalCase` for classes. `UPPER_SNAKE_CASE` for constants.
 - **SQL:** SQLAlchemy ORM exclusively — no raw SQL strings.
@@ -164,15 +168,185 @@ Run with `ruff check .` and `ruff format .`. Add both to the Makefile as a `lint
 
 Standard Vite + React ESLint config. Prettier for formatting. Configured via `.eslintrc.cjs` and `.prettierrc` in the `frontend/` directory.
 
-## Dependency Pinning
+## Type Checking
 
-All Python dependencies in `pyproject.toml` must use **exact version pins** (e.g. `fastapi==0.115.0`, not `fastapi>=0.100`). This ensures reproducible builds, which matters for a desktop app distributed as a compiled binary.
+### Python — mypy
 
-When adding a new dependency:
-1. Install it (`pip install <package>`)
-2. Check the installed version (`pip show <package>`)
-3. Pin that exact version in `pyproject.toml`
-4. Note: transitive dependencies are not pinned (that would require a lockfile, which we can add later if needed)
+mypy verifies type hints at development time, catching real bugs before they reach runtime. Configured in `pyproject.toml`:
+
+```toml
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+```
+
+We use **normal mode** (not strict) to avoid friction with SQLAlchemy, pydantic, and FastAPI — their type stubs are incomplete and strict mode generates false positives on framework boilerplate. Normal mode still catches wrong return types, missing None handling, and incompatible arguments. We can tighten to strict later once the codebase is larger and the framework layer is stable.
+
+Run with `mypy backend/`. Included in both the `make lint` target and the pre-commit hooks.
+
+## Pre-commit Hooks
+
+The `pre-commit` framework runs checks automatically before every `git commit`. This prevents unlinted, unformatted, or type-unsafe code from entering the repo.
+
+**`.pre-commit-config.yaml`:**
+
+```yaml
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [pydantic, pydantic-settings, fastapi, sqlalchemy]
+        args: [--config-file=pyproject.toml]
+```
+
+**Setup:** `pre-commit install` (run once after cloning, included in `scripts/dev-setup.sh`).
+
+**Rules:**
+- Pre-commit hooks are mandatory — never bypass with `--no-verify` unless there is a specific, temporary reason discussed and agreed
+- If a hook fails, fix the issue before committing — don't disable the hook
+- The hook versions should be pinned and updated deliberately, not auto-bumped
+
+## Test Infrastructure
+
+### Framework and Dependencies
+
+- **pytest** — test runner
+- **pytest-asyncio** — required for testing async service functions directly
+- **httpx** — used with `ASGITransport` for testing FastAPI endpoints (modern replacement for Starlette's `TestClient`)
+
+All three are dev dependencies, added via `uv add --dev pytest pytest-asyncio httpx`.
+
+### Test Database
+
+Tests must never touch the dev database. All tests use an **in-memory SQLite instance** (`sqlite://`) that is created and destroyed per test session.
+
+This is configured in `backend/tests/conftest.py`:
+
+```python
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from backend.models.database import Base
+
+
+@pytest.fixture(scope="session")
+def engine():
+    """Create an in-memory SQLite engine for the test session."""
+    engine = create_engine("sqlite://", echo=False)
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def db_session(engine):
+    """Create a fresh database session for each test, rolled back after."""
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection)()
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
+```
+
+The `db_session` fixture provides a clean, isolated session per test. The transaction rollback ensures tests don't pollute each other.
+
+### FastAPI Test Client
+
+Testing API endpoints uses httpx with ASGITransport. Also in `conftest.py`:
+
+```python
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+
+from backend.main import app
+
+
+@pytest_asyncio.fixture
+async def client():
+    """Async HTTP client for testing FastAPI endpoints."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+```
+
+### pytest Configuration
+
+In `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+```
+
+`asyncio_mode = "auto"` means any `async def test_*` function is automatically treated as an async test — no need to decorate every test with `@pytest.mark.asyncio`.
+
+### Rules
+
+- Every test file goes in `backend/tests/` and is named `test_*.py`
+- Use fixtures from `conftest.py` for database sessions and API client — never create these inline
+- Tests must be independent — no test should depend on another test's side effects
+- Use `db_session` fixture for any test that touches the database
+- Use `client` fixture for any test that hits an API endpoint
+
+### When To Write Tests First (TDD)
+
+**Write tests before implementation** for any pure logic function with clearly defined inputs, outputs, and branching. These are functions where the test cases essentially form a truth table that drives the design. Examples:
+
+- Conversion decision logic (given format X with codec Y, what action do we take?)
+- Format detection and ffprobe result parsing
+- Key notation conversion (integer 1–24 ↔ Camelot ↔ classical)
+- Rekordbox rating scale mapping (0–5 ↔ 0/51/102/153/204/255)
+- URI path encoding for Rekordbox XML Location field
+- Bitrate quality warning logic
+- Duplicate detection (hash comparison, near-match rules)
+- Any validation or data transformation function
+
+**Write tests after implementation** for framework integration, route handlers, model definitions, configuration, and UI code. The shape of this code is driven by framework conventions, not by test cases. Our "tests are part of the definition of done" rule ensures these still get tested — just not test-first.
+
+## Dependency Management
+
+Dependencies are managed with **uv**, which handles virtual environments, package installation, and lockfile generation.
+
+**`pyproject.toml`** declares direct dependencies with version constraints (e.g. `fastapi>=0.115.0`). Exact pins are not needed here because uv's lockfile handles reproducibility.
+
+**`uv.lock`** is the lockfile — it pins every direct and transitive dependency to an exact version. This file is committed to the repo and ensures reproducible builds across machines and CI.
+
+**Workflow for adding a dependency:**
+1. `uv add <package>` — adds to `pyproject.toml` and updates `uv.lock`
+2. Commit both `pyproject.toml` and `uv.lock`
+
+**Workflow for setting up the dev environment:**
+1. `uv venv` — creates `.venv/`
+2. `uv sync` — installs all dependencies from the lockfile
+
+**Rules:**
+- Never use `pip install` directly — always go through uv
+- Always commit `uv.lock` alongside `pyproject.toml` changes
+- Run `uv sync` after pulling to ensure your environment matches the lockfile
 
 ## Configuration Management
 
