@@ -96,3 +96,47 @@ Phase 0 implementation — full project scaffolding from zero to working sidecar
 - Merge `feature/phase-0-scaffold` to `develop` once manually verified
 - Write Phase 1 feature brief (File Ingestion & Conversion)
 - Begin Phase 1 implementation
+
+---
+
+## Session 3 — 2026-03-07
+
+### What was worked on
+Phase 1 implementation — File Ingestion & Conversion, from feature brief to fully working pipeline.
+
+### Summary
+- Created branch `feature/phase-1-converter` from `develop`
+- Implemented all 10 steps of the Phase 1 build plan in order:
+  1. **Dependencies & config** — Added sse-starlette, ffprobe_path, output_directory, max_concurrent_conversions, convert_aac_to_mp3 to Settings
+  2. **Track model updates** — Added source_path, source_codec, source_bitrate, source_bit_depth, conversion_action, imported_at; changed file_hash to String(64) with unique index; changed quality_warning from Text to Boolean
+  3. **Format inspector (TDD)** — FileInfo dataclass, parse_ffprobe_output(), determine_lossless(), get_quality_warning(), inspect_file(); 37 tests
+  4. **Conversion decision engine (TDD)** — ConversionAction dataclass, decide_conversion() implementing full decision table; 18 tests
+  5. **Output naming (TDD)** — generate_output_path() with date-batched dirs and collision handling; 12 tests
+  6. **Converter service** — build_ffmpeg_command(), compute_file_hash(), convert_file() orchestrator; 8 tests
+  7. **Processing queue** — ProcessingQueue with asyncio.Semaphore, SSE events, cancellation; 6 tests
+  8. **API routes** — POST /api/ingest, GET /api/ingest/progress (SSE), POST /api/ingest/cancel, GET /api/tracks; 8 tests
+  9. **Frontend** — DropZone, ProcessingQueue, TrackList components; API client extended with ingest/tracks/SSE methods
+  10. **Test fixtures & integration** — 8 audio fixtures (1s silence each), 17 integration tests covering all format paths + duplicate detection
+- **Total: 114 tests passing, 10 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **ffprobe `bits_per_raw_sample` missing for PCM** — ffprobe uses `bits_per_sample` for PCM codecs and `bits_per_raw_sample` for FLAC/ALAC. Fixed by checking both fields with fallback.
+2. **ffprobe `bits_per_sample=0` for MP3** — Lossy codecs report 0, which was being picked up as a valid bit depth. Fixed by treating 0 as absent.
+3. **sse-starlette missing mypy stubs** — Added `type: ignore[import-not-found]` on the import.
+4. **Pydantic `class Config` deprecation** — Changed to `model_config = {"from_attributes": True}` in TrackResponse.
+5. **Test DB tables not created** — ASGITransport client doesn't trigger FastAPI lifespan; added `init_db()` call in the client fixture.
+6. **Module-level queue state leaking between tests** — Reset `_queue` to None in the client fixture.
+7. **Tauri dialog import fails in Vite build** — `@tauri-apps/api/dialog` doesn't exist in Tauri v2; installed `@tauri-apps/plugin-dialog` and used dynamic import with try/catch for browser fallback.
+8. **Ruff formatting on every commit** — Several files needed reformatting by ruff-format after initial write; fixed on second commit attempt each time.
+
+### Key decisions made
+1. Track model keeps both `codec` (general) and `source_codec` (Phase 1 provenance) — they serve different purposes
+2. quality_warning changed from Text to Boolean — the warning detail is in the ConversionAction, not stored in DB
+3. Bit depth capped at 24 in ConversionAction (decision engine), not in build_ffmpeg_command (executor just follows the decision)
+4. Source file hash computed before conversion for cross-format duplicate detection
+5. Module-level ProcessingQueue singleton in routes — only one batch at a time
+6. Tauri dialog via dynamic import so the app degrades gracefully in browser dev mode
+
+### What's next
+- Merge `feature/phase-1-converter` to `develop`
+- Begin Phase 2 (Metadata & Tagging) — mutagen tag reading/writing, BPM detection, key detection
