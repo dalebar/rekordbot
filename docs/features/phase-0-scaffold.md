@@ -3,15 +3,18 @@
 **Status:** Not Started
 
 ## Goal
-A running skeleton: Tauri launches, spawns the Python backend, the React frontend confirms the connection, and it all shuts down cleanly. The database schema is in place. The dev workflow is smooth.
+A running skeleton: Tauri launches, spawns the Python backend, the React frontend confirms the connection, and it all shuts down cleanly. The database schema is in place. The dev workflow is smooth. Linting, logging, error handling patterns, and configuration management are established from day one.
 
 ## Deliverables
 
 ### 1. Repo & Tooling
 
-- [ ] Git repo initialised on `main`, with `develop` branch created
+- [ ] `develop` branch created from `main`
 - [ ] `feature/phase-0-scaffold` branch created from `develop`
 - [ ] `pyproject.toml` as the single source of truth for Python dependencies — no `requirements.txt`
+  - All dependencies pinned to exact versions (e.g. `fastapi==0.115.0`)
+  - Ruff configuration in `[tool.ruff]` section (see CLAUDE.md for exact config)
+  - pytest configuration in `[tool.pytest.ini_options]` section
 - [ ] Python virtual environment (`.venv/`) — gitignored
 - [ ] `Makefile` with targets:
   - `dev-backend` — starts uvicorn with `--reload` on port 8420
@@ -19,16 +22,25 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
   - `build-backend` — runs PyInstaller `--onedir` build + renames output with target triple
   - `build` — full production build (backend then frontend)
   - `test` — runs `pytest`
-- [ ] `.gitignore` covering: `.venv/`, `__pycache__/`, `.env`, `dist/`, `build/`, `*.pyc`, `frontend/src-tauri/binaries/`, `frontend/src-tauri/resources/`, `node_modules/`, `target/`
-- [ ] `.env.example` with placeholder for `ANTHROPIC_API_KEY` (not needed yet, but establishes the pattern)
-- [ ] `CLAUDE.md` — full project context file (see separate document)
-- [ ] `SESSIONS.md` — session log initialised with pre-Phase-0 planning session
+  - `lint` — runs `ruff check .` and `ruff format --check .`
+  - `format` — runs `ruff format .` and `ruff check --fix .`
+- [ ] `.gitignore` covering: `.venv/`, `__pycache__/`, `.env`, `dist/`, `build/`, `*.pyc`, `frontend/src-tauri/binaries/`, `frontend/src-tauri/resources/`, `node_modules/`, `target/`, `rekordbot_dev.db`
+- [ ] `.env.example` with all available config values:
+  ```
+  REKORDBOT_PORT=8420
+  REKORDBOT_DB_URL=sqlite:///rekordbot_dev.db
+  REKORDBOT_LOG_LEVEL=INFO
+  REKORDBOT_FFMPEG_PATH=ffmpeg
+  REKORDBOT_ANTHROPIC_API_KEY=
+  ```
+- [ ] `CLAUDE.md` — full project context file (already written, rename CrateAI → rekordbot as first commit)
+- [ ] `SESSIONS.md` — session log (already initialised, rename as above)
 - [ ] `README.md` — project overview, dev setup instructions, tech stack summary
 - [ ] `docs/` folder structure:
   - `docs/features/phase-0-scaffold.md` (this file)
   - `docs/features/converter.md` (placeholder — to be written before Phase 1)
-  - `docs/research/rekordbox-xml-cdj-compatibility.md` (Chat A output, archived)
-  - `docs/research/tauri-python-backend.md` (Chat B output, archived)
+  - `docs/research/rekordbox-xml-cdj-compatibility.md` (already in place)
+  - `docs/research/tauri-python-backend.md` (already in place)
   - `docs/architecture.md` (placeholder — to be fleshed out during Phase 0)
 - [ ] `scripts/` folder:
   - `scripts/build-backend.sh` — PyInstaller build + target-triple rename
@@ -38,16 +50,30 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 
 - [ ] `backend/main.py` — FastAPI app entry point
   - `/health` endpoint returning `{"status": "ok", "version": "0.1.0"}`
+  - `/shutdown` endpoint (POST) for graceful sidecar shutdown
   - CORS middleware configured for:
     - `http://tauri.localhost` (Tauri production)
     - `https://tauri.localhost` (Tauri production, some platforms)
     - `http://localhost:1420` (Vite dev server)
-  - Configurable port via `--port` CLI argument (default: 8420)
+  - Global exception handler for `RekordBotError` → standard JSON error response
+  - Fallback exception handler for unexpected errors → log traceback, return generic 500
+  - Logging configured at startup (level from config, human-readable format)
   - `if __name__ == "__main__"` block running uvicorn (used by both dev mode and PyInstaller)
+
+- [ ] `backend/config.py` — pydantic-settings configuration
+  - `Settings` class with fields: `port`, `db_url`, `log_level`, `ffmpeg_path`, `anthropic_api_key`
+  - Env prefix: `REKORDBOT_`
+  - Reads from `.env` file if present
+
+- [ ] `backend/exceptions.py` — custom exception hierarchy
+  - `RekordBotError` base class with `error`, `detail`, `status_code` attributes
+  - Placeholder subclasses: `ConversionError`, `DuplicateTrackError`, `TagReadError`, `TagWriteError`
+  - These are stubs for now — they'll be used in later phases, but the pattern is established
+
 - [ ] `backend/models/__init__.py` — SQLAlchemy base setup
 - [ ] `backend/models/database.py` — engine, session factory, Base declarative class
-  - SQLite database file location: use platform-appropriate app data directory (not the repo)
-  - During development: `./crateai_dev.db` in the repo root (gitignored)
+  - SQLite database path from config (`Settings.db_url`)
+  - During development: `./rekordbot_dev.db` in the repo root (gitignored)
 - [ ] `backend/models/track.py` — Track model with full schema from research:
 
   **Core identification:**
@@ -108,29 +134,33 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
   - `alembic.ini` and `alembic/` directory in `backend/`
 - [ ] `backend/tests/test_health.py` — test that `/health` returns 200 with expected payload
 - [ ] `backend/tests/test_models.py` — test that Track model can be created, saved, and queried
+- [ ] `backend/tests/test_exceptions.py` — test that error handler returns correct JSON structure for RekordBotError and for unexpected exceptions
+- [ ] `backend/tests/test_config.py` — test that Settings loads defaults and respects env vars
 
 ### 3. React Frontend
 
 - [ ] Scaffolded with Vite + React + TypeScript
 - [ ] Tailwind CSS installed and configured
+- [ ] ESLint + Prettier configured
 - [ ] Minimal `App.tsx`:
   - On mount, fetches `GET /health` from the backend
-  - Displays connection status: "Connected to CrateAI backend v0.1.0" or "Backend unavailable"
+  - Displays connection status: "Connected to rekordbot backend v0.1.0" or "Backend unavailable"
   - Basic layout shell (header, sidebar placeholder, main content area) — does not need to look polished, just establishes the component structure
 - [ ] API client utility (`src/api/client.ts`):
   - Base URL logic: reads from environment in dev, from Tauri-provided port in production
   - Typed fetch wrapper for backend requests
-- [ ] `package.json` with scripts: `dev`, `build`, `preview`
+  - Error response type matching the backend's `{"error": str, "detail": str}` schema
+- [ ] `package.json` with scripts: `dev`, `build`, `preview`, `lint`, `format`
 
 ### 4. Tauri Shell
 
 - [ ] Tauri v2 initialised inside `frontend/src-tauri/`
 - [ ] `tauri.conf.json`:
-  - App identifier: `com.crateai.app`
-  - Window title: "CrateAI"
+  - App identifier: `com.rekordbot.app`
+  - Window title: "rekordbot"
   - Default window size: 1280x800
   - CSP configured with `connect-src` allowing `localhost:8420` and `127.0.0.1:8420`
-  - `externalBin` pointing to `binaries/crateai-server`
+  - `externalBin` pointing to `binaries/rekordbot-server`
   - `beforeDevCommand`: starts Vite dev server
   - `beforeBuildCommand`: runs frontend build
 - [ ] Shell plugin (`tauri-plugin-shell`) installed and configured
@@ -147,12 +177,12 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 ### 5. Integration Proof
 
 - [ ] PyInstaller `--onedir` build of the Python backend succeeds
-- [ ] Build script renames output with correct target triple (e.g., `crateai-server-aarch64-apple-darwin`)
+- [ ] Build script renames output with correct target triple (e.g., `rekordbot-server-aarch64-apple-darwin`)
 - [ ] Full app launch via `cargo tauri dev` with sidecar:
   - Tauri window opens
   - Backend sidecar spawns
   - Frontend displays "Connected" after health check passes
-  - Closing the window kills the sidecar process (verify no orphan `crateai-server` process remains)
+  - Closing the window kills the sidecar process (verify no orphan `rekordbot-server` process remains)
 - [ ] Confirm ffmpeg is available via Homebrew (`which ffmpeg` succeeds) — no bundling yet
 
 ## Acceptance Criteria
@@ -160,7 +190,8 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 - [ ] `make dev-backend` starts FastAPI with hot reload on port 8420
 - [ ] `make dev-frontend` starts Tauri dev mode with React HMR
 - [ ] Frontend connects to backend and displays health status in both dev modes
-- [ ] `make test` passes — health endpoint test and model test both green
+- [ ] `make test` passes — health endpoint, model, exception, and config tests all green
+- [ ] `make lint` passes with no warnings
 - [ ] `make build-backend` produces a working PyInstaller binary
 - [ ] Full sidecar integration works: launch → health check → display → clean shutdown
 - [ ] No orphan processes after app close
@@ -193,7 +224,7 @@ A running skeleton: Tauri launches, spawns the Python backend, the React fronten
 Decisions confirmed in the main project chat before this brief was written:
 
 1. **Mac-first, Windows-compatible by design** — build and test on macOS, keep code OS-agnostic
-2. **pyproject.toml only** — no requirements.txt
+2. **pyproject.toml only** — no requirements.txt, exact version pins
 3. **PyInstaller `--onedir`** — avoids zombie processes, easier to sign
 4. **ffmpeg as Tauri resource** (not sidecar) — Python calls it via subprocess
 5. **Hardcoded port 8420** with conflict detection — add dynamic assignment later if needed
@@ -204,3 +235,8 @@ Decisions confirmed in the main project chat before this brief was written:
 10. **Rekordbox XML export-only in Phase 4** — import is Phase 4b or later
 11. **Tauri IPC for desktop integration only** — all business logic via HTTP to FastAPI
 12. **Sidecar integration tested at end of Phase 0** — don't proceed to Phase 1 without this proof
+13. **Ruff for Python linting/formatting** — replaces black + isort + flake8 in one tool
+14. **pydantic-settings for configuration** — typed, validated, env var support with REKORDBOT_ prefix
+15. **Standard logging module** — INFO default, DEBUG via config, human-readable in dev
+16. **Consistent error response schema** — `{"error": str, "detail": str}` on all non-2xx responses
+17. **Custom exception hierarchy** — RekordBotError base class, subclasses per domain
