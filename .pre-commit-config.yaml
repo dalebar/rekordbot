@@ -19,5 +19,5 @@ repos:
     rev: v1.13.0
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic, pydantic-settings, fastapi, sqlalchemy]
+        additional_dependencies: [pydantic, pydantic-settings, fastapi, sqlalchemy, pytest, pytest-asyncio, httpx, uvicorn]
         args: [--config-file=pyproject.toml]
