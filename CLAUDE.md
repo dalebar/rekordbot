@@ -9,7 +9,7 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 ## Tech Stack
 
 - **Backend:** Python 3.12, FastAPI, uvicorn
-- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4
 - **Desktop shell:** Tauri v2 (Rust)
 - **Database:** SQLite via SQLAlchemy (sync mode) — Alembic deferred until real users need schema migrations
 - **Audio conversion:** ffmpeg (via subprocess), ffprobe for container inspection
@@ -21,7 +21,7 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 - **Tag format target:** ID3v2.3 (universal CDJ compatibility)
 - **Package management:** uv (fast resolver, lockfile, venv management)
 - **Linting/Formatting:** Ruff (Python), ESLint + Prettier (TypeScript/React)
-- **Type checking:** mypy in strict mode
+- **Type checking:** mypy (normal mode — avoids friction with framework type stubs)
 - **Pre-commit:** pre-commit framework (Ruff, mypy, trailing whitespace, merge conflict markers)
 - **Configuration:** pydantic-settings (env vars + .env files with type validation)
 
@@ -501,13 +501,18 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 ## Current Status
 
 **Phase:** 0 — Project Scaffolding
-**State:** Feature brief written. No code yet.
+**State:** Complete. All tasks implemented and integration proof verified.
+
+Phase 0 deliverables:
+- Repo tooling: pyproject.toml, uv.lock, Makefile, pre-commit hooks, scripts
+- Python backend: FastAPI app, config, exceptions, Track model, 8 tests passing
+- React frontend: Vite + React 19 + TypeScript + Tailwind v4, API client, health check UI
+- Tauri v2 shell: sidecar lifecycle management, health polling, clean shutdown
+- Integration proof: PyInstaller binary builds, Tauri launches sidecar, health check passes
 
 Research completed:
 - Rekordbox XML format and CDJ tag compatibility (see `docs/research/`)
 - Tauri + Python sidecar architecture (see `docs/research/`)
-
-All foundational design decisions are made. Ready to begin implementation.
 
 ## Known Issues / Don't Touch
 
