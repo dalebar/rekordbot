@@ -57,3 +57,10 @@ class AiTagError(RekordBotError):
 
     def __init__(self, detail: str, status_code: int = 500) -> None:
         super().__init__(error="ai_tag_failed", detail=detail, status_code=status_code)
+
+
+class OrganisationError(RekordBotError):
+    """Raised when file organisation fails."""
+
+    def __init__(self, detail: str, status_code: int = 500) -> None:
+        super().__init__(error="organisation_failed", detail=detail, status_code=status_code)

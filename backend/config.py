@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     ai_batch_size: int = 20
     ai_max_requests_per_minute: int = 10
 
+    # Phase 2b: Organisation settings
+    folder_template: str = "{artist}/{album}/{title}"
+    organise_confidence_threshold: float = 0.7
+    organise_unknown_fallback: str = "Unsorted"
+
     # Phase 2: Analysis settings
     bpm_range_min: int = 70
     bpm_range_max: int = 180
