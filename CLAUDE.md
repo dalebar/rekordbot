@@ -209,31 +209,7 @@ feature/*   ← one branch per feature or phase (e.g. feature/phase-0-scaffold)
 
 ### Python — Ruff
 
-Configured in `pyproject.toml` under `[tool.ruff]`:
-
-```toml
-[tool.ruff]
-target-version = "py312"
-line-length = 99
-
-[tool.ruff.lint]
-select = [
-    "E",     # pycodestyle errors
-    "W",     # pycodestyle warnings
-    "F",     # pyflakes
-    "I",     # isort
-    "N",     # pep8-naming
-    "UP",    # pyupgrade
-    "B",     # flake8-bugbear
-    "SIM",   # flake8-simplify
-    "TCH",   # flake8-type-checking
-]
-
-[tool.ruff.lint.isort]
-known-first-party = ["backend"]
-```
-
-Run with `ruff check .` and `ruff format .`. Add both to the Makefile as a `lint` target.
+Configured in `pyproject.toml` under `[tool.ruff]`. Line length 99, Python 3.12 target. Rules: E, W, F, I, N, UP, B, SIM, TCH. Run with `ruff check .` and `ruff format .`.
 
 ### TypeScript — ESLint + Prettier
 
@@ -243,160 +219,36 @@ Standard Vite + React ESLint config. Prettier for formatting. Configured via `.e
 
 ### Python — mypy
 
-mypy verifies type hints at development time, catching real bugs before they reach runtime. Configured in `pyproject.toml`:
-
-```toml
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-check_untyped_defs = true
-```
-
-We use **normal mode** (not strict) to avoid friction with SQLAlchemy, pydantic, and FastAPI — their type stubs are incomplete and strict mode generates false positives on framework boilerplate. Normal mode still catches wrong return types, missing None handling, and incompatible arguments. We can tighten to strict later once the codebase is larger and the framework layer is stable.
-
-Run with `mypy backend/`. Included in both the `make lint` target and the pre-commit hooks.
+Configured in `pyproject.toml` under `[tool.mypy]`. **Normal mode** (not strict) to avoid friction with SQLAlchemy/pydantic/FastAPI type stubs. Catches wrong return types, missing None handling, and incompatible arguments. Run with `mypy backend/`.
 
 ## Pre-commit Hooks
 
-The `pre-commit` framework runs checks automatically before every `git commit`. This prevents unlinted, unformatted, or type-unsafe code from entering the repo.
-
-**`.pre-commit-config.yaml`:**
-
-```yaml
-repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-merge-conflict
-      - id: check-yaml
-      - id: check-toml
-
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        additional_dependencies: [pydantic, pydantic-settings, fastapi, sqlalchemy]
-        args: [--config-file=pyproject.toml]
-```
-
-**Setup:** `pre-commit install` (run once after cloning, included in `scripts/dev-setup.sh`).
+Configured in `.pre-commit-config.yaml`. Hooks: trailing-whitespace, end-of-file-fixer, check-merge-conflict, check-yaml, check-toml, ruff (with --fix), ruff-format, mypy. Setup: `pre-commit install`.
 
 **Rules:**
-- Pre-commit hooks are mandatory — never bypass with `--no-verify` unless there is a specific, temporary reason discussed and agreed
+- Pre-commit hooks are mandatory — never bypass with `--no-verify`
 - If a hook fails, fix the issue before committing — don't disable the hook
-- The hook versions should be pinned and updated deliberately, not auto-bumped
+- Hook versions are pinned and updated deliberately
 
 ## Test Infrastructure
 
-### Framework and Dependencies
-
-- **pytest** — test runner
-- **pytest-asyncio** — required for testing async service functions directly
-- **httpx** — used with `ASGITransport` for testing FastAPI endpoints (modern replacement for Starlette's `TestClient`)
-
-All three are dev dependencies, added via `uv add --dev pytest pytest-asyncio httpx`.
-
-### Test Database
-
-Tests must never touch the dev database. All tests use an **in-memory SQLite instance** (`sqlite://`) that is created and destroyed per test session.
-
-This is configured in `backend/tests/conftest.py`:
-
-```python
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from backend.models.database import Base
-
-
-@pytest.fixture(scope="session")
-def engine():
-    """Create an in-memory SQLite engine for the test session."""
-    engine = create_engine("sqlite://", echo=False)
-    Base.metadata.create_all(engine)
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture
-def db_session(engine):
-    """Create a fresh database session for each test, rolled back after."""
-    connection = engine.connect()
-    transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
-    yield session
-    session.close()
-    transaction.rollback()
-    connection.close()
-```
-
-The `db_session` fixture provides a clean, isolated session per test. The transaction rollback ensures tests don't pollute each other.
-
-### FastAPI Test Client
-
-Testing API endpoints uses httpx with ASGITransport. Also in `conftest.py`:
-
-```python
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-
-from backend.main import app
-
-
-@pytest_asyncio.fixture
-async def client():
-    """Async HTTP client for testing FastAPI endpoints."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
-```
-
-### pytest Configuration
-
-In `pyproject.toml`:
-
-```toml
-[tool.pytest.ini_options]
-testpaths = ["backend/tests"]
-asyncio_mode = "auto"
-```
-
-`asyncio_mode = "auto"` means any `async def test_*` function is automatically treated as an async test — no need to decorate every test with `@pytest.mark.asyncio`.
+- **pytest** + **pytest-asyncio** + **httpx** (ASGITransport) — dev dependencies
+- Tests must never touch the dev database — all tests use in-memory SQLite (`sqlite://`)
+- Fixtures in `backend/tests/conftest.py`: `engine` (session-scoped), `db_session` (per-test with rollback), `client` (async httpx client)
+- `asyncio_mode = "auto"` in pyproject.toml — async tests don't need `@pytest.mark.asyncio`
 
 ### Rules
 
 - Every test file goes in `backend/tests/` and is named `test_*.py`
-- Use fixtures from `conftest.py` for database sessions and API client — never create these inline
+- Use fixtures from `conftest.py` — never create DB sessions or API clients inline
 - Tests must be independent — no test should depend on another test's side effects
-- Use `db_session` fixture for any test that touches the database
-- Use `client` fixture for any test that hits an API endpoint
+- Use `db_session` for DB tests, `client` for API endpoint tests
 
 ### When To Write Tests First (TDD)
 
-**Write tests before implementation** for any pure logic function with clearly defined inputs, outputs, and branching. These are functions where the test cases essentially form a truth table that drives the design. Examples:
+**Write tests before implementation** for pure logic functions with clearly defined inputs, outputs, and branching (conversion decisions, key notation, rating scale, URI encoding, conflict detection, any validation/transformation).
 
-- Conversion decision logic (given format X with codec Y, what action do we take?)
-- Format detection and ffprobe result parsing
-- Key notation conversion (integer 1–24 ↔ Camelot ↔ classical)
-- Rekordbox rating scale mapping (0–5 ↔ 0/51/102/153/204/255)
-- URI path encoding for Rekordbox XML Location field
-- Bitrate quality warning logic
-- Duplicate detection (hash comparison, near-match rules)
-- Any validation or data transformation function
-
-**Write tests after implementation** for framework integration, route handlers, model definitions, configuration, and UI code. The shape of this code is driven by framework conventions, not by test cases. Our "tests are part of the definition of done" rule ensures these still get tested — just not test-first.
+**Write tests after implementation** for framework integration, route handlers, model definitions, configuration, and UI code.
 
 ## Dependency Management
 
@@ -421,53 +273,9 @@ Dependencies are managed with **uv**, which handles virtual environments, packag
 
 ## Configuration Management
 
-Application configuration is managed via **pydantic-settings**. This gives us typed, validated configuration with support for environment variables and `.env` files.
+Application configuration is managed via **pydantic-settings** in `backend/config.py`. All env vars prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`). In production, a JSON config file at `~/Library/Application Support/rekordbot/config.json` is loaded into env vars before Settings instantiation (env vars take precedence over config file). See `backend/services/config_manager.py` for the config file → env var bridge.
 
-Configuration lives in `backend/config.py`:
-
-```python
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="REKORDBOT_")
-
-    port: int = 8420
-    db_url: str = "sqlite:///rekordbot_dev.db"
-    log_level: str = "INFO"
-    ffmpeg_path: str = "ffmpeg"
-    ffprobe_path: str = "ffprobe"
-    output_directory: str = "~/rekordbot/library"
-    max_concurrent_conversions: int = 2
-    convert_aac_to_mp3: bool = False
-    anthropic_api_key: str = ""
-
-    # Phase 2: Analysis settings
-    bpm_range_min: int = 70
-    bpm_range_max: int = 180
-    confidence_threshold: float = 0.6
-    max_concurrent_analyses: int = 1
-    default_key_notation: str = "camelot"
-
-    # Phase 3: AI tagging settings
-    ai_model: str = "claude-sonnet-4-20250514"
-    ai_batch_size: int = 20
-    ai_max_requests_per_minute: int = 10
-
-    # Phase 2b: Organisation settings
-    folder_template: str = "{artist}/{album}/{title}"
-    organise_confidence_threshold: float = 0.7
-    organise_unknown_fallback: str = "Unsorted"
-
-    # Phase 4: Rekordbox XML export settings
-    rekordbox_xml_path: str = ""
-
-    # Phase 5a: Crate builder settings
-    crate_assignment_batch_size: int = 30
-```
-
-**Environment variable naming:** All env vars are prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`, `REKORDBOT_LOG_LEVEL=DEBUG`).
-
-**`.env.example`** documents all available config values with sensible defaults. The actual `.env` file is gitignored.
+**`.env.example`** documents all available config values. The actual `.env` file is gitignored.
 
 ## Logging
 
@@ -511,59 +319,9 @@ logger.error("Conversion failed for %s: %s", filename, str(error))
 
 ## Error Handling
 
-### API Error Response Schema
+All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-readable message"}`. See `backend/exceptions.py` for the hierarchy (`RekordBotError` base with domain subclasses) and `backend/main.py` for the global handler + `UnhandledExceptionMiddleware`.
 
-All non-2xx responses from the FastAPI backend use a consistent JSON structure:
-
-```json
-{
-    "error": "short_error_code",
-    "detail": "Human-readable explanation of what went wrong."
-}
-```
-
-`error` is a machine-readable string code (e.g. `"file_not_found"`, `"conversion_failed"`, `"duplicate_detected"`, `"validation_error"`). The frontend matches on this field for programmatic handling.
-
-`detail` is a human-readable message suitable for displaying to the user.
-
-### Exception Hierarchy
-
-Define custom exceptions in `backend/exceptions.py`:
-
-```python
-class RekordBotError(Exception):
-    """Base exception for all rekordbot errors."""
-    def __init__(self, error: str, detail: str, status_code: int = 500):
-        self.error = error
-        self.detail = detail
-        self.status_code = status_code
-
-class FileNotFoundError(RekordBotError): ...
-class ConversionError(RekordBotError): ...
-class DuplicateTrackError(RekordBotError): ...
-class TagReadError(RekordBotError): ...
-class TagWriteError(RekordBotError): ...
-class AnalysisError(RekordBotError): ...
-```
-
-### Pattern
-
-- **Service layer** raises `RekordBotError` subclasses when something goes wrong
-- **Route handlers** don't catch these — they propagate to a global exception handler
-- **Global exception handler** (registered in `main.py`) catches `RekordBotError` and returns the standard JSON error response
-- **Unexpected exceptions** (not `RekordBotError`) are caught by a fallback handler that logs the full traceback and returns a generic 500 response — never expose internal details to the frontend
-- **Never silently swallow exceptions.** If an exception is caught and handled, log it. If it's not expected, let it propagate.
-
-### FastAPI Exception Handler
-
-```python
-@app.exception_handler(RekordBotError)
-async def rekordbot_error_handler(request: Request, exc: RekordBotError):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"error": exc.error, "detail": exc.detail},
-    )
-```
+**Pattern:** Service layer raises `RekordBotError` subclasses → global handler returns standard JSON. Unexpected exceptions → `UnhandledExceptionMiddleware` → generic 500. Never silently swallow exceptions.
 
 ## Key Design Decisions
 
@@ -599,120 +357,25 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 6a — App Shell & Packaging
-**State:** Complete. All 10 steps implemented, 1013 tests passing (83 Phase 6a tests: 34 config manager + 12 settings routes + 8 watchdog + 4 error handling + 11 bitrate + 1 existing fix + 13 integration).
+**Phase:** 6a — App Shell & Packaging (complete)
+**Tests:** 1013 passing across all phases
+**Next:** Phase 4b — Rekordbox XML Import
 
-**Next:** Phase 6b — Polish & Distribution (or Phase 4b — Rekordbox XML Import).
+### Phase Summary
 
-Phase 6a deliverables:
-- Config manager: JSON config file at ~/Library/Application Support/rekordbot/config.json, env var integration with REKORDBOT_ prefix, config file → env vars → pydantic-settings pipeline, env vars take precedence (TDD, 34 tests)
-- Settings API: GET/PUT /api/settings with API key masking (sk-ant-...XXXX), POST validate-key (Anthropic SDK test call), POST validate-directory, GET status (first-run check, ffmpeg availability) (12 tests)
-- Self-termination watchdog: daemon thread polling parent PID every 5 seconds, 10-second grace period, os.kill(pid, 0) existence check, --parent-pid CLI argument parsing, Tauri passes PID on sidecar spawn (8 tests)
-- Error handling: RequestValidationError handler with standard {error, detail} JSON, startup health checks for ffmpeg/output directory/API key (non-blocking), UnhandledExceptionMiddleware catch-all (4 tests)
-- BitRate fix: lossy files use source_bitrate from ffprobe, lossless files compute from sample_rate × bit_depth × channels, fallback to 0, compute_bitrate() pure function (11 tests)
-- Frontend toast system: ToastProvider context + useToast() hook, toast types (success/error/warning/info), auto-dismiss for success/info (5s), sticky for errors, global API error handler via setApiErrorHandler()
-- Frontend settings panel: SettingsPanel with main section (API key with test, output directory with browse/validate, key notation dropdown, folder template with live preview, AAC toggle) and advanced section (BPM range, confidence, track duration, max tracks), save with validation
-- Frontend first-run wizard: SetupWizard with Welcome → Config → Done steps, output directory required with validation, API key optional with test, config saved on completion, App.tsx routing based on /api/settings/status
-- Tauri packaging: dialog plugin for folder picker, --parent-pid passed to sidecar, resources config for ffmpeg bundling, build: make build → PyInstaller + Tauri .app bundle
-- Integration tests: first-run flow, settings persistence, API key masking round-trip, directory validation, error format standardisation, bitrate computation (13 tests)
-- Feature brief: `docs/features/phase-6a-app-shell.md`
+| Phase | Tests | Feature Brief |
+|-------|-------|---------------|
+| 0 — Scaffolding | 8 | `docs/features/phase-0-scaffold.md` |
+| 1 — File Ingestion | 114 | `docs/features/phase-1-file-ingestion-conversion.md` |
+| 2 — Metadata & Tagging | 390 | `docs/features/phase-2-metadata-tagging.md` |
+| 3 — Claude AI Integration | 462 | `docs/features/phase-3-claude-integration.md` |
+| 2b — File Organisation | 602 | `docs/features/phase-2b-file-organisation.md` |
+| 4 — Rekordbox XML Export | 706 | `docs/features/phase-4-rekordbox-xml-export.md` |
+| 5a — Crate Builder | 814 | `docs/features/phase-5a-crate-builder.md` |
+| 5b — Set Planner | 930 | `docs/features/phase-5b-set-planner.md` |
+| 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 
-Phase 5b deliverables:
-- BPM transition scoring: threshold-based scoring (0.0–1.0), quality labels (smooth/acceptable/noticeable/jarring), BPM range suggestion for sequence positions (TDD, 29 tests)
-- Set prompt builder: system prompts and tool schemas for initial planning, replace, and reorder operations; track summary builder; result parsers with dedup and validation (TDD, 20 tests)
-- Set planner service: CRUD, lock/unlock with segment recalculation, segment description preservation, manual track editing (add/remove/move), candidate pool management, async Claude planning and shuffle operations with SSE progress (26 tests)
-- Data models: SetPlan (name, description, parameters, status), SetTrack (position, lock, candidate flag), SetSegment (position range, description), cascade delete, unique constraint on (set_id, track_id) (11 tests)
-- API routes: POST/GET /api/sets, GET/PUT/DELETE /api/sets/{id}, POST lock/unlock, PUT segments, POST shuffle, POST/DELETE tracks, POST move, GET candidates, POST export, GET progress (SSE) (12 tests)
-- XML export integration: ordered set playlists alongside folder-based and crate playlists, position order preserved, alphabetical sorting (8 tests)
-- Frontend: SetPlannerView (track sequence table with lock toggle, BPM/key transition indicators, segment dividers with inline editing, candidate panel, shuffle controls, export button), SetCreateDialog (name/description/duration/BPM/energy arc/source/harmonic mixing), SetListPanel, CrateSidebar with Sets section, API client with all set types and functions
-- Integration tests: end-to-end create→lock→segment→export, track add/remove/move, segment description preservation, XML playlist order verification, API route lifecycle (10 tests)
-- Feature brief: `docs/features/phase-5b-set-planner.md`
-
-Phase 5a deliverables:
-- Key compatibility: Camelot wheel harmonic mixing logic — same key, adjacent, relative major/minor, energy boost/drop, wrap-around (TDD, 29 tests)
-- Crate prompt builder: description → structured criteria parsing, assignment prompt construction, result validation with clamping and deduplication (TDD, 19 tests)
-- Crate assigner: batched Claude assignment pipeline with SSE progress events, cancellation support, AI/manual assignment tracking, refresh with manual preservation (6 tests)
-- Crate manager: CRUD operations, description re-parse on update, refresh orchestration, auto-refresh for newly ingested tracks (16 tests)
-- Data models: Crate (name, description, parsed_criteria JSON, auto_refresh) and CrateTrack (many-to-many with assignment_method), cascade delete, unique constraint (8 tests)
-- API routes: POST/GET/PUT/DELETE /api/crates, POST /api/crates/{id}/refresh, POST/DELETE /api/crates/{id}/tracks, GET /api/crates/{id}/progress (SSE) (11 tests)
-- XML export integration: crate playlists alongside folder-based playlists, alphabetical sorting, correct TrackID references (7 tests)
-- Frontend: CrateSidebar (playlist tree, track counts, right-click context menu), CrateCreateDialog (name + description + progress), TrackTable crate filtering, API client with all crate types and endpoints
-- Integration tests: end-to-end create→assign→verify, overlapping assignment, manual preservation during refresh, XML export with crates (12 tests)
-- Feature brief: `docs/features/phase-5a-crate-builder.md`
-
-Phase 4 deliverables:
-- Location encoder: RFC 3986 percent-encoding per path component, file://localhost/ URI generation, round-trip decodable (TDD, 25 tests)
-- Schema mapper: Track model → Rekordbox XML attribute mapping, BPM/rating/kind/date formatting, key notation conversion, file size/mtime from disk, fallbacks for missing metadata (TDD, 35 tests)
-- XML builder: DJ_PLAYLISTS document construction with PRODUCT/COLLECTION/PLAYLISTS, sequential TrackID assignment, folder-based playlist auto-generation (All Tracks + per-artist), write with XML declaration and UTF-8 encoding (19 tests)
-- Export service: full pipeline orchestrator, track filtering, warning collection, configurable output path with settings fallback (9 tests)
-- API routes: POST /api/export/rekordbox (trigger export), GET /api/export/rekordbox/status (last export info) (5 tests)
-- Frontend: ExportControls component (amber Export XML button, result summary, warning expansion), API client types and endpoints
-- Integration tests: end-to-end create→export→parse→verify, location encoding round-trips, playlist structure verification, re-export after metadata changes, API integration (11 tests)
-- Feature brief: `docs/features/phase-4-rekordbox-xml-export.md`
-
-Phase 2b deliverables:
-- Template engine: configurable folder templates with fallback syntax (`{variable|"literal"}`), path sanitisation, output path building
-- Confidence scorer: base 0.5 scoring with deltas for metadata presence, VA compilation detection, bootleg indicator detection, preference rules
-- Preference store: CRUD for artist_folder/va_handling/custom_path rules with normalised key matching, rule application during proposal
-- Claude reasoner: placement suggestions for ambiguous tracks via tool use, batch processing
-- File mover: shutil.move wrapped in asyncio.to_thread(), collision handling (_1, _2 suffix), empty directory cleanup
-- Organiser pipeline: two-phase (propose + execute), SSE progress events, cancellation support, Claude enrichment for ambiguous tracks
-- API routes: POST /api/organise/propose, GET /api/organise/progress (SSE), POST /api/organise/cancel, GET /api/organise/proposal, POST /api/organise/approve, POST /api/organise/resolve/{id}, GET/POST/DELETE /api/preferences
-- Track model: proposed_path, previous_output_path, organisation_status (unorganised/proposed/review_needed/organised), organisation_confidence, organisation_reasoning
-- PreferenceRule model: rule_type + key UniqueConstraint, normalised key matching
-- Frontend: OrganiseControls (propose/approve buttons, progress bar, organisation filter modes), ReviewQueue (accept/skip/custom path), PreferenceRulesPanel (CRUD), TrackTable organisation_status column
-- API client: Full organisation type definitions, SSE consumer, all organisation and preference endpoints
-- Integration tests: end-to-end propose→approve flow, resolve flow, preference rule application, re-organisation after metadata changes
-- Feature brief: `docs/features/phase-2b-file-organisation.md`
-
-Phase 3 deliverables:
-- Claude client: Anthropic SDK wrapper with rate limiting (timestamp-based throttle), exponential backoff retry on 429/529, token usage tracking, cost estimation ($3/MTok input, $15/MTok output)
-- Prompt builder: System prompt with DJ-centric genre taxonomy, tool use schema for structured output (genre, subgenre, mood, energy 1–10, confidence, reasoning), batch message builder, artist-grouped batching, result parser with validation
-- AI tagger pipeline: Batch orchestrator with per-batch error isolation, cancellation via asyncio.Event, SSE progress events (ai_tag_batch_progress, ai_tag_complete), source genre preservation for revert
-- API routes: POST /api/tracks/ai-tag, GET /api/tracks/ai-tag/progress (SSE), POST /api/tracks/ai-tag/cancel, GET /api/tracks/ai-tag/status, POST /api/tracks/ai-tag/validate-key
-- Track model: subgenre, mood, energy (1–10), ai_confidence (high/medium/low), ai_reasoning, source_genre, ai_status (untagged/ai_tagged/ai_tags_written/ai_failed)
-- Extended tagging routes: genre revert support, ai_status transition on write-tags, subgenre/mood/energy in TrackUpdate
-- Frontend: TrackTable with mood, energy (colour-coded: blue→neutral→amber→red), AI confidence (green/amber/red), AI status columns, genre tooltip with AI reasoning, inline editing for new fields, AI filter modes
-- Frontend: AnalysisControls with AI Tag button (purple, disabled without API key), AI progress bar, token usage summary, AI filter buttons
-- API client: Full AI tagging type definitions, SSE consumer, all AI endpoints
-- Integration tests: end-to-end AI tag flow, genre revert, re-tagging, missing API key, write-tags ai_status transition
-- Feature brief: `docs/features/phase-3-claude-integration.md`
-
-Phase 2 deliverables:
-- Tag reader: mutagen-based tag extraction from AIFF (ID3v2), MP3 (ID3v2), M4A (MP4 atoms)
-- BPM detector: librosa onset analysis with configurable half/double-time auto-correction
-- Key detector: librosa chroma + Krumhansl-Schmuckler algorithm with HPSS harmonic separation
-- Key notation: full Camelot/Open Key/classical mapping with 171 test cases (TDD)
-- Tag writer: ID3v2.3 for AIFF/MP3 (no v1), MP4 atoms for M4A, preserves unmanaged tags
-- Analysis pipeline: asyncio.Semaphore batch processing, per-track error isolation, SSE progress
-- API routes: POST /api/tracks/analyse, SSE progress, cancel, PUT /api/tracks/{id}, revert, bpm-multiply, POST /api/tracks/write-tags
-- Enhanced GET /api/tracks with analysis metadata, confidence scores, conflict detection
-- Frontend: TrackTable (Rekordbox-style sortable table, column visibility toggle, inline editing, BPM x2/÷2, confidence indicators, filter modes), AnalysisControls toolbar, TrackDetailPanel, ColumnMenu
-- Track model extended with source_bpm, source_key, bpm_confidence, key_confidence, analysis_status
-- Integration tests: end-to-end ingest→analyse→write flow, tag round-trips, revert/multiply
-- Feature brief: `docs/features/phase-2-metadata-tagging.md`
-
-Phase 1 deliverables:
-- Format inspector: ffprobe-based inspection for WAV, FLAC, AIFF, MP3, M4A (ALAC/AAC)
-- Conversion decision engine: lossless → AIFF (bit depth preserved, capped at 24), lossy copy/optional convert
-- Converter service: ffmpeg execution pipeline with SHA-256 duplicate detection
-- Processing queue: asyncio.Semaphore concurrency control, SSE progress events, cancellation
-- API routes: POST /api/ingest, GET /api/ingest/progress (SSE), POST /api/ingest/cancel, GET /api/tracks
-- Frontend: DropZone (drag-and-drop + Tauri dialog), ProcessingQueue (live SSE status), TrackList
-- Track model extended with source_path, source_codec, source_bitrate, source_bit_depth, file_hash (unique index), conversion_action, imported_at
-- 8 test audio fixtures committed, integration tests covering all format paths
-- Feature brief: `docs/features/phase-1-file-ingestion-conversion.md`
-
-Phase 0 deliverables (prior):
-- Repo tooling: pyproject.toml, uv.lock, Makefile, pre-commit hooks, scripts
-- Python backend: FastAPI app, config, exceptions, Track model
-- React frontend: Vite + React 19 + TypeScript + Tailwind v4, API client
-- Tauri v2 shell: sidecar lifecycle management, health polling, clean shutdown
-- Integration proof: PyInstaller binary builds, Tauri launches sidecar, health check passes
-
-Research completed:
-- Rekordbox XML format and CDJ tag compatibility (see `docs/research/`)
-- Tauri + Python sidecar architecture (see `docs/research/`)
+Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
 ## Known Issues / Don't Touch
 
@@ -736,5 +399,5 @@ Research completed:
 | **5a** | Crate Builder | ✅ Done | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
 | **5b** | Set Planner | ✅ Done | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
-| **6b** | Polish & Distribution | ⬅️ Next | UI polish, code signing, notarisation, .dmg packaging, auto-update |
-| 4b | Rekordbox XML Import | — | Parse existing XML, merge with internal DB, conflict resolution |
+| **4b** | Rekordbox XML Import | ⬅️ Next | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
+| 6b | Polish & Distribution | — | UI polish, code signing, notarisation, .dmg packaging, auto-update |
