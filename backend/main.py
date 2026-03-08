@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.services.config_manager import apply_config_to_env, get_db_path, load_config
+from backend.services.watchdog import parse_parent_pid, start_watchdog
 
 # Load config from JSON file BEFORE Settings instantiation.
 # This sets env vars that pydantic-settings will pick up.
@@ -49,6 +50,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — initialise database on startup."""
     init_db()
     logger.info("rekordbot backend started on port %d", settings.port)
+
+    # Start watchdog if running as sidecar (--parent-pid provided)
+    parent_pid = parse_parent_pid()
+    if parent_pid is not None:
+        start_watchdog(parent_pid)
+
     yield
 
 

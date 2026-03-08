@@ -40,8 +40,12 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // Spawn the Python backend sidecar
-            let sidecar_command = app.shell().sidecar("rekordbot-server").unwrap();
+            // Spawn the Python backend sidecar with parent PID for watchdog
+            let sidecar_command = app
+                .shell()
+                .sidecar("rekordbot-server")
+                .unwrap()
+                .args(["--parent-pid", &std::process::id().to_string()]);
             let (mut rx, child) = sidecar_command.spawn().unwrap_or_else(|e| {
                 panic!("Failed to spawn sidecar: {}", e);
             });
