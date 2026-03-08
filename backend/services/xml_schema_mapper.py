@@ -106,6 +106,60 @@ def format_date(dt: datetime | str | None) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
+def compute_bitrate(
+    sample_rate: int | None,
+    bit_depth: int | None,
+    channels: int | None,
+) -> int:
+    """Compute bitrate in kbps for lossless audio.
+
+    Args:
+        sample_rate: Sample rate in Hz (e.g. 44100).
+        bit_depth: Bits per sample (e.g. 16, 24).
+        channels: Number of audio channels (e.g. 2 for stereo).
+
+    Returns:
+        Bitrate in kbps, or 0 if any input is missing.
+    """
+    if not sample_rate or not bit_depth or not channels:
+        return 0
+    return (sample_rate * bit_depth * channels) // 1000
+
+
+def _resolve_bitrate(track: object) -> int:
+    """Resolve the correct bitrate for a track.
+
+    - Lossy files (MP3, AAC): use source_bitrate from ffprobe
+    - Lossless files (AIFF, WAV, FLAC): compute from sample_rate × bit_depth × channels
+
+    Args:
+        track: Track model instance.
+
+    Returns:
+        Bitrate in kbps, or 0 if undetermined.
+    """
+    is_lossy = getattr(track, "is_lossy", None)
+    source_bitrate = getattr(track, "source_bitrate", None)
+
+    if is_lossy and source_bitrate:
+        return int(source_bitrate)
+
+    # Lossless: compute from audio properties
+    sample_rate = getattr(track, "sample_rate", None)
+    bit_depth = getattr(track, "bit_depth", None) or getattr(track, "source_bit_depth", None)
+    channels = getattr(track, "channels", None)
+
+    computed = compute_bitrate(sample_rate, bit_depth, channels)
+    if computed:
+        return computed
+
+    # Fallback: use source_bitrate if available even for non-lossy
+    if source_bitrate:
+        return int(source_bitrate)
+
+    return 0
+
+
 def get_file_size(path: str) -> int:
     """Get file size in bytes, returning 0 if file doesn't exist.
 
@@ -199,7 +253,7 @@ def track_to_xml_attrs(
         "AverageBpm": format_bpm(getattr(track, "bpm", None)),
         "DateModified": date_modified,
         "DateAdded": date_added,
-        "BitRate": str(getattr(track, "bit_rate", None) or 0),
+        "BitRate": str(_resolve_bitrate(track)),
         "SampleRate": str(getattr(track, "sample_rate", None) or 0),
         "Comments": getattr(track, "comment", None) or "",
         "PlayCount": "0",
