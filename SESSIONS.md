@@ -264,3 +264,52 @@ Phase 3 verification — review of implementation against the feature brief to c
 ### What's next
 - Merge `feature/phase-3-claude` to `develop`
 - Begin Phase 2b (File Organisation) — template engine, automated org proposals, confidence scoring, review queue
+
+---
+
+## Session 7 — 2026-03-08
+
+### What was worked on
+Phase 2b implementation — File Organisation & Structure, from feature brief to fully working organisation pipeline with review UI.
+
+### Summary
+- Created branch `feature/phase-2b-organiser` from `develop`
+- Implemented all 11 steps of the Phase 2b build plan in order:
+  1. **Config & exceptions** — Added folder_template, organise_confidence_threshold, organise_unknown_fallback to Settings; added OrganisationError exception
+  2. **Track model & PreferenceRule model** — Added organisation columns (proposed_path, previous_output_path, organisation_status, organisation_confidence, organisation_reasoning) to Track; created PreferenceRule model with UniqueConstraint on (rule_type, key)
+  3. **Template engine (TDD)** — Configurable folder templates with fallback syntax (`{variable|"literal"}`), path sanitisation (unsafe chars → underscore), output path building; 37 tests
+  4. **Confidence scorer (TDD)** — Base 0.5 scoring with deltas for metadata presence/absence, VA compilation detection (Various Artists, VA, V/A patterns), bootleg indicator detection (bootleg, edit, mashup, vs, VIP, b2b with word boundaries); 34 tests
+  5. **Preference store (TDD)** — CRUD operations for artist_folder/va_handling/custom_path rules, normalised key matching (lowercase), apply_rules() with priority ordering (custom_path > artist_folder > va_handling); 16 tests
+  6. **Claude reasoner (TDD)** — PlacementSuggestion dataclass, system prompt for folder structure reasoning, tool use schema, batch processing for ambiguous tracks; 11 tests
+  7. **File mover** — shutil.move wrapped in asyncio.to_thread(), collision handling (_1, _2 suffix), post-move verification, empty directory cleanup (bottom-up with safety bounds); 12 tests
+  8. **Organiser pipeline** — Two-phase orchestrator (propose + execute), SSE progress events (organise_progress, organise_propose_complete, organise_move_complete), cancellation support, optional Claude enrichment for ambiguous tracks; 6 tests
+  9. **API routes** — 9 endpoints: POST /api/organise/propose, GET /api/organise/progress (SSE), POST /api/organise/cancel, GET /api/organise/proposal, POST /api/organise/approve, POST /api/organise/resolve/{id}, GET/POST/DELETE /api/preferences; extended TrackDetailResponse with organisation fields; 19 tests
+  10. **Frontend** — OrganiseControls (propose/approve buttons, emerald progress bar, organisation filter modes), ReviewQueue (accept/skip/custom path for ambiguous tracks, collapsible auto-approved list), PreferenceRulesPanel (CRUD with type/key/value form), TrackTable extended with organisation_status column and filter modes, API client with all organisation types and endpoints
+  11. **Integration tests & docs** — End-to-end propose→approve flow, resolve flow, preference rule application, re-organisation after metadata changes, organisation fields in API; updated CLAUDE.md with Phase 2b status, repo structure, and deliverables summary; 5 tests
+- **Total: 602 tests passing (140 new), 11 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **Dev DB schema mismatch** — After adding organisation columns to Track model, the dev DB had the old schema. Fixed by deleting rekordbot_dev.db.
+2. **Test assertion for organisation_status** — test_models.py asserted "pending" but new default is "unorganised". Fixed by updating the test.
+3. **Ruff SIM108/SIM103/UP031** — Template engine if/else could be ternary; detect_va_compilation had verbose boolean return; confidence scorer used `%s` in non-log strings (reasons list). All auto-fixed.
+4. **mypy list variance** — `list[tuple[Track, Path]]` vs `list[tuple[object, Path]]` in move_files_batch. Fixed by using `Any` type for track parameter.
+5. **mypy dict unpacking** — test_claude_reasoner.py used `**defaults` pattern with dataclasses. Fixed by using explicit keyword arguments.
+6. **Cancellation test design** — `cancel()` before `propose_organisation()` didn't work because the method clears the cancel event. Fixed by using a side_effect function that cancels after 2 calls.
+7. **Preference key normalisation** — Route test asserted "Test Artist" but preference store normalises keys to lowercase. Fixed test assertion to "test artist".
+8. **Context window exhaustion** — Session exceeded context limit mid-implementation. Continued from summary in a new context window, picking up at Step 9 (partially complete).
+
+### Key decisions made
+1. TDD for pure logic modules (template engine, confidence scorer, preference store, claude reasoner); tests-after for framework integration (file mover, organiser, routes)
+2. organisation_status default "unorganised" (not "pending") — clearer semantics for tracks that haven't been through the pipeline
+3. Preference key normalisation to lowercase — case-insensitive matching for artist names
+4. Custom path rules override everything (confidence 1.0, auto-approved) — user's explicit choice always wins
+5. VA compilation detection uses a small set of exact-match names (not fuzzy matching) — "Various Artists", "VA", "V/A", "Various"
+6. Bootleg detection uses regex word boundaries — prevents false positives on words like "edited" or "mashable"
+7. File collision handling with _1, _2 suffix (not overwrite) — never lose files
+8. Empty directory cleanup walks bottom-up with safety bound check (relative_to base_dir) — never traverse above the output directory
+9. Emerald green colour for organisation buttons — visually distinct from blue (analysis) and purple (AI tagging)
+10. OrganiseControls and AnalysisControls filters are mutually exclusive — selecting an organisation filter resets analysis filter to "all" and vice versa
+
+### What's next
+- Merge `feature/phase-2b-organiser` to `develop`
+- Begin Phase 4 (Rekordbox XML Export) — XML generation from DB, track schema mapping, playlist/crate structure
