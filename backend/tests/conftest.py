@@ -40,8 +40,12 @@ async def client():
     # Ensure tables exist (lifespan doesn't run with ASGITransport)
     init_db()
 
-    # Clean tracks table for test isolation
+    # Clean tables for test isolation
+    from backend.models.crate import Crate, CrateTrack
+
     db = SessionLocal()
+    db.query(CrateTrack).delete()
+    db.query(Crate).delete()
     db.query(Track).delete()
     db.commit()
     db.close()
