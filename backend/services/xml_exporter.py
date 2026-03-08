@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.config import Settings
 from backend.exceptions import ExportError
 from backend.models.crate import Crate, CrateTrack
+from backend.models.set_plan import SetPlan, SetTrack
 from backend.models.track import Track
 from backend.services.xml_builder import build_xml, write_xml
 
@@ -99,8 +100,9 @@ def export_library(
     # Resolve output directory for playlist generation
     output_directory = str(Path(settings.output_directory).expanduser().resolve())
 
-    # Load crates for playlist generation
+    # Load crates and sets for playlist generation
     crates_data = _load_crates(db_session)
+    sets_data = _load_sets(db_session)
 
     # Build XML
     tree, track_id_map, build_warnings = build_xml(
@@ -108,6 +110,7 @@ def export_library(
         settings.default_key_notation,
         output_directory,
         crates=crates_data,
+        sets=sets_data,
     )
     warnings.extend(build_warnings)
 
@@ -186,5 +189,37 @@ def _load_crates(db_session: Session) -> list:
         ]
         if track_ids:
             result.append((crate, track_ids))
+
+    return result
+
+
+def _load_sets(db_session: Session) -> list:
+    """Load all complete sets with their ordered track IDs for XML export.
+
+    Only sets with status 'complete' are included. Track IDs are returned
+    in position order to preserve the set sequence.
+
+    Args:
+        db_session: SQLAlchemy session.
+
+    Returns:
+        List of (SetPlan, list[int]) tuples where the int list contains
+        DB track IDs in position order.
+    """
+    sets = db_session.query(SetPlan).filter(SetPlan.status == "complete").all()
+    if not sets:
+        return []
+
+    result = []
+    for set_plan in sets:
+        set_tracks = (
+            db_session.query(SetTrack)
+            .filter(SetTrack.set_id == set_plan.id, SetTrack.is_candidate.is_(False))
+            .order_by(SetTrack.position)
+            .all()
+        )
+        track_ids = [st.track_id for st in set_tracks]
+        if track_ids:
+            result.append((set_plan, track_ids))
 
     return result

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from sse_starlette.sse import EventSourceResponse  # type: ignore[import-not-fou
 
 from backend.config import settings
 from backend.models.database import SessionLocal
+from backend.models.set_plan import SetPlan, SetTrack
 from backend.services.claude_client import ClaudeClient
 from backend.services.set_planner import (
     SetPlanner,
@@ -436,6 +438,66 @@ async def get_candidates_endpoint(set_id: int) -> list[dict]:
     db_session = SessionLocal()
     try:
         return get_candidates(set_id, db_session)
+    finally:
+        db_session.close()
+
+
+@router.post("/sets/{set_id}/export")
+async def export_set_endpoint(set_id: int) -> dict:
+    """Export a set as a Rekordbox playlist within the main XML export.
+
+    Triggers a full library export that includes this set's playlist.
+    """
+    from backend.models.track import Track
+    from backend.services.xml_builder import build_xml, write_xml
+    from backend.services.xml_exporter import _load_crates, _resolve_output_path
+
+    db_session = SessionLocal()
+    try:
+        # Verify set exists
+        plan = db_session.query(SetPlan).filter(SetPlan.id == set_id).first()
+        if plan is None:
+            from backend.exceptions import SetPlanError
+
+            raise SetPlanError(f"Set {set_id} not found", status_code=404)
+
+        # Load set tracks in position order
+        set_tracks = (
+            db_session.query(SetTrack)
+            .filter(SetTrack.set_id == set_id, SetTrack.is_candidate.is_(False))
+            .order_by(SetTrack.position)
+            .all()
+        )
+        set_track_ids = [st.track_id for st in set_tracks]
+
+        # Load all tracks for the collection
+        all_tracks = db_session.query(Track).filter(Track.file_path.isnot(None)).all()
+        output_directory = str(Path(settings.output_directory).expanduser().resolve())
+
+        # Load crates
+        crates_data = _load_crates(db_session)
+
+        # Build XML with this set included
+        sets_data = [(plan, set_track_ids)] if set_track_ids else []
+        tree, track_id_map, warnings = build_xml(
+            all_tracks,
+            settings.default_key_notation,
+            output_directory,
+            crates=crates_data,
+            sets=sets_data,
+        )
+
+        # Write XML
+        xml_path = _resolve_output_path(None, settings)
+        write_xml(tree, Path(xml_path))
+
+        return {
+            "status": "exported",
+            "set_id": set_id,
+            "set_name": plan.name,
+            "tracks_in_set": len(set_track_ids),
+            "output_path": xml_path,
+        }
     finally:
         db_session.close()
 

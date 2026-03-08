@@ -218,3 +218,23 @@ async def test_get_candidates(client):
     data = response.json()
     assert len(data) == 1
     assert data[0]["track_id"] == cand_id
+
+
+@pytest.mark.asyncio
+async def test_export_set(client, tmp_path):
+    """POST /api/sets/{id}/export generates XML with set playlist."""
+    plan_id, _ = _create_set_with_tracks(3)
+
+    # Override output path to tmp dir
+    import backend.config as config_module
+
+    original_xml_path = config_module.settings.rekordbox_xml_path
+    config_module.settings.rekordbox_xml_path = str(tmp_path / "rekordbox.xml")
+    try:
+        response = await client.post(f"/api/sets/{plan_id}/export")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "exported"
+        assert data["tracks_in_set"] == 3
+    finally:
+        config_module.settings.rekordbox_xml_path = original_xml_path
