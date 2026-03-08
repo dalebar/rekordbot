@@ -10,6 +10,7 @@ import logging
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -80,7 +81,7 @@ def _resolve_collision(destination: Path) -> Path:
 
 
 async def move_file(
-    track: object,
+    track: Any,
     destination: Path,
     db_session: Session,
 ) -> MoveResult:
@@ -96,9 +97,8 @@ async def move_file(
     Returns:
         MoveResult indicating success or failure.
     """
-    old_path = Path(track.file_path)  # type: ignore[attr-defined]
-    track_id: int = track.id  # type: ignore[attr-defined]
-
+    old_path = Path(track.file_path)
+    track_id: int = track.id
     # Verify source exists
     if not old_path.exists():
         error_msg = f"Source file does not exist: {old_path}"
@@ -139,10 +139,10 @@ async def move_file(
             )
 
         # Update DB
-        track.previous_output_path = str(old_path)  # type: ignore[attr-defined]
-        track.file_path = str(final_destination)  # type: ignore[attr-defined]
-        track.organisation_status = "organised"  # type: ignore[attr-defined]
-        track.proposed_path = None  # type: ignore[attr-defined]
+        track.previous_output_path = str(old_path)
+        track.file_path = str(final_destination)
+        track.organisation_status = "organised"
+        track.proposed_path = None
         db_session.flush()
 
         logger.info("Moved track %s: %s → %s", track_id, old_path, final_destination)
@@ -166,7 +166,7 @@ async def move_file(
 
 
 async def move_files_batch(
-    moves: list[tuple[object, Path]],
+    moves: list[tuple[Any, Path]],
     db_session: Session,
     base_dir: Path | None = None,
 ) -> BatchMoveResult:
