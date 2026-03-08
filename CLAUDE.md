@@ -61,20 +61,31 @@ rekordbot/
 │   │   ├── conversion.py         ← Conversion decision engine (pure logic)
 │   │   ├── naming.py             ← Output path generation with collision handling
 │   │   ├── converter.py          ← ffmpeg execution, file hashing, pipeline orchestrator
-│   │   └── queue.py              ← Batch processing with concurrency control and SSE
+│   │   ├── queue.py              ← Batch processing with concurrency control and SSE
+│   │   ├── key_notation.py       ← Camelot/Open Key/classical key conversion (Phase 2)
+│   │   ├── tag_reader.py         ← mutagen-based tag reading (AIFF, MP3, M4A)
+│   │   ├── tag_writer.py         ← mutagen-based tag writing (ID3v2.3, MP4 atoms)
+│   │   ├── bpm_detector.py       ← librosa BPM detection with auto-correction
+│   │   ├── key_detector.py       ← librosa chroma + Krumhansl-Schmuckler key detection
+│   │   └── analysis.py           ← Analysis pipeline orchestrator with batch SSE
 │   ├── routes/
-│   │   └── ingest.py             ← POST /api/ingest, GET /api/tracks, SSE progress
+│   │   ├── ingest.py             ← POST /api/ingest, SSE progress
+│   │   └── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx               ← Main layout with drop zone, queue, track list
+│   │   ├── App.tsx               ← Main layout with drop zone, queue, track table
 │   │   ├── DropZone.tsx          ← Drag-and-drop + Tauri folder dialog
 │   │   ├── ProcessingQueue.tsx   ← SSE consumer, live file status
-│   │   ├── TrackList.tsx         ← Track table from /api/tracks
+│   │   ├── TrackList.tsx         ← Basic track list (Phase 1, superseded by TrackTable)
+│   │   ├── TrackTable.tsx        ← Rekordbox-style sortable table with inline editing
+│   │   ├── AnalysisControls.tsx  ← Analysis toolbar with progress bar and filters
+│   │   ├── ColumnMenu.tsx        ← Right-click column visibility toggle
+│   │   ├── TrackDetailPanel.tsx  ← Side panel with full track editing
 │   │   └── api/
-│   │       └── client.ts         ← Typed API client (health, ingest, tracks, SSE)
+│   │       └── client.ts         ← Typed API client (health, ingest, analysis, tracks, SSE)
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── .eslintrc.cjs
@@ -379,6 +390,13 @@ class Settings(BaseSettings):
     max_concurrent_conversions: int = 2
     convert_aac_to_mp3: bool = False
     anthropic_api_key: str = ""
+
+    # Phase 2: Analysis settings
+    bpm_range_min: int = 70
+    bpm_range_max: int = 180
+    confidence_threshold: float = 0.6
+    max_concurrent_analyses: int = 1
+    default_key_notation: str = "camelot"
 ```
 
 **Environment variable naming:** All env vars are prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`, `REKORDBOT_LOG_LEVEL=DEBUG`).
@@ -459,6 +477,7 @@ class ConversionError(RekordBotError): ...
 class DuplicateTrackError(RekordBotError): ...
 class TagReadError(RekordBotError): ...
 class TagWriteError(RekordBotError): ...
+class AnalysisError(RekordBotError): ...
 ```
 
 ### Pattern
@@ -514,8 +533,22 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 1 — File Ingestion & Conversion
-**State:** Complete. All 10 steps implemented, 114 tests passing.
+**Phase:** 2 — Metadata & Tagging
+**State:** Complete. All 11 steps implemented, 390 tests passing.
+
+Phase 2 deliverables:
+- Tag reader: mutagen-based tag extraction from AIFF (ID3v2), MP3 (ID3v2), M4A (MP4 atoms)
+- BPM detector: librosa onset analysis with configurable half/double-time auto-correction
+- Key detector: librosa chroma + Krumhansl-Schmuckler algorithm with HPSS harmonic separation
+- Key notation: full Camelot/Open Key/classical mapping with 171 test cases (TDD)
+- Tag writer: ID3v2.3 for AIFF/MP3 (no v1), MP4 atoms for M4A, preserves unmanaged tags
+- Analysis pipeline: asyncio.Semaphore batch processing, per-track error isolation, SSE progress
+- API routes: POST /api/tracks/analyse, SSE progress, cancel, PUT /api/tracks/{id}, revert, bpm-multiply, POST /api/tracks/write-tags
+- Enhanced GET /api/tracks with analysis metadata, confidence scores, conflict detection
+- Frontend: TrackTable (Rekordbox-style sortable table, column visibility toggle, inline editing, BPM x2/÷2, confidence indicators, filter modes), AnalysisControls toolbar, TrackDetailPanel, ColumnMenu
+- Track model extended with source_bpm, source_key, bpm_confidence, key_confidence, analysis_status
+- Integration tests: end-to-end ingest→analyse→write flow, tag round-trips, revert/multiply
+- Feature brief: `docs/features/phase-2-metadata-tagging.md`
 
 Phase 1 deliverables:
 - Format inspector: ffprobe-based inspection for WAV, FLAC, AIFF, MP3, M4A (ALAC/AAC)
@@ -542,7 +575,10 @@ Research completed:
 ## Known Issues / Don't Touch
 
 - ffprobe does not report `bits_per_raw_sample` for PCM codecs — format inspector falls back to `bits_per_sample` field. Both fields are checked.
-- sse-starlette has no mypy type stubs — `type: ignore[import-not-found]` used in `routes/ingest.py`.
+- sse-starlette has no mypy type stubs — `type: ignore[import-not-found]` used in `routes/ingest.py` and `routes/tagging.py`.
+- mutagen, librosa, and numpy have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2 services.
+- AIFF files use `IffID3.save()` which does not support the `v1` parameter — tag writer handles this with format-specific save calls.
+- librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
 
 ## Phased Build Plan
 
@@ -550,7 +586,7 @@ Research completed:
 |-------|------|---------|
 | **0** | Scaffolding | Repo, tooling, DB schema, Tauri+FastAPI skeleton, sidecar proof |
 | **1** | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
-| 2 | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
+| **2** | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
 | 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, user preference store |
 | 3 | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
 | 4 | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
