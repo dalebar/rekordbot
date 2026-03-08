@@ -77,10 +77,21 @@ git tag -a phase-N-complete -m "Phase N: [phase name] complete"
 
 Useful for quickly checking out known-good states later.
 
-### 10. Ready for next phase
+### 10. Review the project plan
+
+Before moving on, review `docs/djapp-project-plan.md` against the current state of the project. Check for:
+- Completed phases accurately reflected (deliverables, not unchecked boxes)
+- Tech stack and architecture still match reality
+- Feature map updated with anything built or changed during this phase
+- Upcoming phases still make sense given what was learned during implementation
+- No stale references (old names, resolved decisions still listed as open, etc.)
+
+If anything needs updating, do it now and commit alongside the housekeeping changes.
+
+### 11. Ready for next phase
 
 At this point:
 - `develop` has all Phase N work merged
-- CLAUDE.md and SESSIONS.md reflect current state
+- CLAUDE.md, SESSIONS.md, and the project plan reflect current state
 - Feature brief is marked complete
 - You're ready to follow the **Claude Code Session Checklist** (`docs/claude-code-session-checklist.md`) to start Phase N+1
