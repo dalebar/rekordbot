@@ -8,9 +8,11 @@ import {
   type IngestResponse,
 } from "./api/client";
 import { useToast } from "./ToastProvider";
+import ConflictReviewPanel from "./ConflictReviewPanel";
 import CrateCreateDialog from "./CrateCreateDialog";
 import CrateSidebar from "./CrateSidebar";
 import DropZone from "./DropZone";
+import ImportControls from "./ImportControls";
 import ProcessingQueue from "./ProcessingQueue";
 import SetCreateDialog from "./SetCreateDialog";
 import SettingsPanel from "./SettingsPanel";
@@ -41,6 +43,8 @@ function App() {
   const [showSetCreateDialog, setShowSetCreateDialog] = useState(false);
   const [setsRefreshTrigger, setSetsRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showConflicts, setShowConflicts] = useState(false);
+  const [conflictCount, setConflictCount] = useState(0);
 
   useEffect(() => {
     getHealth()
@@ -131,13 +135,36 @@ function App() {
         {/* Content area */}
         {showSettings ? (
           <SettingsPanel onClose={() => setShowSettings(false)} />
+        ) : showConflicts ? (
+          <ConflictReviewPanel
+            onClose={() => setShowConflicts(false)}
+            onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+          />
         ) : activeSetId ? (
           <SetPlannerView setId={activeSetId} onBack={handleBackToLibrary} />
         ) : (
           <main className="flex flex-1 flex-col overflow-hidden p-6">
-            {/* Drop zone (collapsible) */}
-            <div className="mb-4">
+            {/* Drop zone and import controls */}
+            <div className="mb-4 flex items-start gap-4">
               <DropZone onBatchStarted={handleBatchStarted} />
+              <ImportControls
+                onRefresh={() => {
+                  setRefreshTrigger((prev) => prev + 1);
+                  setCrateRefreshTrigger((prev) => prev + 1);
+                }}
+                onConflicts={(count) => {
+                  setConflictCount(count);
+                  setShowConflicts(true);
+                }}
+              />
+              {conflictCount > 0 && !showConflicts && (
+                <button
+                  onClick={() => setShowConflicts(true)}
+                  className="rounded bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-600"
+                >
+                  Review Conflicts ({conflictCount})
+                </button>
+              )}
             </div>
 
             {/* Processing queue (shown when a batch is active) */}

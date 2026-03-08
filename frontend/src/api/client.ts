@@ -1217,3 +1217,119 @@ export function validateDirectory(path: string): Promise<SettingsValidateDirecto
 export function getSettingsStatus(): Promise<SettingsStatusResponse> {
   return request<SettingsStatusResponse>("/api/settings/status");
 }
+
+// --- Phase 4b: Rekordbox XML Import API ---
+
+/** Import summary from the backend. */
+export interface ImportSummary {
+  tracks_total: number;
+  tracks_imported: number;
+  tracks_matched: number;
+  tracks_conflict: number;
+  tracks_skipped: number;
+  skipped_reasons: string[];
+  playlists_imported: number;
+  playlists_skipped: number;
+}
+
+/** Import progress event data. */
+export interface ImportProgressEvent {
+  processed: number;
+  total: number;
+  imported: number;
+  matched: number;
+  skipped: number;
+  conflicts: number;
+}
+
+/** A single field conflict. */
+export interface FieldConflict {
+  field: string;
+  rekordbox_value: unknown;
+  rekordbot_value: unknown;
+  recommended: string;
+}
+
+/** A track with import conflicts. */
+export interface ImportConflict {
+  track_id: number;
+  title: string | null;
+  artist: string | null;
+  file_path: string;
+  conflicts: FieldConflict[];
+}
+
+/** Start Rekordbox XML import. */
+export function importRekordboxXml(
+  filePath: string,
+): Promise<{ status: string; message: string }> {
+  return request<{ status: string; message: string }>("/api/import/rekordbox", {
+    method: "POST",
+    body: JSON.stringify({ file_path: filePath }),
+  });
+}
+
+/** Cancel an in-progress import. */
+export function cancelImport(): Promise<{ status: string; message: string }> {
+  return request<{ status: string; message: string }>("/api/import/cancel", {
+    method: "POST",
+  });
+}
+
+/** Get all pending import conflicts. */
+export function getImportConflicts(): Promise<ImportConflict[]> {
+  return request<ImportConflict[]>("/api/import/conflicts");
+}
+
+/** Resolve a single track's conflicts. */
+export function resolveConflict(
+  trackId: number,
+  resolutions: Record<string, string>,
+): Promise<{ status: string; track_id: number; message: string }> {
+  return request(`/api/import/conflicts/${trackId}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ resolutions }),
+  });
+}
+
+/** Bulk resolve all import conflicts. */
+export function resolveAllConflicts(
+  strategy: string,
+): Promise<{ status: string; count: number; message: string }> {
+  return request("/api/import/conflicts/resolve-all", {
+    method: "POST",
+    body: JSON.stringify({ strategy }),
+  });
+}
+
+/** Connect to import progress SSE stream. */
+export function connectImportProgress(
+  onProgress: (event: ImportProgressEvent) => void,
+  onComplete?: (summary: ImportSummary) => void,
+  onError?: (detail: string) => void,
+): EventSource {
+  const es = new EventSource(`${BASE_URL}/api/import/progress`);
+
+  es.addEventListener("xml_import_progress", (e) => {
+    const data = JSON.parse(e.data) as ImportProgressEvent;
+    onProgress(data);
+  });
+
+  es.addEventListener("xml_import_complete", (e) => {
+    const data = JSON.parse(e.data);
+    onComplete?.(data.summary as ImportSummary);
+    es.close();
+  });
+
+  es.addEventListener("xml_import_error", (e) => {
+    const data = JSON.parse(e.data);
+    onError?.(data.detail);
+    es.close();
+  });
+
+  es.addEventListener("error", () => {
+    es.close();
+  });
+
+  return es;
+}
