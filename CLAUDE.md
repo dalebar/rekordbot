@@ -56,7 +56,8 @@ rekordbot/
 │   │   ├── __init__.py
 │   │   ├── database.py           ← Engine, session, Base
 │   │   ├── track.py              ← Track model (Rekordbox-compatible + ingestion fields)
-│   │   └── preference_rule.py    ← PreferenceRule model (Phase 2b)
+│   │   ├── preference_rule.py    ← PreferenceRule model (Phase 2b)
+│   │   └── crate.py              ← Crate and CrateTrack models (Phase 5a)
 │   ├── services/
 │   │   ├── format_inspector.py   ← ffprobe wrapper, FileInfo dataclass
 │   │   ├── conversion.py         ← Conversion decision engine (pure logic)
@@ -78,6 +79,10 @@ rekordbot/
 │   │   ├── claude_reasoner.py    ← Claude placement suggestions for ambiguous tracks (Phase 2b)
 │   │   ├── file_mover.py         ← File move operations with collision handling (Phase 2b)
 │   │   ├── organiser.py          ← Organisation pipeline orchestrator (Phase 2b)
+│   │   ├── key_compatibility.py  ← Camelot wheel harmonic mixing logic (Phase 5a)
+│   │   ├── crate_prompt_builder.py ← Crate description parsing and assignment prompts (Phase 5a)
+│   │   ├── crate_assigner.py     ← Batched Claude assignment pipeline with SSE (Phase 5a)
+│   │   ├── crate_manager.py      ← Crate CRUD, refresh, and auto-refresh orchestration (Phase 5a)
 │   │   ├── location_encoder.py   ← Rekordbox Location URI encoding (Phase 4)
 │   │   ├── xml_schema_mapper.py  ← Track model → XML attribute mapping (Phase 4)
 │   │   ├── xml_builder.py        ← Rekordbox XML document construction (Phase 4)
@@ -87,7 +92,8 @@ rekordbot/
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
 │   │   ├── ai_tagging.py         ← AI tagging endpoints: tag, progress, cancel, status, validate (Phase 3)
 │   │   ├── organise.py           ← Organisation endpoints: propose, approve, resolve, preferences (Phase 2b)
-│   │   └── export.py             ← Rekordbox XML export endpoints (Phase 4)
+│   │   ├── export.py             ← Rekordbox XML export endpoints (Phase 4)
+│   │   └── crates.py             ← Crate CRUD, assignment, progress SSE endpoints (Phase 5a)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -102,6 +108,8 @@ rekordbot/
 │   │   ├── TrackDetailPanel.tsx  ← Side panel with full track editing
 │   │   ├── OrganiseControls.tsx  ← Organisation toolbar with propose/approve (Phase 2b)
 │   │   ├── ExportControls.tsx    ← Rekordbox XML export toolbar (Phase 4)
+│   │   ├── CrateSidebar.tsx      ← Crate playlist tree with counts and context menu (Phase 5a)
+│   │   ├── CrateCreateDialog.tsx ← Crate creation modal with progress (Phase 5a)
 │   │   ├── ReviewQueue.tsx       ← Review queue for ambiguous tracks (Phase 2b)
 │   │   ├── PreferenceRulesPanel.tsx ← Preference rule management UI (Phase 2b)
 │   │   └── api/
@@ -436,6 +444,9 @@ class Settings(BaseSettings):
 
     # Phase 4: Rekordbox XML export settings
     rekordbox_xml_path: str = ""
+
+    # Phase 5a: Crate builder settings
+    crate_assignment_batch_size: int = 30
 ```
 
 **Environment variable naming:** All env vars are prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`, `REKORDBOT_LOG_LEVEL=DEBUG`).
@@ -572,10 +583,22 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 4 — Rekordbox XML Export
-**State:** Complete. All 8 steps implemented, 706 tests passing. Manual Rekordbox import test passed (15 tracks, all metadata correct, files playable). Merged to `develop`, tagged `phase-4-complete`.
+**Phase:** 5a — Crate Builder
+**State:** Complete. All 10 steps implemented, 814 tests passing (108 Phase 5a tests: 8 model + 29 key compatibility + 19 prompt builder + 6 assigner + 16 manager + 11 routes + 7 XML crate + 12 integration).
 
-**Next:** Phase 5a — Crate Builder. Feature brief written (`docs/features/phase-5a-crate-builder.md`), ready for implementation.
+**Next:** Phase 5b — Set Planner. Feature brief to be written.
+
+Phase 5a deliverables:
+- Key compatibility: Camelot wheel harmonic mixing logic — same key, adjacent, relative major/minor, energy boost/drop, wrap-around (TDD, 29 tests)
+- Crate prompt builder: description → structured criteria parsing, assignment prompt construction, result validation with clamping and deduplication (TDD, 19 tests)
+- Crate assigner: batched Claude assignment pipeline with SSE progress events, cancellation support, AI/manual assignment tracking, refresh with manual preservation (6 tests)
+- Crate manager: CRUD operations, description re-parse on update, refresh orchestration, auto-refresh for newly ingested tracks (16 tests)
+- Data models: Crate (name, description, parsed_criteria JSON, auto_refresh) and CrateTrack (many-to-many with assignment_method), cascade delete, unique constraint (8 tests)
+- API routes: POST/GET/PUT/DELETE /api/crates, POST /api/crates/{id}/refresh, POST/DELETE /api/crates/{id}/tracks, GET /api/crates/{id}/progress (SSE) (11 tests)
+- XML export integration: crate playlists alongside folder-based playlists, alphabetical sorting, correct TrackID references (7 tests)
+- Frontend: CrateSidebar (playlist tree, track counts, right-click context menu), CrateCreateDialog (name + description + progress), TrackTable crate filtering, API client with all crate types and endpoints
+- Integration tests: end-to-end create→assign→verify, overlapping assignment, manual preservation during refresh, XML export with crates (12 tests)
+- Feature brief: `docs/features/phase-5a-crate-builder.md`
 
 Phase 4 deliverables:
 - Location encoder: RFC 3986 percent-encoding per path component, file://localhost/ URI generation, round-trip decodable (TDD, 25 tests)
@@ -670,7 +693,7 @@ Research completed:
 | **3** | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
 | **2b** | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
 | **4** | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
-| 5a | Crate Builder | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
+| **5a** | **Crate Builder** | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
 | 5b | Set Planner | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
 | 6 | Polish & Packaging | UI polish, error handling, settings panel, macOS packaging, code signing |
