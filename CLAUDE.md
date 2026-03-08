@@ -14,7 +14,7 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 - **Database:** SQLite via SQLAlchemy (sync mode) — Alembic deferred until real users need schema migrations
 - **Audio conversion:** ffmpeg (via subprocess), ffprobe for container inspection
 - **Metadata:** mutagen (ID3 tag reading/writing for AIFF and MP3)
-- **BPM/Key detection:** aubio (start here; add librosa only if aubio accuracy insufficient)
+- **BPM/Key detection:** librosa (BPM via beat_track, key via chroma + Krumhansl-Schmuckler)
 - **AI layer:** Anthropic Python SDK (Claude) — genre/mood inference, crate building, set planning
 - **Rekordbox export:** Custom XML generation via xml.etree.ElementTree
 - **Packaging:** PyInstaller (`--onedir`) for Python backend + Tauri bundler for desktop app
@@ -550,7 +550,7 @@ Research completed:
 |-------|------|---------|
 | **0** | Scaffolding | Repo, tooling, DB schema, Tauri+FastAPI skeleton, sidecar proof |
 | **1** | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
-| 2 | Metadata & Tagging | mutagen tag reading/writing, BPM detection (aubio), key detection, tag review UI |
+| 2 | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
 | 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, user preference store |
 | 3 | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
 | 4 | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
