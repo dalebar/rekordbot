@@ -595,7 +595,7 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 - Rust spawns sidecar on Ready, kills on ExitRequested
 - Health check polling before marking backend as ready
 - HTTP shutdown endpoint as graceful shutdown mechanism
-- Self-termination watchdog deferred to Phase 6
+- Self-termination watchdog: daemon thread polling parent PID every 5s with 10s grace period, started via `--parent-pid` CLI arg
 
 ## Current Status
 

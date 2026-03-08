@@ -514,3 +514,49 @@ Phase 5b implementation — Set Planner, from feature brief to fully working AI-
 ### What's next
 - Merge `feature/phase-5b-set-planner` → `develop`
 - Decide next phase: Phase 4b (Rekordbox XML Import) or Phase 6 (Polish & Packaging)
+
+---
+
+## Session 14 — 2026-03-08
+
+### What was worked on
+Phase 6a implementation — App Shell & Packaging, transforming rekordbot from a dev-mode-only project into a working desktop application.
+
+### Summary
+- Working on branch `feature/phase-6a-app-shell`
+- Implemented all 10 steps of the Phase 6a build plan in order:
+  1. **Config manager (TDD)** — JSON config persistence at `~/Library/Application Support/rekordbot/config.json`. Config file → env vars → pydantic-settings pipeline (env vars take precedence). `CONFIGURABLE_FIELDS` set controls what's stored. API key masking with `sk-ant-` prefix special case. Directory validation (exists or parent writable). 34 tests.
+  2. **Settings routes** — GET/PUT `/api/settings` with API key masking, POST `validate-key` (Anthropic SDK test call with claude-haiku-4-5-20251001), POST `validate-directory`, GET `status` (configured check, ffmpeg availability). Pydantic request/response models. `_apply_to_settings()` updates in-memory singleton via `object.__setattr__`. 12 tests.
+  3. **Watchdog** — Self-termination daemon thread: polls parent PID every 5s via `os.kill(pid, 0)`, 10s grace period before `os._exit(0)`. `parse_parent_pid()` extracts `--parent-pid` from `sys.argv`. Tauri passes PID on sidecar spawn. 8 tests.
+  4. **Error handling** — `RequestValidationError` handler returning standard `{error, detail}` JSON. `UnhandledExceptionMiddleware` catch-all. Non-blocking startup health checks (ffmpeg, output directory, API key — log warnings only). 4 tests.
+  5. **BitRate fix (TDD)** — `compute_bitrate(sample_rate, bit_depth, channels)` pure function for lossless; `_resolve_bitrate(track)` dispatches lossy (source_bitrate) vs lossless (computed). 11 tests including integration with XML export.
+  6. **Main.py integration** — Config loading before Settings instantiation, packaged-mode DB path (`--parent-pid` detection), router registration, watchdog startup in lifespan, startup health checks.
+  7. **Toast system** — `ToastProvider` React context with `useToast()` hook. Toast types: success/error/warning/info. Auto-dismiss: success/info 5s, warning 8s, error sticky. Global API error handler via `setApiErrorHandler()`.
+  8. **Settings panel** — Main section: API key (password + test), output directory (text + Tauri folder dialog), key notation dropdown, folder template with live preview, AAC toggle. Advanced section (collapsible): BPM range, confidence threshold, track duration, max tracks. Save with bpmMin/bpmMax validation.
+  9. **First-run wizard** — Three steps: Welcome → Config → Done. Output directory required with validation. API key optional with test button. Gated by `/api/settings/status` endpoint. App.tsx routing: null = loading spinner, true = wizard, false = main app.
+  10. **Integration tests & docs** — First-run flow, settings persistence, API key masking round-trip, directory validation, error format standardisation, bitrate computation. Updated CLAUDE.md. 13 tests.
+- **Total: 1013 tests passing (83 new), 10 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **save_config test used non-configurable field** — `{"new": "value"}` was filtered out by `CONFIGURABLE_FIELDS`. Fixed by using `{"output_directory": "/new/path"}`.
+2. **mask_api_key prefix handling** — `mask_api_key("sk-ant-api03-...")` returned `"sk-a...mnop"` instead of `"sk-ant-...mnop"`. Fixed by adding special case for `sk-ant-` prefix.
+3. **test_config.py pollution** — Real API key from config file loaded via `apply_config_to_env()` at import time. Fixed with `monkeypatch.delenv` on all `REKORDBOT_*` vars and `Settings(_env_file=None)`.
+4. **E402 lint errors** — Router imports after config loading code in main.py. Fixed with `# noqa: E402`.
+5. **mypy `json.loads` return type** — Returns `Any`, causing "Returning Any" error. Fixed with explicit `data: dict = json.loads(content)`.
+6. **MockTrack bitrate test** — `test_bitrate_fallback_zero` still had default audio properties, so `_resolve_bitrate` computed 2116 instead of 0. Fixed by overriding all fields to None.
+7. **mypy `getattr` returns `Any`** — In xml_schema_mapper.py, fixed by wrapping in `int()`.
+8. **Wrong working directory** — After `npx tsc` in frontend/, git commands failed. Fixed with absolute paths.
+
+### Key decisions made
+1. Config file → env vars → pydantic-settings pipeline: config file values are loaded into env vars with `REKORDBOT_` prefix, but existing env vars are never overridden (env vars always win).
+2. `CONFIGURABLE_FIELDS` set explicitly controls which settings are persisted to JSON (avoids accidental persistence of internal/derived settings).
+3. API key masking uses `sk-ant-...XXXX` pattern (showing prefix and last 4 chars) with special handling for `sk-ant-` prefix.
+4. Masked key detection (`is_key_masked()`) prevents accidentally overwriting real keys when frontend sends back masked values.
+5. Watchdog uses `os.kill(pid, 0)` (no signal sent, just existence check) with 10s grace period to avoid false positives during brief parent hangs.
+6. Startup health checks are non-blocking (log warnings only) — app starts even without ffmpeg, API key, or valid output directory.
+7. First-run wizard only gates on `configured` status from `/api/settings/status`; once any settings are saved, wizard is bypassed.
+8. Toast notifications use React context pattern; global API error handler intercepts all non-2xx responses.
+
+### What's next
+- Merge `feature/phase-6a-app-shell` → `develop`
+- Decide next phase: Phase 6b (Polish & Distribution) or Phase 4b (Rekordbox XML Import)
