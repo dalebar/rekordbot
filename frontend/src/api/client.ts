@@ -176,6 +176,12 @@ export interface Track {
   ai_reasoning: string | null;
   source_genre: string | null;
   ai_status: string;
+
+  // Organisation
+  organisation_status: string;
+  proposed_path: string | null;
+  previous_output_path: string | null;
+  organisation_confidence: number | null;
 }
 
 /** Track list response with pagination. */
@@ -436,6 +442,194 @@ export function connectAiTagProgress(
   es.addEventListener("ai_tag_complete", (e) => {
     const data = JSON.parse(e.data) as AiTagCompleteEvent;
     onComplete?.(data);
+    es.close();
+  });
+
+  es.addEventListener("error", () => {
+    es.close();
+  });
+
+  return es;
+}
+
+// --- Phase 2b: Organisation API ---
+
+/** Organisation proposal request body. */
+export interface OrganiseRequest {
+  track_ids?: number[];
+  options?: {
+    use_claude?: boolean;
+    skip_if_organised?: boolean;
+    confidence_threshold?: number;
+  };
+}
+
+/** Organisation proposal response. */
+export interface OrganiseResponse {
+  batch_id: string;
+  total_tracks: number;
+  message: string;
+}
+
+/** A single track in the proposal. */
+export interface ProposalTrack {
+  track_id: number;
+  title: string | null;
+  artist: string | null;
+  current_path: string;
+  proposed_path: string | null;
+  confidence: number | null;
+  reasoning: string | null;
+  flags: string[] | null;
+}
+
+/** Full proposal response. */
+export interface ProposalResponse {
+  auto_approved: ProposalTrack[];
+  needs_review: ProposalTrack[];
+  failed: ProposalTrack[];
+  summary: {
+    total: number;
+    auto_approved: number;
+    needs_review: number;
+    failed: number;
+  };
+}
+
+/** Approve request body. */
+export interface ApproveRequest {
+  mode: "auto_approved" | "specific" | "all";
+  track_ids?: number[];
+}
+
+/** Approve response. */
+export interface ApproveResponse {
+  total_moved: number;
+  failed: number;
+  dirs_cleaned: number;
+  message: string;
+}
+
+/** Resolve request body. */
+export interface ResolveRequest {
+  action: "accept" | "custom" | "skip";
+  custom_path?: string;
+  save_preference?: boolean;
+  preference_type?: string;
+}
+
+/** Preference rule. */
+export interface PreferenceRule {
+  id: number;
+  rule_type: string;
+  key: string;
+  value: string;
+  created_at: string | null;
+}
+
+/** Create preference rule request. */
+export interface PreferenceRuleCreate {
+  rule_type: string;
+  key: string;
+  value: string;
+}
+
+/** Organisation progress event data. */
+export interface OrganiseProgressEvent {
+  phase: string;
+  tracks_processed: number;
+  tracks_total: number;
+  auto_approved: number;
+  needs_review: number;
+  failed: number;
+}
+
+/** Start organisation proposal. */
+export function postOrganisePropose(body: OrganiseRequest): Promise<OrganiseResponse> {
+  return request<OrganiseResponse>("/api/organise/propose", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Cancel current organisation operation. */
+export function postOrganiseCancel(): Promise<{ status: string; message: string }> {
+  return request<{ status: string; message: string }>("/api/organise/cancel", {
+    method: "POST",
+  });
+}
+
+/** Get current proposal. */
+export function getOrganiseProposal(): Promise<ProposalResponse> {
+  return request<ProposalResponse>("/api/organise/proposal");
+}
+
+/** Approve and execute file moves. */
+export function postOrganiseApprove(body: ApproveRequest): Promise<ApproveResponse> {
+  return request<ApproveResponse>("/api/organise/approve", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Resolve an ambiguous track. */
+export function postOrganiseResolve(
+  trackId: number,
+  body: ResolveRequest,
+): Promise<{ status: string; track_id: number; action: string; organisation_status: string }> {
+  return request("/api/organise/resolve/" + trackId, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** List preference rules. */
+export function getPreferences(ruleType?: string): Promise<PreferenceRule[]> {
+  const params = ruleType ? `?rule_type=${ruleType}` : "";
+  return request<PreferenceRule[]>(`/api/preferences${params}`);
+}
+
+/** Create a preference rule. */
+export function postPreference(body: PreferenceRuleCreate): Promise<PreferenceRule> {
+  return request<PreferenceRule>("/api/preferences", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Delete a preference rule. */
+export function deletePreference(ruleId: number): Promise<{ status: string; rule_id: number }> {
+  return request(`/api/preferences/${ruleId}`, { method: "DELETE" });
+}
+
+/** Connect to organisation SSE progress stream. Returns an EventSource. */
+export function connectOrganiseProgress(
+  onEvent: (event: OrganiseProgressEvent) => void,
+  onProposalComplete?: (data: OrganiseProgressEvent) => void,
+  onMoveComplete?: (data: {
+    phase: string;
+    files_moved: number;
+    files_total: number;
+    files_failed: number;
+    dirs_cleaned: number;
+  }) => void,
+): EventSource {
+  const es = new EventSource(`${BASE_URL}/api/organise/progress`);
+
+  es.addEventListener("organise_progress", (e) => {
+    const data = JSON.parse(e.data) as OrganiseProgressEvent;
+    onEvent(data);
+  });
+
+  es.addEventListener("organise_propose_complete", (e) => {
+    const data = JSON.parse(e.data) as OrganiseProgressEvent;
+    onProposalComplete?.(data);
+    es.close();
+  });
+
+  es.addEventListener("organise_move_complete", (e) => {
+    const data = JSON.parse(e.data);
+    onMoveComplete?.(data);
     es.close();
   });
 

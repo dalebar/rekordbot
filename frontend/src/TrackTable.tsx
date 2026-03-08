@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { bpmMultiply, getTracks, updateTrack, type Track, type TrackUpdate } from "./api/client";
+import {
+  bpmMultiply,
+  getTracks,
+  updateTrack,
+  type ProposalResponse,
+  type Track,
+  type TrackUpdate,
+} from "./api/client";
 import AnalysisControls, { type FilterMode } from "./AnalysisControls";
 import ColumnMenu, { type ColumnConfig } from "./ColumnMenu";
+import OrganiseControls, { type OrganiseFilterMode } from "./OrganiseControls";
+import PreferenceRulesPanel from "./PreferenceRulesPanel";
+import ReviewQueue from "./ReviewQueue";
 import TrackDetailPanel from "./TrackDetailPanel";
 
 interface TrackTableProps {
@@ -38,6 +48,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "energy", label: "Energy", visible: true, defaultVisible: true },
   { id: "ai_confidence", label: "AI Conf.", visible: false, defaultVisible: false },
   { id: "ai_status", label: "AI Status", visible: false, defaultVisible: false },
+  { id: "organisation_status", label: "Org Status", visible: false, defaultVisible: false },
 ];
 
 const CONFIDENCE_THRESHOLD = 0.6;
@@ -53,6 +64,8 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
   const [detailTrack, setDetailTrack] = useState<Track | null>(null);
   const [columnMenuPos, setColumnMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [organiseFilter, setOrganiseFilter] = useState<OrganiseFilterMode>("all");
+  const [proposal, setProposal] = useState<ProposalResponse | null>(null);
   const [editingCell, setEditingCell] = useState<{ trackId: number; field: string } | null>(null);
   const [editValue, setEditValue] = useState("");
 
@@ -76,6 +89,7 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
   // Filter tracks
   const filteredTracks = useMemo(() => {
     return tracks.filter((t) => {
+      // Analysis filters
       if (filter === "unanalysed") return t.analysis_status === "unanalysed";
       if (filter === "low_confidence") {
         return (
@@ -86,9 +100,16 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
       if (filter === "conflicts") return t.has_bpm_conflict || t.has_key_conflict;
       if (filter === "ai_tagged") return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
       if (filter === "not_ai_tagged") return t.ai_status === "untagged";
+
+      // Organisation filters
+      if (organiseFilter === "unorganised") return t.organisation_status === "unorganised";
+      if (organiseFilter === "proposed") return t.organisation_status === "proposed";
+      if (organiseFilter === "review_needed") return t.organisation_status === "review_needed";
+      if (organiseFilter === "organised") return t.organisation_status === "organised";
+
       return true;
     });
-  }, [tracks, filter]);
+  }, [tracks, filter, organiseFilter]);
 
   // Sort tracks
   const sortedTracks = useMemo(() => {
@@ -232,8 +253,32 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
         selectedTrackIds={[...selectedIds]}
         onRefresh={loadTracks}
         filter={filter}
-        onFilterChange={setFilter}
+        onFilterChange={(f) => {
+          setFilter(f);
+          if (f !== "all") setOrganiseFilter("all");
+        }}
       />
+
+      {/* Organisation toolbar */}
+      <OrganiseControls
+        selectedTrackIds={[...selectedIds]}
+        onRefresh={loadTracks}
+        filter={organiseFilter}
+        onFilterChange={(f) => {
+          setOrganiseFilter(f);
+          if (f !== "all") setFilter("all");
+        }}
+        onProposalReady={setProposal}
+      />
+
+      {/* Review queue (shown when proposal has items needing review) */}
+      {proposal && (
+        <ReviewQueue
+          proposal={proposal}
+          onClose={() => setProposal(null)}
+          onRefresh={loadTracks}
+        />
+      )}
 
       {/* Track count */}
       <div className="flex items-center justify-between">
@@ -311,6 +356,9 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
         )}
       </div>
 
+      {/* Preference rules panel */}
+      <PreferenceRulesPanel />
+
       {/* Column visibility menu */}
       {columnMenuPos && (
         <ColumnMenu
@@ -377,6 +425,8 @@ function getFieldValue(track: Track, field: string): string | number | boolean |
       return track.ai_confidence;
     case "ai_status":
       return track.ai_status;
+    case "organisation_status":
+      return track.organisation_status;
     default:
       return null;
   }
@@ -630,6 +680,23 @@ function renderCell(
           }`}
         >
           {track.ai_status}
+        </span>
+      );
+
+    case "organisation_status":
+      return (
+        <span
+          className={`${
+            track.organisation_status === "organised"
+              ? "text-emerald-400"
+              : track.organisation_status === "proposed"
+                ? "text-blue-400"
+                : track.organisation_status === "review_needed"
+                  ? "text-amber-400"
+                  : "text-gray-500"
+          }`}
+        >
+          {track.organisation_status}
         </span>
       );
 
