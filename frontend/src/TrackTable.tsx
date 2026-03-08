@@ -9,6 +9,7 @@ import {
 } from "./api/client";
 import AnalysisControls, { type FilterMode } from "./AnalysisControls";
 import ColumnMenu, { type ColumnConfig } from "./ColumnMenu";
+import ExportControls from "./ExportControls";
 import OrganiseControls, { type OrganiseFilterMode } from "./OrganiseControls";
 import PreferenceRulesPanel from "./PreferenceRulesPanel";
 import ReviewQueue from "./ReviewQueue";
@@ -270,6 +271,9 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
         }}
         onProposalReady={setProposal}
       />
+
+      {/* Export toolbar */}
+      <ExportControls trackCount={total} onRefresh={loadTracks} />
 
       {/* Review queue (shown when proposal has items needing review) */}
       {proposal && (
