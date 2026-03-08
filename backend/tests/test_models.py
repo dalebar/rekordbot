@@ -22,6 +22,40 @@ def test_track_create_and_query(db_session):
     assert result.conversion_status == "pending"
     assert result.organisation_status == "pending"
     assert result.date_added is not None
+    assert result.ai_status == "untagged"
+
+
+def test_track_ai_columns(db_session):
+    """Track AI enrichment columns can be set and queried."""
+    track = Track(
+        file_path="/music/ai-test.aiff",
+        title="AI Test",
+        artist="Test Artist",
+        genre="Electronic",
+    )
+    db_session.add(track)
+    db_session.flush()
+
+    # Update with AI tag results
+    track.subgenre = "Melodic Techno"
+    track.mood = "Euphoric"
+    track.energy = 7
+    track.ai_confidence = "high"
+    track.ai_reasoning = "Recognised artist is a melodic techno producer."
+    track.source_genre = "Electronic"
+    track.genre = "Melodic Techno"
+    track.ai_status = "ai_tagged"
+    db_session.flush()
+
+    result = db_session.query(Track).filter_by(file_path="/music/ai-test.aiff").one()
+    assert result.genre == "Melodic Techno"
+    assert result.subgenre == "Melodic Techno"
+    assert result.mood == "Euphoric"
+    assert result.energy == 7
+    assert result.ai_confidence == "high"
+    assert result.ai_reasoning == "Recognised artist is a melodic techno producer."
+    assert result.source_genre == "Electronic"
+    assert result.ai_status == "ai_tagged"
 
 
 def test_track_unique_file_path(db_session):

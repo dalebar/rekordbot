@@ -34,15 +34,26 @@ def db_session(engine):
 async def client():
     """Async HTTP client for testing FastAPI endpoints."""
     from backend.main import app
-    from backend.models.database import init_db
+    from backend.models.database import SessionLocal, init_db
+    from backend.models.track import Track
 
     # Ensure tables exist (lifespan doesn't run with ASGITransport)
     init_db()
 
+    # Clean tracks table for test isolation
+    db = SessionLocal()
+    db.query(Track).delete()
+    db.commit()
+    db.close()
+
     # Reset module-level queue state between tests
+    import backend.routes.ai_tagging as ai_tagging_module
     import backend.routes.ingest as ingest_module
+    import backend.routes.tagging as tagging_module
 
     ingest_module._queue = None
+    tagging_module._analysis_queue = None
+    ai_tagging_module._ai_tagger = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

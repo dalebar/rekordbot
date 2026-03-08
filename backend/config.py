@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     convert_aac_to_mp3: bool = False
     anthropic_api_key: str = ""
 
+    # Phase 3: AI tagging settings
+    ai_model: str = "claude-sonnet-4-20250514"
+    ai_batch_size: int = 20
+    ai_max_requests_per_minute: int = 10
+
     # Phase 2: Analysis settings
     bpm_range_min: int = 70
     bpm_range_max: int = 180

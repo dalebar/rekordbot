@@ -33,6 +33,11 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "bpm_confidence", label: "BPM Conf.", visible: false, defaultVisible: false },
   { id: "key_confidence", label: "Key Conf.", visible: false, defaultVisible: false },
   { id: "analysis_status", label: "Status", visible: false, defaultVisible: false },
+  { id: "subgenre", label: "Subgenre", visible: false, defaultVisible: false },
+  { id: "mood", label: "Mood", visible: true, defaultVisible: true },
+  { id: "energy", label: "Energy", visible: true, defaultVisible: true },
+  { id: "ai_confidence", label: "AI Conf.", visible: false, defaultVisible: false },
+  { id: "ai_status", label: "AI Status", visible: false, defaultVisible: false },
 ];
 
 const CONFIDENCE_THRESHOLD = 0.6;
@@ -79,6 +84,8 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
         );
       }
       if (filter === "conflicts") return t.has_bpm_conflict || t.has_key_conflict;
+      if (filter === "ai_tagged") return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
+      if (filter === "not_ai_tagged") return t.ai_status === "untagged";
       return true;
     });
   }, [tracks, filter]);
@@ -172,6 +179,8 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
       update.key = parseInt(editValue, 10);
     } else if (field === "year") {
       update.year = parseInt(editValue, 10);
+    } else if (field === "energy") {
+      update.energy = parseInt(editValue, 10);
     } else {
       (update as Record<string, string>)[field] = editValue;
     }
@@ -358,6 +367,16 @@ function getFieldValue(track: Track, field: string): string | number | boolean |
       return track.key_confidence;
     case "analysis_status":
       return track.analysis_status;
+    case "subgenre":
+      return track.subgenre;
+    case "mood":
+      return track.mood;
+    case "energy":
+      return track.energy;
+    case "ai_confidence":
+      return track.ai_confidence;
+    case "ai_status":
+      return track.ai_status;
     default:
       return null;
   }
@@ -379,7 +398,7 @@ function renderCell(
     return (
       <input
         autoFocus
-        type={field === "bpm" || field === "year" ? "number" : "text"}
+        type={field === "bpm" || field === "year" || field === "energy" ? "number" : "text"}
         step={field === "bpm" ? "0.01" : undefined}
         value={editValue}
         onChange={(e) => setEditValue(e.target.value)}
@@ -398,7 +417,6 @@ function renderCell(
     case "title":
     case "artist":
     case "album":
-    case "genre":
     case "label":
     case "comment": {
       const value = getFieldValue(track, field) as string | null;
@@ -412,6 +430,26 @@ function renderCell(
           }}
         >
           {value ?? "—"}
+        </span>
+      );
+    }
+
+    case "genre": {
+      const genreValue = track.genre;
+      const tooltip =
+        track.ai_reasoning && track.ai_status !== "untagged"
+          ? `${genreValue ?? ""}\n\nAI: ${track.ai_reasoning}`
+          : (genreValue ?? "");
+      return (
+        <span
+          className="max-w-48 truncate"
+          title={tooltip}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onDoubleClick(track.id, "genre", genreValue ?? "");
+          }}
+        >
+          {genreValue ?? "—"}
         </span>
       );
     }
@@ -524,6 +562,74 @@ function renderCell(
           }`}
         >
           {track.analysis_status}
+        </span>
+      );
+
+    case "subgenre":
+    case "mood": {
+      const aiTextValue = getFieldValue(track, field) as string | null;
+      return (
+        <span
+          className="max-w-48 truncate"
+          title={aiTextValue ?? ""}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onDoubleClick(track.id, field, aiTextValue ?? "");
+          }}
+        >
+          {aiTextValue ?? "—"}
+        </span>
+      );
+    }
+
+    case "energy": {
+      if (track.energy === null) return <span>—</span>;
+      const energyColor =
+        track.energy <= 3
+          ? "text-blue-400"
+          : track.energy <= 6
+            ? "text-gray-300"
+            : track.energy <= 8
+              ? "text-amber-400"
+              : "text-red-400";
+      return (
+        <span
+          className={energyColor}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onDoubleClick(track.id, "energy", String(track.energy ?? ""));
+          }}
+        >
+          {track.energy}
+        </span>
+      );
+    }
+
+    case "ai_confidence": {
+      if (!track.ai_confidence) return <span>—</span>;
+      const confColor =
+        track.ai_confidence === "high"
+          ? "text-emerald-400"
+          : track.ai_confidence === "medium"
+            ? "text-amber-400"
+            : "text-red-400";
+      return <span className={confColor}>{track.ai_confidence}</span>;
+    }
+
+    case "ai_status":
+      return (
+        <span
+          className={`${
+            track.ai_status === "ai_tagged"
+              ? "text-emerald-400"
+              : track.ai_status === "ai_tags_written"
+                ? "text-blue-400"
+                : track.ai_status === "ai_failed"
+                  ? "text-red-400"
+                  : "text-gray-500"
+          }`}
+        >
+          {track.ai_status}
         </span>
       );
 
