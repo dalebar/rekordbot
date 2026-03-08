@@ -341,16 +341,39 @@ Phase 4 close-out — doc fixes, UI wiring, and first real-world Rekordbox impor
 3. Created `rekordbox-import-test-guide.md` — step-by-step guide for the full pipeline test including the bugfix
 
 ### Unresolved — blocking Phase 4 merge
-- [ ] Apply `-write_id3v2 1` bugfix to `converter.py`
+- [x] Apply `-write_id3v2 1` bugfix to `converter.py`
 - [ ] Re-ingest test files from clean slate
 - [ ] Complete full pipeline: ingest → analyse → (AI tag optional) → organise → export
 - [ ] Manual Rekordbox import verification (the actual acceptance test)
-- [ ] Update CLAUDE.md Known Issues with the `-write_id3v2` note
+- [x] Update CLAUDE.md Known Issues with the `-write_id3v2` note
 - [ ] Update CLAUDE.md repo path (rekordbot, not crateai)
 
 ### What's next
-1. Apply the AIFF metadata bugfix (Claude Code prompt prepared in test guide)
-2. Re-run the full pipeline with clean data
-3. Complete the Rekordbox import test
-4. If test passes: merge `feature/phase-4-rekordbox` → `develop` → `main`, tag `phase-4-complete`
-5. Decide next phase: Phase 4b (XML Import) or Phase 5 (Crate Builder & Set Planner)
+1. Re-run the full pipeline with clean data (re-ingest after bugfix)
+2. Complete the Rekordbox import test
+3. If test passes: merge `feature/phase-4-rekordbox` → `develop` → `main`, tag `phase-4-complete`
+4. Decide next phase: Phase 4b (XML Import) or Phase 5 (Crate Builder & Set Planner)
+
+---
+
+## Session 10 — 2026-03-08
+
+### What was worked on
+AIFF metadata bugfix — applying the `-write_id3v2 1` fix identified in Session 9.
+
+### Summary
+- Applied the `-write_id3v2 1` bugfix to `build_ffmpeg_command()` in `backend/services/converter.py` — added the flag before the output path argument for all AIFF conversions
+- Updated all 4 existing AIFF test assertions in `backend/tests/test_converter.py` to include the new flag in expected command lists
+- Added new dedicated test `test_aiff_conversion_includes_write_id3v2_flag` that verifies the flag is present and positioned correctly (before output path)
+- Added note to CLAUDE.md Known Issues documenting ffmpeg's AIFF muxer default behaviour
+- All 9 converter tests passing, all pre-commit hooks green
+- Committed as `6f4dbaa`
+
+### Issues encountered and resolved
+1. **pytest not in venv** — Same issue as Session 8: `uv sync --dev` reports packages audited but pytest missing. Fixed with explicit `uv pip install pytest pytest-asyncio httpx`.
+
+### What's next
+- Re-ingest test files from clean slate (delete DB + clear output directory)
+- Run full pipeline: ingest → analyse → organise → export
+- Manual Rekordbox import verification
+- Merge to `develop` → `main` if acceptance test passes
