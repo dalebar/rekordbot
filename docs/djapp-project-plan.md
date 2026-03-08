@@ -111,22 +111,22 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ Rekordbox-style tag review UI with sortable table, column visibility toggle, inline editing
 - ✅ Analysis pipeline separate from ingestion (tracks analysed after import, not during)
 
-### Module B2 — File Organisation & Structure (Phase 2b)
-- User-configurable folder template (e.g. `Artist/Album/Track`, `Genre/Artist/Track`, custom)
-- Automated organisation pass based on enriched tags
-- Ambiguity detection — flags low-confidence cases for human review
-- Review queue UI: ambiguous cases surfaced with rule-based suggestions initially; Claude reasoning layer added once Module C is built
-- "Decide once, remember forever" preference engine — stores user decisions as rules for future imports
-- Handles edge cases: bootlegs, white labels, VA compilations, remixer vs original artist ambiguity
-- Duplicate detection before moving (hash + near-match filename)
-- Files are only moved once user has approved — no silent background renaming
-- Runs *after* tagging (uses enriched metadata) and *before* Rekordbox XML export (so paths are final)
-
 ### Module C — Claude AI Layer (Phase 3)
 - Genre and subgenre inference from filename + existing tags
 - Mood/energy scoring (e.g. 1–10 scale)
 - Smart tag suggestions (label, year, style descriptors)
 - Batch processing with rate limiting
+
+### Module B2 — File Organisation & Structure (Phase 2b)
+- User-configurable folder template (e.g. `Artist/Album/Track`, `Genre/Artist/Track`, custom)
+- Automated organisation pass based on AI-enriched tags (genre, mood, energy from Phase 3)
+- Ambiguity detection — flags low-confidence cases for human review
+- Review queue UI: ambiguous cases surfaced with Claude-powered reasoning (integrated from the start, not bolted on)
+- "Decide once, remember forever" preference engine — stores user decisions as rules for future imports
+- Handles edge cases: bootlegs, white labels, VA compilations, remixer vs original artist ambiguity
+- Duplicate detection before moving (hash + near-match filename)
+- Files are only moved once user has approved — no silent background renaming
+- Runs *after* AI tagging (uses fully enriched metadata) and *before* Rekordbox XML export (so paths are final)
 
 ### Module D — Rekordbox XML Export (Phase 4)
 - Map internal DB schema to Rekordbox track schema
@@ -214,23 +214,6 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 2b — File Organisation & Structure
-**Goal:** Clean metadata now drives a clean, user-approved file structure before anything touches Rekordbox.
-
-- [ ] Template engine (configurable folder pattern with variables: `{artist}`, `{album}`, `{genre}`, `{year}`, etc.)
-- [ ] Automated organisation pass — proposes moves based on enriched tags
-- [ ] Confidence scoring — flags ambiguous cases (missing tags, VA, bootlegs, edits)
-- [ ] Review queue UI — ambiguous tracks surfaced with rule-based reasoning and suggested placement
-- [ ] *(Claude-enhanced reasoning for ambiguous cases added in Phase 3 once AI layer is available)*
-- [ ] User preference store — decisions saved as rules and applied to future imports
-- [ ] Duplicate check before any file is moved
-- [ ] Dry-run mode — shows proposed structure without moving anything
-- [ ] Confirmed moves written to DB (so Rekordbox XML uses final paths)
-
-**Deliverable:** Files in a clean, user-approved folder structure. No files moved without explicit confirmation.
-
----
-
 ### Phase 3 — Claude Integration
 **Goal:** Claude enriches tags beyond what algorithms can do.
 
@@ -241,6 +224,24 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 - [ ] Store AI tag confidence scores in DB
 
 **Deliverable:** Files with AI-enriched metadata; user can review before writing.
+
+---
+
+### Phase 2b — File Organisation & Structure
+**Goal:** AI-enriched metadata now drives a clean, user-approved file structure before anything touches Rekordbox.
+
+**Depends on:** Phase 3 (Claude Integration) — the organiser uses AI-enriched genre/mood/energy for placement decisions and Claude-powered reasoning for ambiguous cases.
+
+- [ ] Template engine (configurable folder pattern with variables: `{artist}`, `{album}`, `{genre}`, `{year}`, etc.)
+- [ ] Automated organisation pass — proposes moves based on AI-enriched tags
+- [ ] Confidence scoring — flags ambiguous cases (missing tags, VA, bootlegs, edits)
+- [ ] Review queue UI — ambiguous tracks surfaced with Claude-powered reasoning (integrated from the start)
+- [ ] User preference store — decisions saved as rules and applied to future imports
+- [ ] Duplicate check before any file is moved
+- [ ] Dry-run mode — shows proposed structure without moving anything
+- [ ] Confirmed moves written to DB (so Rekordbox XML uses final paths)
+
+**Deliverable:** Files in a clean, user-approved folder structure. No files moved without explicit confirmation.
 
 ---
 
@@ -315,8 +316,8 @@ develop                      ← integration branch
 feature/phase-0-scaffold     ← merged ✅
 feature/phase-1-converter    ← merged ✅
 feature/phase-2-metadata-tagging ← merged ✅
-feature/phase-2b-organiser   ← next
-feature/phase-3-claude
+feature/phase-3-claude       ← next
+feature/phase-2b-organiser
 feature/phase-4-rekordbox
 feature/phase-5-crates
 feature/phase-6-polish

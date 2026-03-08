@@ -587,8 +587,8 @@ Research completed:
 | **0** | Scaffolding | Repo, tooling, DB schema, Tauri+FastAPI skeleton, sidecar proof |
 | **1** | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
 | **2** | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
-| 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, user preference store |
 | 3 | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
+| 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
 | 4 | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
 | 5 | Crate Builder & Set Planner | AI crate assignment, energy arc definition, track sequencing, key compatibility |
