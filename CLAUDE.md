@@ -57,7 +57,8 @@ rekordbot/
 │   │   ├── database.py           ← Engine, session, Base
 │   │   ├── track.py              ← Track model (Rekordbox-compatible + ingestion fields)
 │   │   ├── preference_rule.py    ← PreferenceRule model (Phase 2b)
-│   │   └── crate.py              ← Crate and CrateTrack models (Phase 5a)
+│   │   ├── crate.py              ← Crate and CrateTrack models (Phase 5a)
+│   │   └── set_plan.py           ← SetPlan, SetTrack, SetSegment models (Phase 5b)
 │   ├── services/
 │   │   ├── format_inspector.py   ← ffprobe wrapper, FileInfo dataclass
 │   │   ├── conversion.py         ← Conversion decision engine (pure logic)
@@ -83,6 +84,9 @@ rekordbot/
 │   │   ├── crate_prompt_builder.py ← Crate description parsing and assignment prompts (Phase 5a)
 │   │   ├── crate_assigner.py     ← Batched Claude assignment pipeline with SSE (Phase 5a)
 │   │   ├── crate_manager.py      ← Crate CRUD, refresh, and auto-refresh orchestration (Phase 5a)
+│   │   ├── bpm_transition.py    ← BPM transition scoring and quality labels (Phase 5b)
+│   │   ├── set_prompt_builder.py ← Set planning prompt/tool schemas and result parsers (Phase 5b)
+│   │   ├── set_planner.py       ← Set planner service: CRUD, lock/shuffle, Claude planning (Phase 5b)
 │   │   ├── location_encoder.py   ← Rekordbox Location URI encoding (Phase 4)
 │   │   ├── xml_schema_mapper.py  ← Track model → XML attribute mapping (Phase 4)
 │   │   ├── xml_builder.py        ← Rekordbox XML document construction (Phase 4)
@@ -93,7 +97,8 @@ rekordbot/
 │   │   ├── ai_tagging.py         ← AI tagging endpoints: tag, progress, cancel, status, validate (Phase 3)
 │   │   ├── organise.py           ← Organisation endpoints: propose, approve, resolve, preferences (Phase 2b)
 │   │   ├── export.py             ← Rekordbox XML export endpoints (Phase 4)
-│   │   └── crates.py             ← Crate CRUD, assignment, progress SSE endpoints (Phase 5a)
+│   │   ├── crates.py             ← Crate CRUD, assignment, progress SSE endpoints (Phase 5a)
+│   │   └── sets.py               ← Set planner CRUD, shuffle, export, progress SSE (Phase 5b)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -110,6 +115,9 @@ rekordbot/
 │   │   ├── ExportControls.tsx    ← Rekordbox XML export toolbar (Phase 4)
 │   │   ├── CrateSidebar.tsx      ← Crate playlist tree with counts and context menu (Phase 5a)
 │   │   ├── CrateCreateDialog.tsx ← Crate creation modal with progress (Phase 5a)
+│   │   ├── SetPlannerView.tsx   ← Set planning interface with track sequence and controls (Phase 5b)
+│   │   ├── SetCreateDialog.tsx  ← Set creation modal with parameters (Phase 5b)
+│   │   ├── SetListPanel.tsx     ← Set list with status and counts (Phase 5b)
 │   │   ├── ReviewQueue.tsx       ← Review queue for ambiguous tracks (Phase 2b)
 │   │   ├── PreferenceRulesPanel.tsx ← Preference rule management UI (Phase 2b)
 │   │   └── api/
@@ -139,7 +147,8 @@ rekordbot/
     │   ├── phase-2b-file-organisation.md
     │   ├── phase-3-claude-integration.md
     │   ├── phase-4-rekordbox-xml-export.md
-    │   └── phase-5a-crate-builder.md
+    │   ├── phase-5a-crate-builder.md
+│   └── phase-5b-set-planner.md
     └── research/
         ├── rekordbox-xml-cdj-compatibility.md
         └── tauri-python-backend.md
@@ -583,10 +592,21 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 5a — Crate Builder
-**State:** Complete. All 10 steps implemented, 814 tests passing (108 Phase 5a tests: 8 model + 29 key compatibility + 19 prompt builder + 6 assigner + 16 manager + 11 routes + 7 XML crate + 12 integration).
+**Phase:** 5b — Set Planner
+**State:** Complete. All 9 steps implemented, 930 tests passing (116 Phase 5b tests: 11 model + 29 BPM transition + 20 prompt builder + 26 service + 12 routes + 8 XML set + 10 integration).
 
-**Next:** Phase 5b — Set Planner. Feature brief to be written.
+**Next:** Phase 4b — Rekordbox XML Import (or Phase 6 — Polish & Packaging).
+
+Phase 5b deliverables:
+- BPM transition scoring: threshold-based scoring (0.0–1.0), quality labels (smooth/acceptable/noticeable/jarring), BPM range suggestion for sequence positions (TDD, 29 tests)
+- Set prompt builder: system prompts and tool schemas for initial planning, replace, and reorder operations; track summary builder; result parsers with dedup and validation (TDD, 20 tests)
+- Set planner service: CRUD, lock/unlock with segment recalculation, segment description preservation, manual track editing (add/remove/move), candidate pool management, async Claude planning and shuffle operations with SSE progress (26 tests)
+- Data models: SetPlan (name, description, parameters, status), SetTrack (position, lock, candidate flag), SetSegment (position range, description), cascade delete, unique constraint on (set_id, track_id) (11 tests)
+- API routes: POST/GET /api/sets, GET/PUT/DELETE /api/sets/{id}, POST lock/unlock, PUT segments, POST shuffle, POST/DELETE tracks, POST move, GET candidates, POST export, GET progress (SSE) (12 tests)
+- XML export integration: ordered set playlists alongside folder-based and crate playlists, position order preserved, alphabetical sorting (8 tests)
+- Frontend: SetPlannerView (track sequence table with lock toggle, BPM/key transition indicators, segment dividers with inline editing, candidate panel, shuffle controls, export button), SetCreateDialog (name/description/duration/BPM/energy arc/source/harmonic mixing), SetListPanel, CrateSidebar with Sets section, API client with all set types and functions
+- Integration tests: end-to-end create→lock→segment→export, track add/remove/move, segment description preservation, XML playlist order verification, API route lifecycle (10 tests)
+- Feature brief: `docs/features/phase-5b-set-planner.md`
 
 Phase 5a deliverables:
 - Key compatibility: Camelot wheel harmonic mixing logic — same key, adjacent, relative major/minor, energy boost/drop, wrap-around (TDD, 29 tests)
@@ -694,6 +714,6 @@ Research completed:
 | **2b** | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
 | **4** | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
 | **5a** | **Crate Builder** | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
-| 5b | Set Planner | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
+| **5b** | **Set Planner** | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
 | 6 | Polish & Packaging | UI polish, error handling, settings panel, macOS packaging, code signing |
