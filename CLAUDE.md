@@ -715,5 +715,6 @@ Research completed:
 | **4** | Rekordbox XML Export | ✅ Done | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
 | **5a** | Crate Builder | ✅ Done | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
 | **5b** | Set Planner | ✅ Done | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
+| **6a** | App Shell & Packaging | ⬅️ Next | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
+| 6b | Polish & Distribution | — | UI polish, code signing, notarisation, .dmg packaging, auto-update |
 | 4b | Rekordbox XML Import | — | Parse existing XML, merge with internal DB, conflict resolution |
-| 6 | Polish & Packaging | — | UI polish, error handling, settings panel, macOS packaging, code signing |
