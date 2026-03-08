@@ -61,3 +61,8 @@ check_untyped_defs = true
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.5",
+]
