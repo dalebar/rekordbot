@@ -76,13 +76,19 @@ class Track(Base):
     source_genre: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_status: Mapped[str] = mapped_column(Text, default="untagged")
 
+    # Organisation (populated by organiser in Phase 2b)
+    proposed_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    previous_output_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    organisation_status: Mapped[str] = mapped_column(Text, default="unorganised")
+    organisation_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    organisation_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Operational
     date_added: Mapped[str] = mapped_column(Text, default=lambda: date.today().isoformat())
     date_modified: Mapped[str] = mapped_column(Text, default=lambda: date.today().isoformat())
     play_count: Mapped[int] = mapped_column(Integer, default=0)
     last_played: Mapped[str | None] = mapped_column(Text, nullable=True)
     conversion_status: Mapped[str] = mapped_column(Text, default="pending")
-    organisation_status: Mapped[str] = mapped_column(Text, default="pending")
 
     def __repr__(self) -> str:
         return f"<Track(id={self.id}, artist={self.artist!r}, title={self.title!r})>"

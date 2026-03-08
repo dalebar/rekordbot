@@ -20,7 +20,7 @@ def test_track_create_and_query(db_session):
     assert result.bpm == 128.00
     assert result.rating == 0
     assert result.conversion_status == "pending"
-    assert result.organisation_status == "pending"
+    assert result.organisation_status == "unorganised"
     assert result.date_added is not None
     assert result.ai_status == "untagged"
 
