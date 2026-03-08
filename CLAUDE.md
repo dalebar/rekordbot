@@ -67,10 +67,14 @@ rekordbot/
 │   │   ├── tag_writer.py         ← mutagen-based tag writing (ID3v2.3, MP4 atoms)
 │   │   ├── bpm_detector.py       ← librosa BPM detection with auto-correction
 │   │   ├── key_detector.py       ← librosa chroma + Krumhansl-Schmuckler key detection
-│   │   └── analysis.py           ← Analysis pipeline orchestrator with batch SSE
+│   │   ├── analysis.py           ← Analysis pipeline orchestrator with batch SSE
+│   │   ├── claude_client.py      ← Anthropic SDK wrapper with rate limiting and retry (Phase 3)
+│   │   ├── prompt_builder.py     ← Claude prompt/tool schema, batch grouping, result parsing (Phase 3)
+│   │   └── ai_tagger.py          ← AI tagging pipeline orchestrator with SSE (Phase 3)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
-│   │   └── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
+│   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
+│   │   └── ai_tagging.py         ← AI tagging endpoints: tag, progress, cancel, status, validate (Phase 3)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -533,8 +537,21 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 2 — Metadata & Tagging
-**State:** Complete. All 11 steps implemented, 390 tests passing.
+**Phase:** 3 — Claude Integration
+**State:** Complete. All 8 steps implemented, 462 tests passing.
+
+Phase 3 deliverables:
+- Claude client: Anthropic SDK wrapper with rate limiting (timestamp-based throttle), exponential backoff retry on 429/529, token usage tracking, cost estimation ($3/MTok input, $15/MTok output)
+- Prompt builder: System prompt with DJ-centric genre taxonomy, tool use schema for structured output (genre, subgenre, mood, energy 1–10, confidence, reasoning), batch message builder, artist-grouped batching, result parser with validation
+- AI tagger pipeline: Batch orchestrator with per-batch error isolation, cancellation via asyncio.Event, SSE progress events (ai_tag_batch_progress, ai_tag_complete), source genre preservation for revert
+- API routes: POST /api/tracks/ai-tag, GET /api/tracks/ai-tag/progress (SSE), POST /api/tracks/ai-tag/cancel, GET /api/tracks/ai-tag/status, POST /api/tracks/ai-tag/validate-key
+- Track model: subgenre, mood, energy (1–10), ai_confidence (high/medium/low), ai_reasoning, source_genre, ai_status (untagged/ai_tagged/ai_tags_written/ai_failed)
+- Extended tagging routes: genre revert support, ai_status transition on write-tags, subgenre/mood/energy in TrackUpdate
+- Frontend: TrackTable with mood, energy (colour-coded: blue→neutral→amber→red), AI confidence (green/amber/red), AI status columns, genre tooltip with AI reasoning, inline editing for new fields, AI filter modes
+- Frontend: AnalysisControls with AI Tag button (purple, disabled without API key), AI progress bar, token usage summary, AI filter buttons
+- API client: Full AI tagging type definitions, SSE consumer, all AI endpoints
+- Integration tests: end-to-end AI tag flow, genre revert, re-tagging, missing API key, write-tags ai_status transition
+- Feature brief: `docs/features/phase-3-claude-integration.md`
 
 Phase 2 deliverables:
 - Tag reader: mutagen-based tag extraction from AIFF (ID3v2), MP3 (ID3v2), M4A (MP4 atoms)
@@ -576,7 +593,7 @@ Research completed:
 
 - ffprobe does not report `bits_per_raw_sample` for PCM codecs — format inspector falls back to `bits_per_sample` field. Both fields are checked.
 - sse-starlette has no mypy type stubs — `type: ignore[import-not-found]` used in `routes/ingest.py` and `routes/tagging.py`.
-- mutagen, librosa, and numpy have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2 services.
+- mutagen, librosa, numpy, and anthropic have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2/3 services.
 - AIFF files use `IffID3.save()` which does not support the `v1` parameter — tag writer handles this with format-specific save calls.
 - librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
 
