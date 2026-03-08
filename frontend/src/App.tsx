@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getHealth,
+  getSettingsStatus,
   setApiErrorHandler,
   clearApiErrorHandler,
   type HealthResponse,
@@ -14,12 +15,14 @@ import ProcessingQueue from "./ProcessingQueue";
 import SetCreateDialog from "./SetCreateDialog";
 import SettingsPanel from "./SettingsPanel";
 import SetPlannerView from "./SetPlannerView";
+import SetupWizard from "./SetupWizard";
 import TrackTable from "./TrackTable";
 
 function App() {
   const { addToast } = useToast();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState<boolean | null>(null);
 
   // Register global API error handler for toast notifications
   useEffect(() => {
@@ -28,6 +31,7 @@ function App() {
     });
     return () => clearApiErrorHandler();
   }, [addToast]);
+
   const [batch, setBatch] = useState<IngestResponse | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedCrateId, setSelectedCrateId] = useState<number | null>(null);
@@ -42,6 +46,11 @@ function App() {
     getHealth()
       .then(setHealth)
       .catch(() => setError("Backend unavailable"));
+
+    // Check if first-run wizard should be shown
+    getSettingsStatus()
+      .then((status) => setShowWizard(!status.configured))
+      .catch(() => setShowWizard(false));
   }, []);
 
   const handleBatchStarted = useCallback((response: IngestResponse) => {
@@ -70,6 +79,20 @@ function App() {
   const handleBackToLibrary = useCallback(() => {
     setActiveSetId(null);
   }, []);
+
+  // Show wizard on first run
+  if (showWizard === true) {
+    return <SetupWizard onComplete={() => setShowWizard(false)} />;
+  }
+
+  // Still loading status check
+  if (showWizard === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-500">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100">
