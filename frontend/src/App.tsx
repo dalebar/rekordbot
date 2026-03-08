@@ -12,6 +12,7 @@ import CrateSidebar from "./CrateSidebar";
 import DropZone from "./DropZone";
 import ProcessingQueue from "./ProcessingQueue";
 import SetCreateDialog from "./SetCreateDialog";
+import SettingsPanel from "./SettingsPanel";
 import SetPlannerView from "./SetPlannerView";
 import TrackTable from "./TrackTable";
 
@@ -35,6 +36,7 @@ function App() {
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
   const [showSetCreateDialog, setShowSetCreateDialog] = useState(false);
   const [setsRefreshTrigger, setSetsRefreshTrigger] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     getHealth()
@@ -80,6 +82,7 @@ function App() {
         onSetSelect={handleSetSelect}
         onNewSet={() => setShowSetCreateDialog(true)}
         setRefreshTrigger={setsRefreshTrigger}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       {/* Main content */}
@@ -103,7 +106,9 @@ function App() {
         </header>
 
         {/* Content area */}
-        {activeSetId ? (
+        {showSettings ? (
+          <SettingsPanel onClose={() => setShowSettings(false)} />
+        ) : activeSetId ? (
           <SetPlannerView setId={activeSetId} onBack={handleBackToLibrary} />
         ) : (
           <main className="flex flex-1 flex-col overflow-hidden p-6">

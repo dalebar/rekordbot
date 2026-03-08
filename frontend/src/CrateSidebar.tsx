@@ -17,6 +17,7 @@ interface CrateSidebarProps {
   onSetSelect?: (setId: number) => void;
   onNewSet?: () => void;
   setRefreshTrigger?: number;
+  onOpenSettings?: () => void;
 }
 
 export default function CrateSidebar({
@@ -27,6 +28,7 @@ export default function CrateSidebar({
   onSetSelect,
   onNewSet,
   setRefreshTrigger,
+  onOpenSettings,
 }: CrateSidebarProps) {
   const [crates, setCrates] = useState<CrateSummary[]>([]);
   const [sets, setSets] = useState<SetSummary[]>([]);
@@ -193,6 +195,18 @@ export default function CrateSidebar({
             )}
           </div>
         </>
+      )}
+
+      {/* Settings button */}
+      {onOpenSettings && (
+        <div className="border-t border-gray-800 p-2">
+          <button
+            className="w-full px-3 py-1.5 text-sm text-left text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 rounded"
+            onClick={onOpenSettings}
+          >
+            Settings
+          </button>
+        </div>
       )}
 
       {/* Context menu */}
