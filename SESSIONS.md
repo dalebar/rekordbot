@@ -416,3 +416,51 @@ Phase 4 acceptance test — full pipeline re-run with bugfix applied, and manual
 ### What's next
 - Merge `feature/phase-4-rekordbot` → `develop` with `--no-ff`, tag `phase-4-complete`
 - Decide next phase: Phase 4b (XML Import) or Phase 5 (Crate Builder & Set Planner)
+
+---
+
+## Session 12 — 2026-03-08
+
+### What was worked on
+Phase 5a implementation — Crate Builder, from feature brief to fully working AI-powered crate system.
+
+### Summary
+- Working on branch `feature/phase-5a-crate-builder`
+- Implemented all 10 steps of the Phase 5a build plan in order:
+  1. **Config & exceptions** — Added `crate_assignment_batch_size: int = 30` to Settings; added `CrateError` exception
+  2. **Data models** — Created `Crate` (name, description, parsed_criteria JSON, auto_refresh, timestamps) and `CrateTrack` (many-to-many association with assignment_method) in `backend/models/crate.py`; UniqueConstraint on (crate_id, track_id); ORM cascade delete; 8 tests
+  3. **Key compatibility (TDD)** — Camelot wheel harmonic mixing: `are_keys_compatible()`, `get_compatible_keys()`, `get_compatibility_type()` with same key, adjacent, relative major/minor, energy boost/drop, wrap-around (12→1); 29 tests
+  4. **Crate prompt builder (TDD)** — `build_criteria_prompt()` for description→criteria parsing, `parse_criteria_result()` with energy clamping (1–10) and BPM range validation, `build_assignment_prompt()` for batch track evaluation, `parse_assignment_result()` with deduplication and invalid ID filtering; 19 tests
+  5. **Crate assigner** — Batched Claude assignment pipeline: load tracks → batch by `crate_assignment_batch_size` → Claude API via `asyncio.to_thread` → store CrateTrack records; SSE progress events (`crate_assignment_progress`, `crate_assignment_complete`); cancellation via `asyncio.Event`; `clear_ai_assignments()` preserves manual; 6 tests
+  6. **Crate manager** — CRUD: `list_crates()` with track counts, `get_crate()` with track IDs, `create_crate()`, `update_crate()` (description change triggers re-assignment), `delete_crate()`, `add_tracks()` (manual, dedup), `remove_tracks()`, `refresh_crate()` (clears AI, preserves manual, re-assigns), `auto_refresh_crates()` for newly ingested tracks; 16 tests
+  7. **API routes** — 9 endpoints: POST/GET/PUT/DELETE `/api/crates`, POST `/api/crates/{id}/refresh`, POST/DELETE `/api/crates/{id}/tracks`, GET `/api/crates/{id}/progress` (SSE); background assignment on create with module-level `_assigner` for SSE; 11 tests
+  8. **XML export integration** — Extended `build_playlists()` with optional `crates` parameter; `build_crate_playlists()` generates playlist nodes sorted alphabetically alongside folder-based playlists; extended `export_library()` with `_load_crates()` helper; 7 tests
+  9. **Frontend** — `CrateSidebar.tsx` (playlist tree with "All Tracks" + per-crate items, track counts, click-to-filter, "+ New" button, right-click context menu with Refresh/Toggle Auto-refresh/Delete); `CrateCreateDialog.tsx` (modal with name/description/auto-refresh fields, SSE progress bar during assignment, result display); `App.tsx` refactored with sidebar layout and `selectedCrateId` state; `TrackTable.tsx` extended with `crateId` prop and `crateTrackIds` filter in `filteredTracks` useMemo; API client extended with full crate types and endpoints
+  10. **Integration tests & docs** — End-to-end create→assign→verify, refresh with manual preservation, overlapping assignment (track in multiple crates), delete isolation, manual add/remove, list with counts, XML export with crates (playlists, sorting, coexistence); updated CLAUDE.md with Phase 5a status, repo structure, config settings, build plan; 12 tests
+- **Total: 814 tests passing (108 new), 10 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **SQLite CASCADE not enforced by default** — `ON DELETE CASCADE` in ForeignKey doesn't trigger in SQLite without `PRAGMA foreign_keys = ON`. Fixed by using SQLAlchemy ORM-level cascade via `relationship("CrateTrack", cascade="all, delete-orphan", passive_deletes=True)` and accessing `crate.crate_tracks` before delete to trigger lazy load.
+2. **Ruff B011** — `assert False` in tests flagged by bugbear; replaced with `raise AssertionError(...)`.
+3. **mypy arg-type on `json.loads`** — `crate.parsed_criteria` is `str | None`; fixed with `assert crate.parsed_criteria is not None` guard.
+4. **Cancellation test timing** — Setting cancel event before `assign_tracks()` didn't work (method clears it). Fixed by using `side_effect` on `messages.create` to cancel after first batch call.
+5. **conftest client fixture test pollution** — Only cleaned Track table, not CrateTrack/Crate tables, causing failures when running test files together. Fixed by adding CrateTrack and Crate deletion to the client fixture.
+6. **Context window exhaustion** — Session exceeded context limit during Step 9 (frontend). Continued from summary in a new context window, completing TrackTable crate filtering and Step 10.
+7. **Integration test mock field mismatch** — Mock Claude response used `track_ids` but `parse_assignment_result()` expects `matching_track_ids`. Fixed.
+8. **`build_xml()` signature** — Integration tests called `build_xml(tracks, crates=crate_data)` but it requires `key_notation` and `output_directory` positional args. Fixed to `build_xml(tracks, "camelot", "/output", crates=crate_data)`.
+9. **`asyncio.to_thread` in tests** — Mocking `claude_client.client.messages.create` directly didn't work because the assigner wraps the call in `asyncio.to_thread`. Fixed by patching `backend.services.crate_assigner.asyncio.to_thread` to return the mock response directly.
+10. **Track model field name** — Used `output_path` in test helper but actual model uses `file_path`. Fixed.
+
+### Key decisions made
+1. TDD for pure logic modules (key compatibility, crate prompt builder); tests-after for framework integration (assigner, manager, routes, XML integration)
+2. Camelot wheel math: odd ints = minor (A), even = major (B), number = `(int+1)//2`, wrap via `((n-1) % 12) + 1`
+3. Overlapping assignment — tracks can be in any number of crates (many-to-many via CrateTrack association table)
+4. Manual additions preserved during refresh — `clear_ai_assignments()` only deletes `assignment_method="ai"` records
+5. Auto-refresh runs assignment on newly ingested tracks only (not full library re-scan) for crates with `auto_refresh=True`
+6. Crate playlists appear alongside (not nested within) folder-based playlists under the `rekordbot` folder in XML export
+7. Description update triggers re-parse and re-assignment; name-only update does not
+8. Module-level `_assigner` in routes for SSE event streaming (same pattern as Phase 2/3 pipelines)
+
+### What's next
+- Merge `feature/phase-5a-crate-builder` → `develop`
+- Begin Phase 5b (Set Planner) — energy arc sequencing, lock-and-shuffle refinement, key compatibility
