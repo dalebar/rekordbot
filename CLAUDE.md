@@ -657,7 +657,7 @@ Research completed:
 | **2** | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
 | **3** | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
 | **2b** | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
-| 4 | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
+| **4** | **Rekordbox XML Export** | **Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility** |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
 | 5 | Crate Builder & Set Planner | AI crate assignment, energy arc definition, track sequencing, key compatibility |
 | 6 | Polish & Packaging | UI polish, error handling, settings panel, macOS packaging, code signing, auto-update |
