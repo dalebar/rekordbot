@@ -77,12 +77,17 @@ rekordbot/
 │   │   ├── preference_store.py   ← Preference rule CRUD and application (Phase 2b)
 │   │   ├── claude_reasoner.py    ← Claude placement suggestions for ambiguous tracks (Phase 2b)
 │   │   ├── file_mover.py         ← File move operations with collision handling (Phase 2b)
-│   │   └── organiser.py          ← Organisation pipeline orchestrator (Phase 2b)
+│   │   ├── organiser.py          ← Organisation pipeline orchestrator (Phase 2b)
+│   │   ├── location_encoder.py   ← Rekordbox Location URI encoding (Phase 4)
+│   │   ├── xml_schema_mapper.py  ← Track model → XML attribute mapping (Phase 4)
+│   │   ├── xml_builder.py        ← Rekordbox XML document construction (Phase 4)
+│   │   └── xml_exporter.py       ← Export pipeline orchestrator (Phase 4)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
 │   │   ├── ai_tagging.py         ← AI tagging endpoints: tag, progress, cancel, status, validate (Phase 3)
-│   │   └── organise.py           ← Organisation endpoints: propose, approve, resolve, preferences (Phase 2b)
+│   │   ├── organise.py           ← Organisation endpoints: propose, approve, resolve, preferences (Phase 2b)
+│   │   └── export.py             ← Rekordbox XML export endpoints (Phase 4)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -96,6 +101,7 @@ rekordbot/
 │   │   ├── ColumnMenu.tsx        ← Right-click column visibility toggle
 │   │   ├── TrackDetailPanel.tsx  ← Side panel with full track editing
 │   │   ├── OrganiseControls.tsx  ← Organisation toolbar with propose/approve (Phase 2b)
+│   │   ├── ExportControls.tsx    ← Rekordbox XML export toolbar (Phase 4)
 │   │   ├── ReviewQueue.tsx       ← Review queue for ambiguous tracks (Phase 2b)
 │   │   ├── PreferenceRulesPanel.tsx ← Preference rule management UI (Phase 2b)
 │   │   └── api/
@@ -557,8 +563,18 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 2b — File Organisation
-**State:** Complete. All 11 steps implemented, 602 tests passing.
+**Phase:** 4 — Rekordbox XML Export
+**State:** Complete. All 8 steps implemented, 706 tests passing.
+
+Phase 4 deliverables:
+- Location encoder: RFC 3986 percent-encoding per path component, file://localhost/ URI generation, round-trip decodable (TDD, 25 tests)
+- Schema mapper: Track model → Rekordbox XML attribute mapping, BPM/rating/kind/date formatting, key notation conversion, file size/mtime from disk, fallbacks for missing metadata (TDD, 35 tests)
+- XML builder: DJ_PLAYLISTS document construction with PRODUCT/COLLECTION/PLAYLISTS, sequential TrackID assignment, folder-based playlist auto-generation (All Tracks + per-artist), write with XML declaration and UTF-8 encoding (19 tests)
+- Export service: full pipeline orchestrator, track filtering, warning collection, configurable output path with settings fallback (9 tests)
+- API routes: POST /api/export/rekordbox (trigger export), GET /api/export/rekordbox/status (last export info) (5 tests)
+- Frontend: ExportControls component (amber Export XML button, result summary, warning expansion), API client types and endpoints
+- Integration tests: end-to-end create→export→parse→verify, location encoding round-trips, playlist structure verification, re-export after metadata changes, API integration (11 tests)
+- Feature brief: `docs/features/phase-4-rekordbox-xml-export.md`
 
 Phase 2b deliverables:
 - Template engine: configurable folder templates with fallback syntax (`{variable|"literal"}`), path sanitisation, output path building
