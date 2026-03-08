@@ -135,10 +135,44 @@ def generate_playlist_structure(
     return rekordbot_node
 
 
+def build_crate_playlists(
+    crates: list,
+    track_id_map: dict[int, int],
+    parent_node: ET.Element,
+) -> None:
+    """Add crate playlists to a parent NODE element.
+
+    Each crate becomes a Type=1 playlist NODE with TRACK references.
+    Crates are sorted alphabetically by name.
+
+    Args:
+        crates: List of (crate, track_ids) tuples where track_ids are DB IDs.
+        track_id_map: Mapping of DB track ID → XML TrackID.
+        parent_node: Parent NODE element to append crate playlists to.
+    """
+    for crate, crate_track_ids in sorted(crates, key=lambda c: c[0].name):
+        # Map DB track IDs to XML TrackIDs
+        xml_ids = []
+        for db_id in crate_track_ids:
+            xml_id = track_id_map.get(db_id)
+            if xml_id is not None:
+                xml_ids.append(xml_id)
+
+        crate_node = ET.SubElement(parent_node, "NODE")
+        crate_node.set("Name", crate.name)
+        crate_node.set("Type", "1")
+        crate_node.set("KeyType", "0")
+        crate_node.set("Entries", str(len(xml_ids)))
+        for xml_id in xml_ids:
+            track_ref = ET.SubElement(crate_node, "TRACK")
+            track_ref.set("Key", str(xml_id))
+
+
 def build_playlists(
     tracks: list,
     track_id_map: dict[int, int],
     output_directory: str,
+    crates: list | None = None,
 ) -> ET.Element:
     """Build the PLAYLISTS XML element with ROOT and folder structure.
 
@@ -146,6 +180,7 @@ def build_playlists(
         tracks: List of Track model instances.
         track_id_map: Mapping of DB track ID → XML TrackID.
         output_directory: Base output directory for folder-based playlists.
+        crates: Optional list of (crate, track_ids) tuples for crate playlists.
 
     Returns:
         PLAYLISTS element with full playlist tree.
@@ -160,6 +195,14 @@ def build_playlists(
 
     # rekordbot folder with playlists
     rekordbot_node = generate_playlist_structure(tracks, track_id_map, output_directory)
+
+    # Add crate playlists after folder-based playlists
+    if crates:
+        build_crate_playlists(crates, track_id_map, rekordbot_node)
+        # Update count
+        current_count = int(rekordbot_node.get("Count", "0"))
+        rekordbot_node.set("Count", str(current_count + len(crates)))
+
     root_node.append(rekordbot_node)
 
     return playlists
@@ -169,6 +212,7 @@ def build_xml(
     tracks: list,
     key_notation: str,
     output_directory: str,
+    crates: list | None = None,
 ) -> tuple[ET.ElementTree, dict[int, int], list[str]]:
     """Build a complete Rekordbox XML document.
 
@@ -176,6 +220,7 @@ def build_xml(
         tracks: List of Track model instances to export.
         key_notation: Key notation preference for Tonality field.
         output_directory: Base output directory for playlist generation.
+        crates: Optional list of (crate, track_ids) tuples for crate playlists.
 
     Returns:
         Tuple of (ElementTree, track ID map, warnings list).
@@ -195,7 +240,7 @@ def build_xml(
     root.append(collection)
 
     # PLAYLISTS
-    playlists = build_playlists(tracks, track_id_map, output_directory)
+    playlists = build_playlists(tracks, track_id_map, output_directory, crates=crates)
     root.append(playlists)
 
     tree = ET.ElementTree(root)

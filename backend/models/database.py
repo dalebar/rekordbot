@@ -19,7 +19,11 @@ class Base(DeclarativeBase):
 
 def init_db() -> None:
     """Create all tables defined by Base subclasses."""
-    from backend.models import preference_rule, track  # noqa: F401 — ensure models are registered
+    from backend.models import (  # noqa: F401 — ensure models registered
+        crate,
+        preference_rule,
+        track,
+    )
 
     Base.metadata.create_all(engine)
     logger.info("Database tables created")

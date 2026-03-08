@@ -40,14 +40,19 @@ async def client():
     # Ensure tables exist (lifespan doesn't run with ASGITransport)
     init_db()
 
-    # Clean tracks table for test isolation
+    # Clean tables for test isolation
+    from backend.models.crate import Crate, CrateTrack
+
     db = SessionLocal()
+    db.query(CrateTrack).delete()
+    db.query(Crate).delete()
     db.query(Track).delete()
     db.commit()
     db.close()
 
     # Reset module-level queue state between tests
     import backend.routes.ai_tagging as ai_tagging_module
+    import backend.routes.crates as crates_module
     import backend.routes.export as export_module
     import backend.routes.ingest as ingest_module
     import backend.routes.organise as organise_module
@@ -58,6 +63,7 @@ async def client():
     ai_tagging_module._ai_tagger = None
     organise_module._organiser = None
     export_module._last_export = None
+    crates_module._assigner = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   bpmMultiply,
+  getCrate,
   getTracks,
   updateTrack,
   type ProposalResponse,
@@ -17,6 +18,7 @@ import TrackDetailPanel from "./TrackDetailPanel";
 
 interface TrackTableProps {
   refreshTrigger: number;
+  crateId?: number | null;
 }
 
 type SortField = string;
@@ -54,7 +56,7 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 
 const CONFIDENCE_THRESHOLD = 0.6;
 
-export default function TrackTable({ refreshTrigger }: TrackTableProps) {
+export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps) {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -69,6 +71,7 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
   const [proposal, setProposal] = useState<ProposalResponse | null>(null);
   const [editingCell, setEditingCell] = useState<{ trackId: number; field: string } | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [crateTrackIds, setCrateTrackIds] = useState<Set<number> | null>(null);
 
   const loadTracks = useCallback(async () => {
     setLoading(true);
@@ -76,20 +79,31 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
       const data = await getTracks(500, 0);
       setTracks(data.tracks);
       setTotal(data.total);
+
+      // Load crate track IDs if a crate is selected
+      if (crateId) {
+        const crateDetail = await getCrate(crateId);
+        setCrateTrackIds(new Set(crateDetail.track_ids));
+      } else {
+        setCrateTrackIds(null);
+      }
     } catch {
       // Backend may not be ready
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [crateId]);
 
   useEffect(() => {
     loadTracks();
-  }, [loadTracks, refreshTrigger]);
+  }, [loadTracks, refreshTrigger, crateId]);
 
   // Filter tracks
   const filteredTracks = useMemo(() => {
     return tracks.filter((t) => {
+      // Crate filter: only show tracks in selected crate
+      if (crateTrackIds && !crateTrackIds.has(t.id)) return false;
+
       // Analysis filters
       if (filter === "unanalysed") return t.analysis_status === "unanalysed";
       if (filter === "low_confidence") {
@@ -110,7 +124,7 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
 
       return true;
     });
-  }, [tracks, filter, organiseFilter]);
+  }, [tracks, filter, organiseFilter, crateTrackIds]);
 
   // Sort tracks
   const sortedTracks = useMemo(() => {
@@ -239,7 +253,7 @@ export default function TrackTable({ refreshTrigger }: TrackTableProps) {
     return <p className="text-sm text-gray-600">Loading tracks...</p>;
   }
 
-  if (tracks.length === 0) {
+  if (tracks.length === 0 && !crateId) {
     return (
       <p className="text-sm text-gray-600">
         No tracks yet. Drop some audio files above to get started.

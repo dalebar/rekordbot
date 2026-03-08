@@ -679,3 +679,169 @@ export function connectOrganiseProgress(
 
   return es;
 }
+
+// --- Phase 5a: Crate Builder API ---
+
+/** Crate summary (list view). */
+export interface CrateSummary {
+  id: number;
+  name: string;
+  description: string;
+  track_count: number;
+  auto_refresh: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Crate detail (full view). */
+export interface CrateDetail {
+  id: number;
+  name: string;
+  description: string;
+  parsed_criteria: Record<string, unknown> | null;
+  auto_refresh: boolean;
+  track_ids: number[];
+  track_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Crate create request. */
+export interface CrateCreateRequest {
+  name: string;
+  description: string;
+  auto_refresh?: boolean;
+}
+
+/** Crate create response. */
+export interface CrateCreateResponse {
+  id: number;
+  name: string;
+  description: string;
+  auto_refresh: boolean;
+  message: string;
+}
+
+/** Crate update request. */
+export interface CrateUpdateRequest {
+  name?: string;
+  description?: string;
+  auto_refresh?: boolean;
+}
+
+/** Crate update response. */
+export interface CrateUpdateResponse {
+  id: number;
+  name: string;
+  description: string;
+  auto_refresh: boolean;
+  description_changed: boolean;
+  message: string;
+}
+
+/** Crate assignment progress event. */
+export interface CrateAssignmentProgress {
+  crate_id: number;
+  batch_number: number;
+  total_batches: number;
+  tracks_processed: number;
+  tracks_total: number;
+}
+
+/** Crate assignment complete event. */
+export interface CrateAssignmentComplete {
+  crate_id: number;
+  total_tracks: number;
+  matched: number;
+  total_batches: number;
+  errors: string[];
+}
+
+/** List all crates. */
+export function listCrates(): Promise<CrateSummary[]> {
+  return request<CrateSummary[]>("/api/crates");
+}
+
+/** Get crate detail. */
+export function getCrate(crateId: number): Promise<CrateDetail> {
+  return request<CrateDetail>(`/api/crates/${crateId}`);
+}
+
+/** Create a new crate. */
+export function createCrate(body: CrateCreateRequest): Promise<CrateCreateResponse> {
+  return request<CrateCreateResponse>("/api/crates", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Update a crate. */
+export function updateCrate(
+  crateId: number,
+  body: CrateUpdateRequest,
+): Promise<CrateUpdateResponse> {
+  return request<CrateUpdateResponse>(`/api/crates/${crateId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Delete a crate. */
+export function deleteCrate(crateId: number): Promise<{ status: string; crate_id: number }> {
+  return request(`/api/crates/${crateId}`, { method: "DELETE" });
+}
+
+/** Refresh a crate (re-run AI assignment). */
+export function refreshCrate(
+  crateId: number,
+): Promise<{ status: string; message: string }> {
+  return request(`/api/crates/${crateId}/refresh`, { method: "POST" });
+}
+
+/** Manually add tracks to a crate. */
+export function addTracksToCrate(
+  crateId: number,
+  trackIds: number[],
+): Promise<{ status: string; added: number; crate_id: number }> {
+  return request(`/api/crates/${crateId}/tracks`, {
+    method: "POST",
+    body: JSON.stringify({ track_ids: trackIds }),
+  });
+}
+
+/** Remove tracks from a crate. */
+export function removeTracksFromCrate(
+  crateId: number,
+  trackIds: number[],
+): Promise<{ status: string; removed: number; crate_id: number }> {
+  return request(`/api/crates/${crateId}/tracks`, {
+    method: "DELETE",
+    body: JSON.stringify({ track_ids: trackIds }),
+  });
+}
+
+/** Connect to crate assignment SSE progress stream. */
+export function connectCrateProgress(
+  crateId: number,
+  onProgress: (event: CrateAssignmentProgress) => void,
+  onComplete?: (data: CrateAssignmentComplete) => void,
+): EventSource {
+  const es = new EventSource(`${BASE_URL}/api/crates/${crateId}/progress`);
+
+  es.addEventListener("crate_assignment_progress", (e) => {
+    const data = JSON.parse(e.data) as CrateAssignmentProgress;
+    onProgress(data);
+  });
+
+  es.addEventListener("crate_assignment_complete", (e) => {
+    const data = JSON.parse(e.data) as CrateAssignmentComplete;
+    onComplete?.(data);
+    es.close();
+  });
+
+  es.addEventListener("error", () => {
+    es.close();
+  });
+
+  return es;
+}

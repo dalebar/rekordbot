@@ -71,3 +71,10 @@ class ExportError(RekordBotError):
 
     def __init__(self, detail: str, status_code: int = 500) -> None:
         super().__init__(error="export_failed", detail=detail, status_code=status_code)
+
+
+class CrateError(RekordBotError):
+    """Raised when a crate operation fails."""
+
+    def __init__(self, detail: str, status_code: int = 500) -> None:
+        super().__init__(error="crate_failed", detail=detail, status_code=status_code)

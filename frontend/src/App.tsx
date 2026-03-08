@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getHealth, type HealthResponse, type IngestResponse } from "./api/client";
+import CrateCreateDialog from "./CrateCreateDialog";
+import CrateSidebar from "./CrateSidebar";
 import DropZone from "./DropZone";
 import ProcessingQueue from "./ProcessingQueue";
 import TrackTable from "./TrackTable";
@@ -9,6 +11,9 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [batch, setBatch] = useState<IngestResponse | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [selectedCrateId, setSelectedCrateId] = useState<number | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [crateRefreshTrigger, setCrateRefreshTrigger] = useState(0);
 
   useEffect(() => {
     getHealth()
@@ -24,19 +29,27 @@ function App() {
     setRefreshTrigger((prev) => prev + 1);
   }, []);
 
+  const handleCrateCreated = useCallback(() => {
+    setCrateRefreshTrigger((prev) => prev + 1);
+  }, []);
+
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100">
-      {/* Sidebar placeholder */}
-      <aside className="w-60 border-r border-gray-800 p-4">
-        <h2 className="text-lg font-semibold tracking-tight">rekordbot</h2>
-        <p className="mt-2 text-sm text-gray-500">Phase 2</p>
-      </aside>
+      {/* Crate sidebar */}
+      <CrateSidebar
+        onCrateSelect={setSelectedCrateId}
+        selectedCrateId={selectedCrateId}
+        onNewCrate={() => setShowCreateDialog(true)}
+        refreshTrigger={crateRefreshTrigger}
+      />
 
       {/* Main content */}
       <div className="flex flex-1 flex-col">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-gray-800 px-6 py-3">
-          <h1 className="text-sm font-medium text-gray-400">Library</h1>
+          <h1 className="text-sm font-medium text-gray-400">
+            {selectedCrateId ? "Crate" : "Library"}
+          </h1>
           <div className="text-sm">
             {health ? (
               <span className="text-emerald-400">
@@ -69,9 +82,20 @@ function App() {
           )}
 
           {/* Track table */}
-          <TrackTable refreshTrigger={refreshTrigger} />
+          <TrackTable
+            refreshTrigger={refreshTrigger}
+            crateId={selectedCrateId}
+          />
         </main>
       </div>
+
+      {/* Create crate dialog */}
+      {showCreateDialog && (
+        <CrateCreateDialog
+          onClose={() => setShowCreateDialog(false)}
+          onCreated={handleCrateCreated}
+        />
+      )}
     </div>
   );
 }

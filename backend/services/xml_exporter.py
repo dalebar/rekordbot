@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import Settings
 from backend.exceptions import ExportError
+from backend.models.crate import Crate, CrateTrack
 from backend.models.track import Track
 from backend.services.xml_builder import build_xml, write_xml
 
@@ -98,11 +99,15 @@ def export_library(
     # Resolve output directory for playlist generation
     output_directory = str(Path(settings.output_directory).expanduser().resolve())
 
+    # Load crates for playlist generation
+    crates_data = _load_crates(db_session)
+
     # Build XML
     tree, track_id_map, build_warnings = build_xml(
         exportable_tracks,
         settings.default_key_notation,
         output_directory,
+        crates=crates_data,
     )
     warnings.extend(build_warnings)
 
@@ -157,3 +162,29 @@ def _resolve_output_path(output_path: str | None, settings: Settings) -> str:
 
     output_dir = Path(settings.output_directory).expanduser().resolve()
     return str(output_dir / "rekordbox.xml")
+
+
+def _load_crates(db_session: Session) -> list:
+    """Load all crates with their track IDs for XML export.
+
+    Args:
+        db_session: SQLAlchemy session.
+
+    Returns:
+        List of (Crate, list[int]) tuples where the int list contains
+        DB track IDs assigned to that crate.
+    """
+    crates = db_session.query(Crate).all()
+    if not crates:
+        return []
+
+    result = []
+    for crate in crates:
+        track_ids = [
+            ct.track_id
+            for ct in db_session.query(CrateTrack).filter(CrateTrack.crate_id == crate.id).all()
+        ]
+        if track_ids:
+            result.append((crate, track_ids))
+
+    return result
