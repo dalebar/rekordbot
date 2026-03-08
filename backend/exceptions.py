@@ -78,3 +78,10 @@ class CrateError(RekordBotError):
 
     def __init__(self, detail: str, status_code: int = 500) -> None:
         super().__init__(error="crate_failed", detail=detail, status_code=status_code)
+
+
+class SetPlanError(RekordBotError):
+    """Raised when a set planning operation fails."""
+
+    def __init__(self, detail: str, status_code: int = 500) -> None:
+        super().__init__(error="set_plan_failed", detail=detail, status_code=status_code)

@@ -149,29 +149,32 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - Merge with internal DB
 - Conflict resolution
 
-### Module E — Crate Builder (Phase 5a)
-- User creates crates by providing a free-text description of the vibe (e.g. "Deep & dubby minimal house, 118–124 BPM, hypnotic and warm")
-- Claude interprets the description into searchable criteria (mood, energy range, BPM range, genre hints) and stores both the original description and parsed interpretation
-- Claude assigns every matching track from the library — crates are pools to draw from, not curated short lists
-- Track assignment is overlapping — a track can appear in multiple crates
-- Two refresh modes: manual ("refresh this crate") and automatic (re-run on newly ingested tracks)
-- Crates export as Rekordbox playlists in the XML (coexisting with folder-based playlists from Phase 4)
-- Sidebar panel UI in Rekordbox playlist tree style
-- Manual override: user can add/remove individual tracks from any crate
+### Module E — Crate Builder ✅ (Phase 5a — Complete)
+- ✅ User creates crates by providing a free-text description of the vibe (e.g. "Deep & dubby minimal house, 118–124 BPM, hypnotic and warm")
+- ✅ Claude interprets the description into searchable criteria (mood, energy range, BPM range, genre hints) and stores both the original description and parsed interpretation
+- ✅ Claude assigns every matching track from the library — crates are pools to draw from, not curated short lists
+- ✅ Track assignment is overlapping — a track can appear in multiple crates
+- ✅ Two refresh modes: manual ("refresh this crate") and automatic (re-run on newly ingested tracks)
+- ✅ Crates export as Rekordbox playlists in the XML (coexisting with folder-based playlists from Phase 4)
+- ✅ Sidebar panel UI in Rekordbox playlist tree style
+- ✅ Manual override: user can add/remove individual tracks from any crate
 
-### Module E2 — Set Planner (Phase 5b)
-- User describes a set with time dimension, energy arc, and destination state (e.g. "1 hour, build from ambient to moderate house, positive mood, hand off at 120–125 BPM")
-- Claude pulls from crates or the full library to suggest a track sequence
-- 2–3x track multiplier — provides enough options for the user to customise the final plan
-- Lock-and-shuffle iterative refinement: user locks anchor tracks in place, shuffles unlocked slots with alternatives that respect the arc context of locked neighbours
-- Segmented mood descriptions: user can change the brief between shuffle passes, so different sections of the set can target different moods (e.g. meditative → dark/aggressive → uplifting resolution). Locked tracks define segment boundaries; each gap between locks can have its own description.
-- Key compatibility module (standalone Camelot wheel utility) available for harmonic mixing suggestions — optional, for users who want it
-- Export set as Rekordbox playlist
+### Module E2 — Set Planner ✅ (Phase 5b — Complete)
+- ✅ User describes a set with time dimension, energy arc, and destination state (e.g. "1 hour, build from ambient to moderate house, positive mood, hand off at 120–125 BPM")
+- ✅ Claude pulls from crates or the full library to suggest a track sequence
+- ✅ 2–3x track multiplier — provides enough options for the user to customise the final plan
+- ✅ Lock-and-shuffle iterative refinement: user locks anchor tracks in place, shuffles unlocked slots with alternatives that respect the arc context of locked neighbours
+- ✅ Segmented mood descriptions: user can change the brief between shuffle passes, so different sections of the set can target different moods (e.g. meditative → dark/aggressive → uplifting resolution). Locked tracks define segment boundaries; each gap between locks can have its own description.
+- ✅ Two shuffle modes: "replace" (swap unlocked tracks for different ones from the pool) and "reorder" (optimise sequence of current unlocked tracks)
+- ✅ BPM transition scoring (smooth/acceptable/noticeable/jarring) for adjacent tracks
+- ✅ Key compatibility module (Camelot wheel utility) available for harmonic mixing suggestions — optional, for users who want it
+- ✅ Export set as ordered Rekordbox playlist (track order preserved, unlike unordered crate playlists)
+- ✅ Set planner UI: track sequence table with lock toggle, BPM/key transition indicators, segment dividers with inline editing, candidate pool panel, shuffle controls, export button
 
-### Module F — Key Compatibility Utility (Phase 5a)
-- Standalone Camelot wheel logic: given two key integers, determine compatibility (same key, adjacent on wheel, relative major/minor)
-- Pure math module, no Claude dependency
-- Used by Set Planner (5b) for sequencing, and available for future UI features (related tracks, visual indicators)
+### Module F — Key Compatibility Utility ✅ (Phase 5a — Complete)
+- ✅ Standalone Camelot wheel logic: given two key integers, determine compatibility (same key, adjacent on wheel, relative major/minor)
+- ✅ Pure math module, no Claude dependency
+- ✅ Used by Set Planner (5b) for sequencing, and available for future UI features (related tracks, visual indicators)
 
 ### Module G — UI / UX Shell (progressive, across all phases)
 - Library grid view (sortable, filterable)
@@ -184,7 +187,10 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - Review queue: ambiguous track review with accept/edit/skip, preference rule creation ✅ (Phase 2b)
 - Preference rules panel: view and delete saved rules ✅ (Phase 2b)
 - Export controls: Export XML button, result summary with warning expansion ✅ (Phase 4)
-- Crate sidebar: Rekordbox-style playlist tree with crate list, track counts, drag-and-drop (Phase 5a)
+- Crate sidebar: Rekordbox-style playlist tree with crate list, track counts, context menu ✅ (Phase 5a)
+- Set planner view: full-page track sequence with lock/unlock, BPM/key transition indicators, segment dividers, candidate pool, shuffle controls ✅ (Phase 5b)
+- Set create dialog: name, description, duration, BPM range, energy arc, source crates, harmonic mixing ✅ (Phase 5b)
+- Sidebar sets section: set list with track counts and + New button ✅ (Phase 5b)
 - Settings panel (API key, output paths, CDJ generation target, BPM range, key notation preference, folder template)
 
 ---
@@ -289,41 +295,36 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 5a — Crate Builder
+### Phase 5a — Crate Builder ✅ Complete
 **Goal:** AI-powered smart playlists — describe a vibe, get a crate full of matching tracks.
 
-- [ ] Crate data model (name, description, Claude's parsed criteria, track associations)
-- [ ] Claude prompt for interpreting free-text crate descriptions into structured criteria
-- [ ] Claude-powered track assignment from library based on criteria
-- [ ] Overlapping assignment (track can be in multiple crates)
-- [ ] Manual add/remove tracks from crates
-- [ ] Refresh crate (re-run assignment, pick up new tracks)
-- [ ] Auto-refresh option for newly ingested tracks
-- [ ] Key compatibility utility module (standalone Camelot wheel math)
-- [ ] Sidebar UI: Rekordbox-style playlist tree with crate list and track counts
-- [ ] Extend XML export to include crate playlists alongside folder-based playlists
-- [ ] API endpoints for crate CRUD, assignment, refresh
-
-**Deliverable:** User describes a vibe, Claude builds a crate. Crates export as Rekordbox playlists.
+**Delivered (10 commits, 814 tests total / 108 new):**
+- Key compatibility module: Camelot wheel harmonic mixing — same key, adjacent, relative major/minor, energy boost/drop, wrap-around; 29 tests (TDD)
+- Crate data models: Crate (name, description, parsed_criteria JSON, auto_refresh) and CrateTrack (many-to-many association with assignment_method), UniqueConstraint on (crate_id, track_id), ORM cascade delete; 8 tests
+- Crate prompt builder: description→criteria parsing, batch track assignment prompts, result parsing with deduplication and invalid ID filtering; 19 tests (TDD)
+- Crate assigner: batched Claude assignment pipeline with SSE progress, cancellation via asyncio.Event, clear_ai_assignments preserves manual additions; 6 tests
+- Crate manager: full CRUD, refresh (clears AI, preserves manual, re-assigns), auto-refresh for newly ingested tracks; 16 tests
+- API routes: 9 endpoints — POST/GET/PUT/DELETE /api/crates, POST /api/crates/{id}/refresh, POST/DELETE /api/crates/{id}/tracks, GET /api/crates/{id}/progress (SSE); 11 tests
+- XML export integration: crate playlists alongside folder-based playlists, sorted alphabetically; 7 tests
+- Frontend: CrateSidebar (playlist tree, context menu with Refresh/Toggle Auto-refresh/Delete), CrateCreateDialog (modal with SSE progress), TrackTable crate filtering
+- Integration tests: end-to-end create→assign→verify, refresh with manual preservation, overlapping assignment, XML export with crates; 12 tests
+- Feature brief: `docs/features/phase-5a-crate-builder.md`
 
 ---
 
-### Phase 5b — Set Planner
+### Phase 5b — Set Planner ✅ Complete
 **Goal:** Given a set description with time and energy arc, suggest a track sequence — then iteratively refine it section by section.
 
-- [ ] Set description model (duration, energy arc, destination BPM, mood, source crates)
-- [ ] Claude prompt for set sequencing with 2–3x track multiplier
-- [ ] Key compatibility integration (optional harmonic mixing suggestions)
-- [ ] BPM transition logic (smooth progressions)
-- [ ] Lock-and-shuffle refinement: user locks tracks in place, then shuffles unlocked slots with alternatives that fit the arc context of the locked neighbours
-- [ ] Segmented mood descriptions: user can change the brief between shuffle passes so different sections target different moods (e.g. meditative → dark/aggressive → uplifting resolution). Locked tracks define segment boundaries; Claude fills each gap according to its local description.
-- [ ] Two shuffle modes: "replace" (swap unlocked tracks for different ones from the pool) and "reorder" (optimise sequence of current unlocked tracks)
-- [ ] Set review UI (lock/unlock per track, segment descriptions, shuffle, reorder, remove)
-- [ ] Export set as Rekordbox playlist
-
-**Deliverable:** Describe a set's emotional arc, lock anchor tracks, refine each section with different mood descriptions, and iteratively lock down the final playlist.
-
-*Depends on Phase 5a — uses crates as the primary source for track selection.*
+**Delivered (10 commits, 930 tests total / 116 new):**
+- BPM transition scoring: threshold-based scoring (0.0–1.0), quality labels (smooth/acceptable/noticeable/jarring), BPM range suggestion for sequence positions; 29 tests (TDD)
+- Set prompt builder: system prompts and tool schemas for initial planning, replace, and reorder operations; track summary builder; result parsers with dedup and validation; 20 tests (TDD)
+- Set planner service: CRUD, lock/unlock with automatic segment recalculation, segment description preservation across recalculation, manual track editing (add/remove/move), candidate pool management, async Claude planning and shuffle operations with SSE progress; 26 tests
+- Data models: SetPlan (name, description, duration, BPM targets, energy arc, source type, harmonic mixing, status), SetTrack (position, lock, candidate flag), SetSegment (position range, description); UniqueConstraint on (set_id, track_id), cascade delete; 11 tests
+- API routes: 14 endpoints — POST/GET /api/sets, GET/PUT/DELETE /api/sets/{id}, POST lock/unlock, PUT segments, POST shuffle, POST/DELETE tracks, POST move, GET candidates, POST export, GET progress (SSE); 12 tests
+- XML export integration: ordered set playlists alongside folder-based and crate playlists, track position order preserved, alphabetical sorting; 8 tests
+- Frontend: SetPlannerView (track sequence table with lock toggle, BPM/key transition indicators, segment dividers with inline editing, collapsible candidate panel, shuffle controls, export button), SetCreateDialog (name, description, duration, BPM start/end, energy arc selector, source type with crate picker, harmonic mixing toggle), SetListPanel, CrateSidebar with Sets section
+- Integration tests: end-to-end create→lock→segment→export, track add/remove/move, segment description preservation, XML playlist order verification, API route lifecycle; 10 tests
+- Feature brief: `docs/features/phase-5b-set-planner.md`
 
 ---
 
@@ -373,6 +374,8 @@ feature/phase-2-metadata-tagging ← merged ✅
 feature/phase-3-claude       ← merged ✅
 feature/phase-2b-organiser   ← merged ✅
 feature/phase-4-rekordbox    ← merged ✅
+feature/phase-5a-crate-builder ← merged ✅
+feature/phase-5b-set-planner   ← merged ✅
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
@@ -437,7 +440,7 @@ Every phase gets a feature brief in `docs/features/` before implementation start
 - Claude Code prompt (initial + continuation)
 - Finalised decisions table
 
-See `docs/features/phase-1-file-ingestion-conversion.md`, `docs/features/phase-2-metadata-tagging.md`, `docs/features/phase-3-claude-integration.md`, `docs/features/phase-2b-file-organisation.md`, and `docs/features/phase-4-rekordbox-xml-export.md` for reference examples.
+See `docs/features/` for all phase briefs (phase-0 through phase-5b).
 
 ### Session Workflow
 

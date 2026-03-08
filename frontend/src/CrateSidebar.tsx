@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import {
   deleteCrate,
   listCrates,
+  listSets,
   refreshCrate,
   updateCrate,
   type CrateSummary,
+  type SetSummary,
 } from "./api/client";
 
 interface CrateSidebarProps {
@@ -12,6 +14,9 @@ interface CrateSidebarProps {
   selectedCrateId: number | null;
   onNewCrate: () => void;
   refreshTrigger: number;
+  onSetSelect?: (setId: number) => void;
+  onNewSet?: () => void;
+  setRefreshTrigger?: number;
 }
 
 export default function CrateSidebar({
@@ -19,8 +24,12 @@ export default function CrateSidebar({
   selectedCrateId,
   onNewCrate,
   refreshTrigger,
+  onSetSelect,
+  onNewSet,
+  setRefreshTrigger,
 }: CrateSidebarProps) {
   const [crates, setCrates] = useState<CrateSummary[]>([]);
+  const [sets, setSets] = useState<SetSummary[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     crateId: number;
     x: number;
@@ -33,9 +42,19 @@ export default function CrateSidebar({
       .catch(() => {});
   }, []);
 
+  const loadSets = useCallback(() => {
+    listSets()
+      .then(setSets)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadCrates();
   }, [loadCrates, refreshTrigger]);
+
+  useEffect(() => {
+    loadSets();
+  }, [loadSets, setRefreshTrigger]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, crateId: number) => {
@@ -140,6 +159,41 @@ export default function CrateSidebar({
           <p className="px-4 py-2 text-xs text-gray-600">No crates yet</p>
         )}
       </div>
+
+      {/* Sets section */}
+      {onSetSelect && (
+        <>
+          <div className="mt-4 px-4 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Sets
+            </span>
+            {onNewSet && (
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300"
+                onClick={onNewSet}
+              >
+                + New
+              </button>
+            )}
+          </div>
+
+          <div className="mt-1 mb-2">
+            {sets.map((set) => (
+              <button
+                key={set.id}
+                className="mx-2 px-3 py-1.5 text-sm text-left rounded w-[calc(100%-1rem)] flex items-center justify-between text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+                onClick={() => onSetSelect(set.id)}
+              >
+                <span className="truncate">{set.name}</span>
+                <span className="ml-2 text-xs text-gray-600">{set.track_count}</span>
+              </button>
+            ))}
+            {sets.length === 0 && (
+              <p className="px-4 py-2 text-xs text-gray-600">No sets yet</p>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Context menu */}
       {contextMenu && (

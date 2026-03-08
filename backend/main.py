@@ -20,6 +20,7 @@ from backend.routes.crates import router as crates_router
 from backend.routes.export import router as export_router
 from backend.routes.ingest import router as ingest_router
 from backend.routes.organise import router as organise_router
+from backend.routes.sets import router as sets_router
 from backend.routes.tagging import router as tagging_router
 
 # Configure logging
@@ -79,6 +80,7 @@ app.include_router(ai_tagging_router)
 app.include_router(organise_router)
 app.include_router(export_router)
 app.include_router(crates_router)
+app.include_router(sets_router)
 
 
 @app.exception_handler(RekordBotError)

@@ -820,6 +820,275 @@ export function removeTracksFromCrate(
   });
 }
 
+// --- Phase 5b: Set Planner API ---
+
+/** Set summary (list view). */
+export interface SetSummary {
+  id: number;
+  name: string;
+  description: string;
+  track_count: number;
+  candidate_count: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Set track in the detail view. */
+export interface SetTrackItem {
+  track_id: number;
+  position: number;
+  is_locked: boolean;
+  is_candidate: boolean;
+  title: string | null;
+  artist: string | null;
+  bpm: number | null;
+  key: number | null;
+  key_display: string | null;
+  energy: number | null;
+  mood: string | null;
+  genre: string | null;
+}
+
+/** Set segment. */
+export interface SetSegmentItem {
+  id: number;
+  set_id: number;
+  start_position: number;
+  end_position: number;
+  description: string | null;
+}
+
+/** Set detail (full view). */
+export interface SetDetail {
+  id: number;
+  name: string;
+  description: string;
+  duration_minutes: number | null;
+  target_bpm_start: number | null;
+  target_bpm_end: number | null;
+  energy_arc: string | null;
+  source_type: string;
+  source_crate_ids: number[] | null;
+  harmonic_mixing: boolean;
+  status: string;
+  tracks: SetTrackItem[];
+  candidates: SetTrackItem[];
+  segments: SetSegmentItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+/** Set create request. */
+export interface SetCreateRequest {
+  name: string;
+  description: string;
+  source_type?: string;
+  source_crate_ids?: number[];
+  duration_minutes?: number;
+  target_bpm_start?: number;
+  target_bpm_end?: number;
+  energy_arc?: string;
+  harmonic_mixing?: boolean;
+}
+
+/** Set create response. */
+export interface SetCreateResponse {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  message: string;
+}
+
+/** Set update request. */
+export interface SetUpdateRequest {
+  name?: string;
+  description?: string;
+  duration_minutes?: number;
+  target_bpm_start?: number;
+  target_bpm_end?: number;
+  energy_arc?: string;
+  harmonic_mixing?: boolean;
+}
+
+/** Shuffle mode type. */
+export type ShuffleMode = "replace" | "reorder";
+
+/** Shuffle response. */
+export interface ShuffleResponse {
+  mode: string;
+  tracks_changed: number;
+  errors: string[];
+  message: string;
+}
+
+/** List all sets. */
+export function listSets(): Promise<SetSummary[]> {
+  return request<SetSummary[]>("/api/sets");
+}
+
+/** Get set detail. */
+export function getSet(setId: number): Promise<SetDetail> {
+  return request<SetDetail>(`/api/sets/${setId}`);
+}
+
+/** Create a new set. */
+export function createSet(body: SetCreateRequest): Promise<SetCreateResponse> {
+  return request<SetCreateResponse>("/api/sets", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Update a set. */
+export function updateSet(
+  setId: number,
+  body: SetUpdateRequest,
+): Promise<{ id: number; name: string; description: string; status: string; message: string }> {
+  return request(`/api/sets/${setId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Delete a set. */
+export function deleteSet(setId: number): Promise<{ status: string; set_id: number }> {
+  return request(`/api/sets/${setId}`, { method: "DELETE" });
+}
+
+/** Lock a track at a position. */
+export function lockTrack(
+  setId: number,
+  position: number,
+): Promise<{ status: string; set_id: number; position: number }> {
+  return request(`/api/sets/${setId}/lock/${position}`, { method: "POST" });
+}
+
+/** Unlock a track at a position. */
+export function unlockTrack(
+  setId: number,
+  position: number,
+): Promise<{ status: string; set_id: number; position: number }> {
+  return request(`/api/sets/${setId}/unlock/${position}`, { method: "POST" });
+}
+
+/** Update a segment description. */
+export function updateSegment(
+  setId: number,
+  segmentId: number,
+  description: string | null,
+): Promise<{ status: string; segment_id: number; description: string | null }> {
+  return request(`/api/sets/${setId}/segments/${segmentId}`, {
+    method: "PUT",
+    body: JSON.stringify({ description }),
+  });
+}
+
+/** Shuffle unlocked tracks. */
+export function shuffleSet(setId: number, mode: ShuffleMode): Promise<ShuffleResponse> {
+  return request<ShuffleResponse>(`/api/sets/${setId}/shuffle`, {
+    method: "POST",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+/** Add a track to a set at a position. */
+export function addTrackToSet(
+  setId: number,
+  trackId: number,
+  position: number,
+): Promise<{ status: string; set_id: number; track_id: number; position: number }> {
+  return request(`/api/sets/${setId}/tracks`, {
+    method: "POST",
+    body: JSON.stringify({ track_id: trackId, position }),
+  });
+}
+
+/** Remove a track from a set at a position. */
+export function removeTrackFromSet(
+  setId: number,
+  position: number,
+): Promise<{ status: string; set_id: number; position: number }> {
+  return request(`/api/sets/${setId}/tracks/${position}`, { method: "DELETE" });
+}
+
+/** Move a track within a set. */
+export function moveTrackInSet(
+  setId: number,
+  fromPosition: number,
+  toPosition: number,
+): Promise<{
+  status: string;
+  set_id: number;
+  from_position: number;
+  to_position: number;
+}> {
+  return request(`/api/sets/${setId}/tracks/move`, {
+    method: "POST",
+    body: JSON.stringify({ from_position: fromPosition, to_position: toPosition }),
+  });
+}
+
+/** Get candidate pool for a set. */
+export function getCandidates(
+  setId: number,
+): Promise<SetTrackItem[]> {
+  return request<SetTrackItem[]>(`/api/sets/${setId}/candidates`);
+}
+
+/** Export a set as a Rekordbox playlist. */
+export function exportSet(
+  setId: number,
+): Promise<{
+  status: string;
+  set_id: number;
+  set_name: string;
+  tracks_in_set: number;
+  output_path: string;
+}> {
+  return request(`/api/sets/${setId}/export`, { method: "POST" });
+}
+
+/** Set planner SSE progress event. */
+export interface SetPlannerProgressEvent {
+  event: string;
+  data: string;
+}
+
+/** Connect to set planner SSE progress stream. */
+export function connectSetProgress(
+  setId: number,
+  onEvent: (eventType: string, data: string) => void,
+  onComplete?: () => void,
+): EventSource {
+  const es = new EventSource(`${BASE_URL}/api/sets/${setId}/progress`);
+
+  const eventTypes = [
+    "set_planning_started",
+    "set_candidate_selection",
+    "set_sequencing",
+    "set_planning_complete",
+    "shuffle_started",
+    "shuffle_complete",
+  ];
+  for (const eventType of eventTypes) {
+    es.addEventListener(eventType, (e) => {
+      onEvent(eventType, e.data);
+      if (eventType.includes("complete")) {
+        onComplete?.();
+        es.close();
+      }
+    });
+  }
+
+  es.addEventListener("error", () => {
+    es.close();
+  });
+
+  return es;
+}
+
 /** Connect to crate assignment SSE progress stream. */
 export function connectCrateProgress(
   crateId: number,

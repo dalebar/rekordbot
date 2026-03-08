@@ -168,11 +168,46 @@ def build_crate_playlists(
             track_ref.set("Key", str(xml_id))
 
 
+def build_set_playlists(
+    sets: list,
+    track_id_map: dict[int, int],
+    parent_node: ET.Element,
+) -> None:
+    """Add set playlists to a parent NODE element.
+
+    Each set becomes a Type=1 playlist NODE with TRACK references in
+    position order. Unlike crate playlists, track order is preserved.
+    Sets are sorted alphabetically by name.
+
+    Args:
+        sets: List of (set_plan, track_ids) tuples where track_ids are DB IDs
+              in position order.
+        track_id_map: Mapping of DB track ID → XML TrackID.
+        parent_node: Parent NODE element to append set playlists to.
+    """
+    for set_plan, set_track_ids in sorted(sets, key=lambda s: s[0].name):
+        xml_ids = []
+        for db_id in set_track_ids:
+            xml_id = track_id_map.get(db_id)
+            if xml_id is not None:
+                xml_ids.append(xml_id)
+
+        set_node = ET.SubElement(parent_node, "NODE")
+        set_node.set("Name", set_plan.name)
+        set_node.set("Type", "1")
+        set_node.set("KeyType", "0")
+        set_node.set("Entries", str(len(xml_ids)))
+        for xml_id in xml_ids:
+            track_ref = ET.SubElement(set_node, "TRACK")
+            track_ref.set("Key", str(xml_id))
+
+
 def build_playlists(
     tracks: list,
     track_id_map: dict[int, int],
     output_directory: str,
     crates: list | None = None,
+    sets: list | None = None,
 ) -> ET.Element:
     """Build the PLAYLISTS XML element with ROOT and folder structure.
 
@@ -181,6 +216,7 @@ def build_playlists(
         track_id_map: Mapping of DB track ID → XML TrackID.
         output_directory: Base output directory for folder-based playlists.
         crates: Optional list of (crate, track_ids) tuples for crate playlists.
+        sets: Optional list of (set_plan, track_ids) tuples for set playlists.
 
     Returns:
         PLAYLISTS element with full playlist tree.
@@ -199,9 +235,14 @@ def build_playlists(
     # Add crate playlists after folder-based playlists
     if crates:
         build_crate_playlists(crates, track_id_map, rekordbot_node)
-        # Update count
         current_count = int(rekordbot_node.get("Count", "0"))
         rekordbot_node.set("Count", str(current_count + len(crates)))
+
+    # Add set playlists after crate playlists
+    if sets:
+        build_set_playlists(sets, track_id_map, rekordbot_node)
+        current_count = int(rekordbot_node.get("Count", "0"))
+        rekordbot_node.set("Count", str(current_count + len(sets)))
 
     root_node.append(rekordbot_node)
 
@@ -213,6 +254,7 @@ def build_xml(
     key_notation: str,
     output_directory: str,
     crates: list | None = None,
+    sets: list | None = None,
 ) -> tuple[ET.ElementTree, dict[int, int], list[str]]:
     """Build a complete Rekordbox XML document.
 
@@ -221,6 +263,7 @@ def build_xml(
         key_notation: Key notation preference for Tonality field.
         output_directory: Base output directory for playlist generation.
         crates: Optional list of (crate, track_ids) tuples for crate playlists.
+        sets: Optional list of (set_plan, track_ids) tuples for set playlists.
 
     Returns:
         Tuple of (ElementTree, track ID map, warnings list).
@@ -240,7 +283,7 @@ def build_xml(
     root.append(collection)
 
     # PLAYLISTS
-    playlists = build_playlists(tracks, track_id_map, output_directory, crates=crates)
+    playlists = build_playlists(tracks, track_id_map, output_directory, crates=crates, sets=sets)
     root.append(playlists)
 
     tree = ET.ElementTree(root)
