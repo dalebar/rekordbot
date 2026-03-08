@@ -111,17 +111,17 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ Rekordbox-style tag review UI with sortable table, column visibility toggle, inline editing
 - ✅ Analysis pipeline separate from ingestion (tracks analysed after import, not during)
 
-### Module B2 — File Organisation & Structure (Phase 2b)
-- User-configurable folder template (default `{artist}/{album}/{title}`, with fallback syntax `{variable|"literal"}`)
-- Automated organisation pass — proposes moves based on enriched tags from Phases 1–3
-- Confidence scoring — flags ambiguous cases (missing tags, VA compilations, bootlegs, low AI confidence) for human review
-- Review queue UI: ambiguous tracks surfaced with Claude-powered placement suggestions (reuses Module C's client infrastructure)
-- "Decide once, remember forever" preference engine — user decisions saved as rules (`artist_folder`, `va_handling`, `custom_path`) and applied to future imports
-- Handles edge cases: bootlegs, white labels, VA compilations, remixer vs original artist ambiguity
-- Dry-run default — proposes folder structure without moving anything; batch approval for high-confidence, individual review for ambiguous
-- Path collision handling before moving (suffix `_1`, `_2`); exact duplicate detection via Phase 1's SHA-256 hash (near-duplicate audio fingerprinting deferred)
-- Files are only moved once user has approved — no silent background renaming
-- Runs *after* AI tagging (uses enriched metadata including genre, mood, energy) and *before* Rekordbox XML export (so paths are final)
+### Module B2 — File Organisation & Structure ✅ (Phase 2b — Complete)
+- ✅ User-configurable folder template (default `{artist}/{album}/{title}`, with fallback syntax `{variable|"literal"}`)
+- ✅ Automated organisation pass — proposes moves based on enriched tags from Phases 1–3
+- ✅ Confidence scoring — flags ambiguous cases (missing tags, VA compilations, bootlegs, low AI confidence) for human review
+- ✅ Review queue UI: ambiguous tracks surfaced with Claude-powered placement suggestions (reuses Module C's client infrastructure)
+- ✅ "Decide once, remember forever" preference engine — user decisions saved as rules (`artist_folder`, `va_handling`, `custom_path`) and applied to future imports
+- ✅ Handles edge cases: bootlegs, white labels, VA compilations, remixer vs original artist ambiguity
+- ✅ Dry-run default — proposes folder structure without moving anything; batch approval for high-confidence, individual review for ambiguous
+- ✅ Path collision handling before moving (suffix `_1`, `_2`); exact duplicate detection via Phase 1's SHA-256 hash (near-duplicate audio fingerprinting deferred)
+- ✅ Files are only moved once user has approved — no silent background renaming
+- ✅ Runs *after* AI tagging (uses enriched metadata including genre, mood, energy) and *before* Rekordbox XML export (so paths are final)
 
 ### Module C — Claude AI Layer ✅ (Phase 3 — Complete)
 - ✅ Anthropic SDK integration with rate limiting (timestamp-based throttle) and exponential backoff retry on 429/529
@@ -165,6 +165,9 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - Rekordbox-style tag review table with column visibility toggle, inline editing, confidence indicators ✅ (Phase 2)
 - AI tagging controls: AI Tag button, progress bar with token usage summary, AI filter modes ✅ (Phase 3)
 - AI-enriched columns: mood, energy (colour-coded), subgenre, AI confidence (colour-coded), genre tooltip with AI reasoning ✅ (Phase 3)
+- Organisation controls: propose/approve buttons, progress bar, organisation filter modes ✅ (Phase 2b)
+- Review queue: ambiguous track review with accept/edit/skip, preference rule creation ✅ (Phase 2b)
+- Preference rules panel: view and delete saved rules ✅ (Phase 2b)
 - Crate sidebar
 - Settings panel (API key, output paths, CDJ generation target, BPM range, key notation preference, folder template)
 
@@ -220,23 +223,6 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 2b — File Organisation & Structure
-**Goal:** Clean metadata now drives a clean, user-approved file structure before anything touches Rekordbox.
-
-- [ ] Template engine (configurable folder pattern with `{variable|"fallback"}` syntax, default `{artist}/{album}/{title}`)
-- [ ] Automated organisation pass — proposes moves based on enriched tags, confidence-scored
-- [ ] Confidence scoring — flags ambiguous cases (missing tags, VA, bootlegs, low AI confidence, multiple fallbacks)
-- [ ] Claude-powered reasoning for ambiguous tracks (reuses Phase 3's ClaudeClient, optional — works without API key)
-- [ ] Review queue UI — ambiguous tracks with accept/edit/skip actions, Claude suggestions alongside template proposals
-- [ ] Preference engine — user decisions saved as rules (`artist_folder`, `va_handling`, `custom_path`) and applied automatically
-- [ ] Dry-run default — proposes structure without moving anything; batch approval for high-confidence, individual review for ambiguous
-- [ ] File mover with collision handling, empty directory cleanup, DB path updates
-- [ ] Confirmed moves written to DB (so Rekordbox XML uses final paths)
-
-**Deliverable:** Files in a clean, user-approved folder structure. No files moved without explicit confirmation. Feature brief: `docs/features/phase-2b-file-organisation.md`
-
----
-
 ### Phase 3 — Claude Integration ✅ Complete
 **Goal:** Claude enriches tags beyond what algorithms can do.
 
@@ -248,6 +234,25 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 - Track model: subgenre, mood, energy (1–10), ai_confidence (high/medium/low), ai_reasoning, source_genre, ai_status
 - Frontend: TrackTable with mood, energy (colour-coded), AI confidence columns, genre tooltip with AI reasoning, AI filter modes; AnalysisControls with AI Tag button, progress bar, token usage summary
 - Feature brief: `docs/features/phase-3-claude-integration.md`
+
+---
+
+### Phase 2b — File Organisation & Structure ✅ Complete
+**Goal:** Clean metadata now drives a clean, user-approved file structure before anything touches Rekordbox.
+
+**Delivered (11 commits, 602 tests total / 140 new):**
+- Template engine: configurable folder templates with fallback syntax (`{variable|"literal"}`), chained fallbacks, path sanitisation (unsafe chars, unicode preserved), output path building with extension derivation; 37 tests (TDD)
+- Confidence scorer: base 0.5 scoring with deltas for metadata presence/absence, VA compilation detection (Various Artists, VA, V/A patterns), bootleg indicator detection (word-boundary regex); 34 tests (TDD)
+- Preference store: CRUD for artist_folder/va_handling/custom_path rules, normalised key matching (lowercase), apply_rules() with priority ordering (custom_path > artist_folder > va_handling); 16 tests (TDD)
+- Claude reasoner: placement suggestions for ambiguous tracks via tool use, batch processing, reuses Phase 3 ClaudeClient; 11 tests (TDD)
+- File mover: shutil.move wrapped in asyncio.to_thread(), collision handling (_1, _2 suffix), post-move verification, empty directory cleanup (bottom-up with safety bounds); 12 tests
+- Organiser pipeline: two-phase orchestrator (propose + execute), SSE progress events, cancellation support, optional Claude enrichment for ambiguous tracks; 6 tests
+- API routes: POST /api/organise/propose, GET /api/organise/progress (SSE), POST /api/organise/cancel, GET /api/organise/proposal, POST /api/organise/approve, POST /api/organise/resolve/{id}, GET/POST/DELETE /api/preferences; 19 tests
+- Track model: proposed_path, previous_output_path, organisation_status (unorganised/proposed/review_needed/organised), organisation_confidence, organisation_reasoning
+- PreferenceRule model: rule_type + key UniqueConstraint, normalised key matching
+- Frontend: OrganiseControls (propose/approve buttons, emerald progress bar, organisation filter modes), ReviewQueue (accept/skip/custom path), PreferenceRulesPanel (CRUD), TrackTable organisation_status column
+- Integration tests: end-to-end propose→approve flow, resolve flow, preference rule application, re-organisation after metadata changes; 5 tests
+- Feature brief: `docs/features/phase-2b-file-organisation.md`
 
 ---
 
@@ -323,8 +328,8 @@ feature/phase-0-scaffold     ← merged ✅
 feature/phase-1-converter    ← merged ✅
 feature/phase-2-metadata-tagging ← merged ✅
 feature/phase-3-claude       ← merged ✅
-feature/phase-2b-organiser   ← next
-feature/phase-4-rekordbox
+feature/phase-2b-organiser   ← merged ✅
+feature/phase-4-rekordbox    ← next
 feature/phase-5-crates
 feature/phase-6-polish
 ```
@@ -391,7 +396,7 @@ Every phase gets a feature brief in `docs/features/` before implementation start
 - Claude Code prompt (initial + continuation)
 - Finalised decisions table
 
-See `docs/features/phase-1-file-ingestion-conversion.md`, `docs/features/phase-2-metadata-tagging.md`, and `docs/features/phase-3-claude-integration.md` for reference examples.
+See `docs/features/phase-1-file-ingestion-conversion.md`, `docs/features/phase-2-metadata-tagging.md`, `docs/features/phase-3-claude-integration.md`, and `docs/features/phase-2b-file-organisation.md` for reference examples.
 
 ### Session Workflow
 
@@ -437,6 +442,4 @@ These questions were raised during initial planning and resolved in Session 1. R
 | Free tool vs freemium? | No licensing/auth layer. Personal use first; monetisation deferred. |
 | librosa vs aubio? | librosa from day 1. Better accuracy for both BPM and key detection. Heavier dependency (numpy, scipy, numba) but worth it. Decision revised in Phase 2 planning (Session 4). |
 | Async vs sync SQLAlchemy? | Sync. Async adds complexity for no benefit on single-user desktop app with local SQLite. |
-| Alembic migrations? | Deferred to Phase 6. During development, recreate dev database on schema changes. |
-| pyproject.toml vs requirements.txt? | pyproject.toml + uv exclusively. No requirements.txt. |
-| Rekordbox XML import? | Deferred to Phase 4b. Export-only is sufficient for initial workflow. |
+| Alembic migrations? | Deferred to Phase 6. During dev, schema changes handled by recreating the dev database. |
