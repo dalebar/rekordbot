@@ -375,7 +375,7 @@ feature/phase-3-claude       ← merged ✅
 feature/phase-2b-organiser   ← merged ✅
 feature/phase-4-rekordbox    ← merged ✅
 feature/phase-5a-crate-builder ← merged ✅
-feature/phase-5b-set-planner   ← current
+feature/phase-5b-set-planner   ← merged ✅
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
