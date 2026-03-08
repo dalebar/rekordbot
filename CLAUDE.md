@@ -416,6 +416,11 @@ class Settings(BaseSettings):
     ai_model: str = "claude-sonnet-4-20250514"
     ai_batch_size: int = 20
     ai_max_requests_per_minute: int = 10
+
+    # Phase 2b: Organisation settings
+    folder_template: str = "{artist}/{album}/{title}"
+    organise_confidence_threshold: float = 0.7
+    organise_unknown_fallback: str = "Unsorted"
 ```
 
 **Environment variable naming:** All env vars are prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`, `REKORDBOT_LOG_LEVEL=DEBUG`).
