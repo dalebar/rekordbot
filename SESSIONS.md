@@ -187,3 +187,51 @@ Phase 2 implementation — Metadata & Tagging, from feature brief to fully worki
 ### What's next
 - Merge `feature/phase-2-metadata-tagging` to `develop`
 - Begin Phase 2b (File Organisation) or Phase 3 (Claude Integration)
+
+---
+
+## Session 5 — 2026-03-08
+
+### What was worked on
+Phase 3 implementation — Claude AI Integration, from feature brief to fully working AI tagging pipeline with UI.
+
+### Summary
+- Created branch `feature/phase-3-claude` from `develop`
+- Implemented all 8 steps of the Phase 3 build plan in order:
+  1. **Dependencies, config & cleanup** — Added anthropic SDK; added ai_model, ai_batch_size, ai_max_requests_per_minute to Settings; added AiTagError exception; deleted dead TrackList.tsx (superseded by TrackTable in Phase 2)
+  2. **Track model updates** — Replaced placeholder AI columns with spec-compliant ones: subgenre, mood, energy (1–10), ai_confidence (high/medium/low), ai_reasoning, source_genre, ai_status (untagged/ai_tagged/ai_tags_written/ai_failed); 2 tests
+  3. **Prompt builder (TDD)** — System prompt with DJ-centric genre taxonomy (~50 genres), tool use schema for structured output, build_track_summary(), build_batch_message(), group_tracks_into_batches() with artist grouping optimisation, parse_tool_result() with energy clamping and confidence validation; 34 tests
+  4. **Claude client** — Anthropic SDK wrapper with RateLimiter (timestamp-based throttle), exponential backoff retry on 429/529 (max 3 retries), TokenUsage tracking, cost estimation ($3/MTok input, $15/MTok output), validate_api_key(); 11 tests
+  5. **AI tagger pipeline** — AiTagger orchestrator with AiTagPipelineResult, _process_batch() with per-batch error isolation, cancellation via asyncio.Event, SSE event_generator() emitting ai_tag_batch_progress and ai_tag_complete events, source genre preservation; 8 tests
+  6. **API routes** — POST /api/tracks/ai-tag, GET /api/tracks/ai-tag/progress (SSE), POST /api/tracks/ai-tag/cancel, GET /api/tracks/ai-tag/status, POST /api/tracks/ai-tag/validate-key; 11 tests
+  7. **Frontend** — Extended TrackTable with 5 new columns (subgenre, mood, energy, ai_confidence, ai_status), energy colour coding (1–3 blue, 4–6 neutral, 7–8 amber, 9–10 red), AI confidence colour coding (high=green, medium=amber, low=red), genre tooltip showing AI reasoning, inline editing for new fields, ai_tagged/not_ai_tagged filter modes; Extended AnalysisControls with purple AI Tag button (disabled without API key), AI progress bar with count, token usage summary after completion, dismiss button; Extended API client with all AI tagging types and endpoints
+  8. **Integration tests & docs** — End-to-end AI tag flow, genre revert after AI tagging, re-tagging already-tagged tracks, missing API key error handling, write-tags ai_status transition; updated CLAUDE.md with Phase 3 status and repo structure; 7 tests
+- **Total: 462 tests passing (72 new), 8 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **Pre-commit not installed** — `python3: No module named pre_commit` after environment setup. Fixed with `uv pip install pre-commit` after activating venv.
+2. **pytest not found** — Dev dependencies were in `[project.optional-dependencies]` not `[dependency-groups]`. Fixed with `uv pip install -e ".[dev]"`.
+3. **Ruff E501 in system prompt** — Long lines in multiline string literal can't use `# noqa`. Fixed by extracting `_GENRE_LIST` and `_MOOD_EXAMPLES` helper variables with line continuations.
+4. **mypy FakeTrack.id** — Test helper class needed explicit type annotations on class attributes to satisfy mypy.
+5. **mypy dict annotation** — `tool_input` dict needed explicit `dict[str, list[object]]` type annotation.
+6. **Ruff B904 raise from** — 7 occurrences of `raise AiTagError(...)` inside except blocks needed `from None` or `from e`.
+7. **AsyncMock making sync methods async** — `get_token_usage()` is sync but `AsyncMock()` made it return a coroutine. Fixed by using `MagicMock()` for the client and explicitly setting `mock_client.tag_batch = AsyncMock()`.
+8. **Cancellation test design** — `cancel()` before `tag_tracks()` didn't work because the method clears the cancel event at start. Redesigned test to cancel during first batch processing via `side_effect`.
+9. **mypy Track | None in loop** — `track_map.get()` returns `Track | None` but loop variable `track` was already typed as `Track`. Fixed by using `matched_track` variable name.
+10. **SQLite "no such column: tracks.subgenre"** — Dev database had old schema. Fixed by deleting `rekordbot_dev.db` and letting `init_db()` recreate it.
+11. **Test isolation between test files** — `test_ai_tagging_routes.py` left data in DB that caused `test_ingest_routes.py::test_list_tracks_empty` to fail. Fixed by adding track cleanup and module state reset to conftest.py's shared `client` fixture.
+
+### Key decisions made
+1. Tool use (function calling) for structured output — guarantees parseable JSON with exact field names, types, and constraints
+2. Artist grouping in batches — tracks by the same artist are kept together to help Claude recognise stylistic patterns
+3. Source genre preservation follows existing source_bpm/source_key pattern — original genre saved before AI overwrites it, enabling revert
+4. Timestamp-based rate limiting (not token bucket) — simpler, sufficient for single-user desktop app
+5. Per-batch error isolation — one batch failing doesn't abort the entire pipeline
+6. Purple colour for AI Tag button — visually distinguishes from blue Analyse button
+7. Energy colour coding: blue (low/chill) → neutral → amber (high) → red (peak) — intuitive for DJs
+8. Token usage summary shown after completion with dismiss button — cost transparency without cluttering UI
+9. Shared conftest.py `client` fixture updated with track cleanup — prevents cross-file test pollution
+
+### What's next
+- Merge `feature/phase-3-claude` to `develop`
+- Begin Phase 2b (File Organisation) — template engine, automated org proposals, confidence scoring, review queue
