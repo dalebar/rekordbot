@@ -602,6 +602,46 @@ export function deletePreference(ruleId: number): Promise<{ status: string; rule
   return request(`/api/preferences/${ruleId}`, { method: "DELETE" });
 }
 
+// --- Phase 4: Rekordbox XML Export API ---
+
+/** Export result from the backend. */
+export interface ExportResult {
+  tracks_exported: number;
+  tracks_skipped: number;
+  playlists_created: number;
+  output_path: string;
+  warnings: string[];
+}
+
+/** Export status response. */
+export interface ExportStatus {
+  status: string;
+  last_export: {
+    timestamp: string;
+    tracks_exported: number;
+    output_path: string;
+  } | null;
+}
+
+/** Export request options. */
+export interface ExportOptions {
+  track_ids?: number[];
+  output_path?: string;
+}
+
+/** Trigger Rekordbox XML export. */
+export function exportRekordboxXml(options?: ExportOptions): Promise<ExportResult> {
+  return request<ExportResult>("/api/export/rekordbox", {
+    method: "POST",
+    body: JSON.stringify(options ? { options } : {}),
+  });
+}
+
+/** Get export status. */
+export function getExportStatus(): Promise<ExportStatus> {
+  return request<ExportStatus>("/api/export/rekordbox/status");
+}
+
 /** Connect to organisation SSE progress stream. Returns an EventSource. */
 export function connectOrganiseProgress(
   onEvent: (event: OrganiseProgressEvent) => void,
