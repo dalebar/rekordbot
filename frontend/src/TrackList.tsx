@@ -42,13 +42,8 @@ export default function TrackList({ refreshTrigger }: TrackListProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-300">
-          Library ({total} tracks)
-        </h3>
-        <button
-          onClick={loadTracks}
-          className="text-xs text-gray-500 hover:text-gray-300"
-        >
+        <h3 className="text-sm font-medium text-gray-300">Library ({total} tracks)</h3>
+        <button onClick={loadTracks} className="text-xs text-gray-500 hover:text-gray-300">
           Refresh
         </button>
       </div>
@@ -68,28 +63,19 @@ export default function TrackList({ refreshTrigger }: TrackListProps) {
           </thead>
           <tbody>
             {tracks.map((track) => (
-              <tr
-                key={track.id}
-                className="border-b border-gray-800/50 text-gray-400"
-              >
+              <tr key={track.id} className="border-b border-gray-800/50 text-gray-400">
                 <td className="max-w-48 truncate py-1.5 pr-4" title={track.file_path}>
                   {track.file_path.split("/").pop()}
                 </td>
-                <td className="py-1.5 pr-4">
-                  {track.source_codec ?? track.source_format ?? "—"}
-                </td>
-                <td className="py-1.5 pr-4 uppercase">
-                  {track.output_format ?? "—"}
-                </td>
+                <td className="py-1.5 pr-4">{track.source_codec ?? track.source_format ?? "—"}</td>
+                <td className="py-1.5 pr-4 uppercase">{track.output_format ?? "—"}</td>
                 <td className="py-1.5 pr-4">
                   {track.source_bitrate ? `${track.source_bitrate} kbps` : "—"}
                 </td>
                 <td className="py-1.5 pr-4">
                   {track.duration ? formatDuration(track.duration) : "—"}
                 </td>
-                <td className="py-1.5 pr-4">
-                  {formatAction(track.conversion_action)}
-                </td>
+                <td className="py-1.5 pr-4">{formatAction(track.conversion_action)}</td>
                 <td className="py-1.5">
                   {track.quality_warning ? (
                     <span className="text-yellow-400">Low quality</span>

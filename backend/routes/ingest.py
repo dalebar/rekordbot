@@ -5,13 +5,12 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse  # type: ignore[import-not-found]
 
 from backend.config import settings
 from backend.models.database import SessionLocal
-from backend.models.track import Track
 from backend.services.queue import ProcessingQueue
 
 logger = logging.getLogger(__name__)
@@ -44,33 +43,6 @@ class IngestResponse(BaseModel):
     batch_id: str
     total_files: int
     message: str
-
-
-class TrackResponse(BaseModel):
-    """Serialized track for API responses."""
-
-    id: int
-    file_path: str
-    source_path: str | None
-    source_format: str | None
-    source_codec: str | None
-    source_bitrate: int | None
-    output_format: str | None
-    duration: float | None
-    quality_warning: bool
-    conversion_action: str | None
-    imported_at: str | None
-
-    model_config = {"from_attributes": True}
-
-
-class TrackListResponse(BaseModel):
-    """Response for GET /api/tracks."""
-
-    tracks: list[TrackResponse]
-    total: int
-    limit: int
-    offset: int
 
 
 def _expand_paths(paths: list[str]) -> list[Path]:
@@ -172,38 +144,5 @@ async def ingest_cancel() -> dict:
     return {"status": "cancelling", "message": "Cancellation requested."}
 
 
-@router.get("/tracks", response_model=TrackListResponse)
-async def list_tracks(
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-) -> TrackListResponse:
-    """List all tracks in the database with pagination."""
-    db_session = SessionLocal()
-    try:
-        total = db_session.query(Track).count()
-        tracks = (
-            db_session.query(Track).order_by(Track.id.desc()).offset(offset).limit(limit).all()
-        )
-        return TrackListResponse(
-            tracks=[
-                TrackResponse(
-                    id=t.id,
-                    file_path=t.file_path,
-                    source_path=t.source_path,
-                    source_format=t.source_format,
-                    source_codec=t.source_codec,
-                    source_bitrate=t.source_bitrate,
-                    output_format=t.output_format,
-                    duration=t.duration,
-                    quality_warning=t.quality_warning,
-                    conversion_action=t.conversion_action,
-                    imported_at=t.imported_at.isoformat() if t.imported_at else None,
-                )
-                for t in tracks
-            ],
-            total=total,
-            limit=limit,
-            offset=offset,
-        )
-    finally:
-        db_session.close()
+# NOTE: GET /api/tracks has been moved to backend/routes/tagging.py
+# with enhanced response including analysis metadata.

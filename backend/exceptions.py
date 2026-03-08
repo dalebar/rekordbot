@@ -43,3 +43,10 @@ class TagWriteError(RekordBotError):
 
     def __init__(self, detail: str) -> None:
         super().__init__(error="tag_write_failed", detail=detail, status_code=500)
+
+
+class AnalysisError(RekordBotError):
+    """Raised when audio analysis (BPM/key detection) fails."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(error="analysis_failed", detail=detail, status_code=500)

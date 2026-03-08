@@ -60,6 +60,13 @@ class Track(Base):
     rating: Mapped[int] = mapped_column(Integer, default=0)
     colour: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Analysis provenance (populated by analysis pipeline in Phase 2)
+    source_bpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_key: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bpm_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    key_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    analysis_status: Mapped[str] = mapped_column(Text, default="unanalysed")
+
     # AI enrichment (populated by Claude layer in Phase 3)
     energy: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mood: Mapped[str | None] = mapped_column(Text, nullable=True)

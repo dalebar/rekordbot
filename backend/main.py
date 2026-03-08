@@ -16,6 +16,7 @@ from backend.config import settings
 from backend.exceptions import RekordBotError
 from backend.models.database import init_db
 from backend.routes.ingest import router as ingest_router
+from backend.routes.tagging import router as tagging_router
 
 # Configure logging
 logging.basicConfig(
@@ -69,6 +70,7 @@ app.add_middleware(UnhandledExceptionMiddleware)
 
 # Register routers
 app.include_router(ingest_router)
+app.include_router(tagging_router)
 
 
 @app.exception_handler(RekordBotError)

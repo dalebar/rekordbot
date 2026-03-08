@@ -78,9 +78,7 @@ export default function DropZone({ onBatchStarted }: DropZoneProps) {
       const paths = Array.isArray(result) ? result : [result];
       await startIngest(paths);
     } catch {
-      setError(
-        "Folder dialog requires the Tauri desktop app. Use drag-and-drop in the browser.",
-      );
+      setError("Folder dialog requires the Tauri desktop app. Use drag-and-drop in the browser.");
     }
   }, [startIngest]);
 
@@ -99,9 +97,7 @@ export default function DropZone({ onBatchStarted }: DropZoneProps) {
         <p className="text-lg text-gray-400">
           {isDragging ? "Drop files here" : "Drag audio files or folders here"}
         </p>
-        <p className="mt-2 text-sm text-gray-600">
-          WAV, FLAC, AIFF, MP3, M4A
-        </p>
+        <p className="mt-2 text-sm text-gray-600">WAV, FLAC, AIFF, MP3, M4A</p>
       </div>
 
       <button

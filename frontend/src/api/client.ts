@@ -15,9 +15,7 @@ export interface HealthResponse {
 }
 
 /** Base URL for the backend API. */
-const BASE_URL = import.meta.env.DEV
-  ? "http://127.0.0.1:8420"
-  : "http://127.0.0.1:8420";
+const BASE_URL = import.meta.env.DEV ? "http://127.0.0.1:8420" : "http://127.0.0.1:8420";
 
 /**
  * Typed fetch wrapper that handles error responses.
@@ -70,29 +68,6 @@ export interface IngestResponse {
   message: string;
 }
 
-/** Track as returned by the API. */
-export interface Track {
-  id: number;
-  file_path: string;
-  source_path: string | null;
-  source_format: string | null;
-  source_codec: string | null;
-  source_bitrate: number | null;
-  output_format: string | null;
-  duration: number | null;
-  quality_warning: boolean;
-  conversion_action: string | null;
-  imported_at: string | null;
-}
-
-/** Track list response with pagination. */
-export interface TrackListResponse {
-  tracks: Track[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
 /** SSE progress event data. */
 export interface FileProgressEvent {
   file_path: string;
@@ -123,16 +98,6 @@ export function postIngestCancel(): Promise<{ status: string; message: string }>
   });
 }
 
-/** List all tracks with pagination. */
-export function getTracks(
-  limit = 50,
-  offset = 0,
-): Promise<TrackListResponse> {
-  return request<TrackListResponse>(
-    `/api/tracks?limit=${limit}&offset=${offset}`,
-  );
-}
-
 /** Connect to SSE progress stream. Returns an EventSource. */
 export function connectProgress(
   onEvent: (event: FileProgressEvent) => void,
@@ -151,6 +116,195 @@ export function connectProgress(
   });
 
   es.addEventListener("batch_complete", (e) => {
+    const data = JSON.parse(e.data);
+    onBatchComplete?.(data);
+    es.close();
+  });
+
+  es.addEventListener("error", () => {
+    es.close();
+  });
+
+  return es;
+}
+
+// --- Phase 2: Tagging & Analysis API ---
+
+/** Track as returned by the enhanced API. */
+export interface Track {
+  id: number;
+  file_path: string;
+  source_path: string | null;
+  source_format: string | null;
+  source_codec: string | null;
+  source_bitrate: number | null;
+  output_format: string | null;
+  duration: number | null;
+  quality_warning: boolean;
+  conversion_action: string | null;
+  imported_at: string | null;
+
+  // Metadata
+  title: string | null;
+  artist: string | null;
+  album: string | null;
+  genre: string | null;
+  year: number | null;
+  track_number: number | null;
+  comment: string | null;
+  label: string | null;
+  bpm: number | null;
+  key: number | null;
+  key_display: string | null;
+  rating: number;
+
+  // Analysis
+  analysis_status: string;
+  bpm_confidence: number | null;
+  key_confidence: number | null;
+  source_bpm: number | null;
+  source_key: number | null;
+  has_bpm_conflict: boolean;
+  has_key_conflict: boolean;
+}
+
+/** Track list response with pagination. */
+export interface TrackListResponse {
+  tracks: Track[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** List all tracks with pagination. */
+export function getTracks(limit = 50, offset = 0): Promise<TrackListResponse> {
+  return request<TrackListResponse>(`/api/tracks?limit=${limit}&offset=${offset}`);
+}
+
+/** Analysis request body. */
+export interface AnalyseRequest {
+  track_ids?: number[];
+  options?: {
+    bpm_range_min?: number;
+    bpm_range_max?: number;
+    skip_if_analysed?: boolean;
+  };
+}
+
+/** Analysis response. */
+export interface AnalyseResponse {
+  batch_id: string;
+  total_tracks: number;
+  message: string;
+}
+
+/** Start analysing tracks. */
+export function postAnalyse(body: AnalyseRequest): Promise<AnalyseResponse> {
+  return request<AnalyseResponse>("/api/tracks/analyse", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Cancel current analysis batch. */
+export function postAnalyseCancel(): Promise<{ status: string; message: string }> {
+  return request<{ status: string; message: string }>("/api/tracks/analyse/cancel", {
+    method: "POST",
+  });
+}
+
+/** Write tags request body. */
+export interface WriteTagsRequest {
+  track_ids: number[];
+}
+
+/** Write tags response. */
+export interface WriteTagsResponse {
+  total: number;
+  succeeded: number;
+  failed: number;
+}
+
+/** Write tags to files for selected tracks. */
+export function postWriteTags(body: WriteTagsRequest): Promise<WriteTagsResponse> {
+  return request<WriteTagsResponse>("/api/tracks/write-tags", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Partial track update body. */
+export interface TrackUpdate {
+  title?: string;
+  artist?: string;
+  album?: string;
+  genre?: string;
+  year?: number;
+  track_number?: number;
+  comment?: string;
+  label?: string;
+  bpm?: number;
+  key?: number;
+  rating?: number;
+}
+
+/** Update a single track's metadata. */
+export function updateTrack(trackId: number, update: TrackUpdate): Promise<Track> {
+  return request<Track>(`/api/tracks/${trackId}`, {
+    method: "PUT",
+    body: JSON.stringify(update),
+  });
+}
+
+/** Revert a field to its source value. */
+export function revertField(trackId: number, field: "bpm" | "key"): Promise<Track> {
+  return request<Track>(`/api/tracks/${trackId}/revert/${field}`, {
+    method: "PUT",
+  });
+}
+
+/** Multiply BPM by a factor (2 or 0.5). */
+export function bpmMultiply(trackId: number, factor: 2 | 0.5): Promise<Track> {
+  return request<Track>(`/api/tracks/${trackId}/bpm-multiply`, {
+    method: "PUT",
+    body: JSON.stringify({ factor }),
+  });
+}
+
+/** SSE analysis progress event data. */
+export interface AnalysisProgressEvent {
+  track_id: number;
+  status: "queued" | "processing" | "complete" | "failed";
+  message: string;
+  error?: string;
+  batch_progress: {
+    completed: number;
+    total: number;
+    failed: number;
+  };
+}
+
+/** Connect to analysis SSE progress stream. Returns an EventSource. */
+export function connectAnalysisProgress(
+  onEvent: (event: AnalysisProgressEvent) => void,
+  onBatchComplete?: (data: { total: number; succeeded: number; failed: number }) => void,
+): EventSource {
+  const es = new EventSource(`${BASE_URL}/api/tracks/analyse/progress`);
+
+  const eventTypes = [
+    "analysis_queued",
+    "analysis_processing",
+    "analysis_complete",
+    "analysis_failed",
+  ];
+  for (const eventType of eventTypes) {
+    es.addEventListener(eventType, (e) => {
+      const data = JSON.parse(e.data) as AnalysisProgressEvent;
+      onEvent(data);
+    });
+  }
+
+  es.addEventListener("analysis_batch_complete", (e) => {
     const data = JSON.parse(e.data);
     onBatchComplete?.(data);
     es.close();
