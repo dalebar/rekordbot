@@ -89,140 +89,85 @@ Phase 0 implementation — full project scaffolding from zero to working sidecar
 ### Key decisions made
 1. React 19 (not 18) — Vite scaffolded latest version, no reason to downgrade
 2. Tailwind CSS v4 — new version uses `@import "tailwindcss"` pattern, configured via @tailwindcss/vite plugin
-3. PyInstaller sidecar structure: executable gets target-triple suffix for Tauri, `_internal/` placed alongside it
-4. Lifespan pattern over on_event for FastAPI startup/shutdown hooks
+3. ESLint flat config — v9 default, simpler than legacy .eslintrc hierarchy
+4. PyInstaller `--onedir` confirmed working — `--onefile` would have been simpler for Tauri but `--onedir` is correct for code signing and startup speed
+5. Port 8420 hardcoded in both Rust and Python — conflict detection will be added but not in Phase 0
+6. Health check polling interval: 500ms, up to 30 retries (15 seconds total) — generous enough for cold PyInstaller startup
 
 ### What's next
-- Merge `feature/phase-0-scaffold` to `develop` once manually verified
-- Write Phase 1 feature brief (File Ingestion & Conversion)
-- Begin Phase 1 implementation
+- Phase 1: File Ingestion & Conversion
+- Feature brief to be written in planning chat before implementation begins
 
 ---
 
 ## Session 3 — 2026-03-07
 
 ### What was worked on
-Phase 1 implementation — File Ingestion & Conversion, from feature brief to fully working pipeline.
+Phase 1 planning and implementation — File Ingestion & Conversion.
 
 ### Summary
-- Created branch `feature/phase-1-converter` from `develop`
-- Implemented all 10 steps of the Phase 1 build plan in order:
-  1. **Dependencies & config** — Added sse-starlette, ffprobe_path, output_directory, max_concurrent_conversions, convert_aac_to_mp3 to Settings
-  2. **Track model updates** — Added source_path, source_codec, source_bitrate, source_bit_depth, conversion_action, imported_at; changed file_hash to String(64) with unique index; changed quality_warning from Text to Boolean
-  3. **Format inspector (TDD)** — FileInfo dataclass, parse_ffprobe_output(), determine_lossless(), get_quality_warning(), inspect_file(); 37 tests
-  4. **Conversion decision engine (TDD)** — ConversionAction dataclass, decide_conversion() implementing full decision table; 18 tests
-  5. **Output naming (TDD)** — generate_output_path() with date-batched dirs and collision handling; 12 tests
-  6. **Converter service** — build_ffmpeg_command(), compute_file_hash(), convert_file() orchestrator; 8 tests
-  7. **Processing queue** — ProcessingQueue with asyncio.Semaphore, SSE events, cancellation; 6 tests
-  8. **API routes** — POST /api/ingest, GET /api/ingest/progress (SSE), POST /api/ingest/cancel, GET /api/tracks; 8 tests
-  9. **Frontend** — DropZone, ProcessingQueue, TrackList components; API client extended with ingest/tracks/SSE methods
-  10. **Test fixtures & integration** — 8 audio fixtures (1s silence each), 17 integration tests covering all format paths + duplicate detection
-- **Total: 114 tests passing, 10 clean commits, all pre-commit hooks green**
-
-### Issues encountered and resolved
-1. **ffprobe `bits_per_raw_sample` missing for PCM** — ffprobe uses `bits_per_sample` for PCM codecs and `bits_per_raw_sample` for FLAC/ALAC. Fixed by checking both fields with fallback.
-2. **ffprobe `bits_per_sample=0` for MP3** — Lossy codecs report 0, which was being picked up as a valid bit depth. Fixed by treating 0 as absent.
-3. **sse-starlette missing mypy stubs** — Added `type: ignore[import-not-found]` on the import.
-4. **Pydantic `class Config` deprecation** — Changed to `model_config = {"from_attributes": True}` in TrackResponse.
-5. **Test DB tables not created** — ASGITransport client doesn't trigger FastAPI lifespan; added `init_db()` call in the client fixture.
-6. **Module-level queue state leaking between tests** — Reset `_queue` to None in the client fixture.
-7. **Tauri dialog import fails in Vite build** — `@tauri-apps/api/dialog` doesn't exist in Tauri v2; installed `@tauri-apps/plugin-dialog` and used dynamic import with try/catch for browser fallback.
-8. **Ruff formatting on every commit** — Several files needed reformatting by ruff-format after initial write; fixed on second commit attempt each time.
+- Wrote the full feature brief for Phase 1 (`docs/features/phase-1-file-ingestion-conversion.md`)
+- Discussed and finalised all 8 decisions (AIFF bit depth, output structure, source file handling, concurrency, AAC→MP3, test fixtures, etc.)
+- Implemented all 10 steps of the Phase 1 build plan via Claude Code
+- Feature brief marked as complete
+- All pre-commit hooks passing, all tests green
 
 ### Key decisions made
-1. Track model keeps both `codec` (general) and `source_codec` (Phase 1 provenance) — they serve different purposes
-2. quality_warning changed from Text to Boolean — the warning detail is in the ConversionAction, not stored in DB
-3. Bit depth capped at 24 in ConversionAction (decision engine), not in build_ffmpeg_command (executor just follows the decision)
-4. Source file hash computed before conversion for cross-format duplicate detection
-5. Module-level ProcessingQueue singleton in routes — only one batch at a time
-6. Tauri dialog via dynamic import so the app degrades gracefully in browser dev mode
+1. AIFF bit depth: preserve source, capped at 24-bit
+2. Output directory: `{output_directory}/imports/{YYYY-MM-DD}/`
+3. Source files never touched
+4. Default 2 concurrent ffmpeg conversions
+5. AIFF files always copied to output directory for consistency
+6. SSE via sse-starlette package
+7. AAC→MP3: optional, user-controlled, LAME VBR V0
+8. Test audio fixtures committed as small files (~1s silence each)
 
 ### What's next
 - Merge `feature/phase-1-converter` to `develop`
-- Begin Phase 2 (Metadata & Tagging) — mutagen tag reading/writing, BPM detection, key detection
+- Begin Phase 2 (Metadata & Tagging)
 
 ---
 
-## Session 4 — 2026-03-08
+## Session 4 — 2026-03-07
 
 ### What was worked on
-Phase 2 implementation — Metadata & Tagging, from feature brief to fully working analysis pipeline with Rekordbox-style review UI.
+Phase 2 planning and implementation — Metadata & Tagging.
 
 ### Summary
-- Created branch `feature/phase-2-metadata-tagging` from `develop`
-- Implemented all 11 steps of the Phase 2 build plan in order:
-  1. **Dependencies & config** — Added mutagen, librosa, numpy; added bpm_range_min/max, confidence_threshold, max_concurrent_analyses, default_key_notation to Settings
-  2. **Track model updates** — Added source_bpm, source_key, bpm_confidence, key_confidence, analysis_status columns
-  3. **Key notation mapping (TDD)** — Full Camelot ↔ Open Key ↔ classical key conversion; 171 tests covering all 24 keys × multiple notations
-  4. **Tag reader** — mutagen-based tag extraction from AIFF (ID3v2), MP3 (ID3v2), M4A (MP4 atoms); 24 tests
-  5. **BPM detector (TDD)** — librosa onset/beat_track with configurable half/double-time auto-correction; 20 tests
-  6. **Key detector (TDD)** — librosa chroma + HPSS harmonic separation + Krumhansl-Schmuckler algorithm; 14 tests
-  7. **Tag writer** — ID3v2.3 for AIFF/MP3 (no v1), MP4 atoms for M4A, preserves unmanaged tags; 12 tests
-  8. **Analysis pipeline** — asyncio.Semaphore batch processing, per-track error isolation, SSE progress events; 7 tests
-  9. **API routes** — POST /api/tracks/analyse, SSE progress, cancel, PUT /api/tracks/{id}, revert, bpm-multiply, POST /api/tracks/write-tags, enhanced GET /api/tracks; 15 tests
-  10. **Frontend** — TrackTable (Rekordbox-style sortable table, column visibility toggle via ColumnMenu, inline editing, BPM ×2/÷2, confidence indicators, filter modes), AnalysisControls toolbar with progress bar, TrackDetailPanel side panel
-  11. **Integration tests** — End-to-end ingest→analyse→write flow, tag round-trips, revert/multiply; 13 tests
-- **Total: 390 tests passing (276 new), 12 clean commits, all pre-commit hooks green**
-
-### Issues encountered and resolved
-1. **Stale dev database schema** — After adding new columns to the Track model, the on-disk dev DB didn't have them. `init_db()` in the test client fixture used the dev DB's engine, causing `OperationalError: no such column: tracks.source_bpm`. Fixed by deleting the stale dev DB so `init_db()` would recreate it with all columns. This surfaced twice (after model changes and during route tests).
-2. **AIFF `IffID3.save()` does not support `v1` parameter** — Tag writer initially called `audio.save(v1=0)` for all ID3 formats. AIFF's `IffID3` class doesn't accept this kwarg. Fixed with isinstance-based type detection: MP3 gets `save(v1=0)`, AIFF gets plain `save()`.
-3. **Test isolation / dev DB data leaking** — Tagging route tests inserted data via `SessionLocal` (dev DB). Subsequent tests asserting empty state failed because data persisted. Fixed by adding cleanup logic to the client fixture.
-4. **BPM conflict detection threshold** — Conflict detection used `> 0.5` BPM difference, but test data had exactly 0.5 difference (128.0 vs 127.5). Adjusted test data to clearly exceed the threshold.
-5. **Ruff lint violations on every commit** — Pre-commit hooks caught SIM118 (unnecessary `.keys()`), SIM105 (`try/except/pass` → `contextlib.suppress()`), E501 (line too long), and import ordering issues throughout Phase 2 code. All fixed before committing.
-6. **mypy type errors with numpy/mutagen/librosa** — All three lack mypy stubs; added `type: ignore[import-not-found]` on imports. Integration tests also needed explicit None guards where `float | None` values were used in arithmetic.
-7. **ESLint unused vars in frontend** — Unused imports (`useEffect`) and variables (`confidenceThreshold`) caught during frontend commit. Fixed before committing.
-8. **librosa audioread fallback warnings** — `PySoundFile failed. Trying audioread instead` warnings appeared with M4A files. Known librosa behavior, harmless, documented in Known Issues.
+- Wrote the full feature brief for Phase 2 (`docs/features/phase-2-metadata-tagging.md`)
+- Discussed and finalised all decisions (tag format targets, BPM range, key storage, notation preferences, etc.)
+- Implemented all steps of the Phase 2 build plan via Claude Code
+- Feature brief marked as complete
+- All pre-commit hooks passing, all tests green (390 total)
 
 ### Key decisions made
-1. AIFF vs MP3 tag save divergence — isinstance-based type detection for format-specific save calls rather than a single code path
-2. TDD for pure logic modules (key notation, BPM correction, key correlation); tests-after for framework integration (routes, pipeline)
-3. Key stored internally as integer 1–24 (Camelot wheel mapping), converted to user-preferred notation on display/export
-4. TrackTable replaces TrackList as the primary track view — Rekordbox-style sortable table with inline editing
-5. Pragmatic test isolation fix (clean tracks table in fixture) rather than full test DB rearchitecture
-6. Per-track error isolation in analysis pipeline — one track failing doesn't abort the batch
-7. Confidence scores stored alongside detected values (bpm_confidence, key_confidence) for UI display and conflict detection
-8. Source values preserved (source_bpm, source_key) to enable revert-to-original after edits
+1. librosa for both BPM and key detection (revised from aubio-first plan — librosa more accurate)
+2. Key stored as integer 1–24, Camelot wheel mapping
+3. Key notation: configurable display preference (Camelot, Open Key, classical)
+4. BPM auto-correction: half/double-time detection with configurable range
+5. Tag writer: ID3v2.3 only (no v1), preserves unmanaged tags
+6. Analysis pipeline: asyncio.Semaphore with max_concurrent_analyses=1 default (librosa is CPU-heavy)
 
 ### What's next
 - Merge `feature/phase-2-metadata-tagging` to `develop`
-- Begin Phase 2b (File Organisation) or Phase 3 (Claude Integration)
+- Begin Phase 3 (Claude AI Integration)
 
 ---
 
 ## Session 5 — 2026-03-08
 
 ### What was worked on
-Phase 3 implementation — Claude AI Integration, from feature brief to fully working AI tagging pipeline with UI.
+Phase 3 implementation — Claude AI Integration.
 
 ### Summary
 - Created branch `feature/phase-3-claude` from `develop`
-- Implemented all 8 steps of the Phase 3 build plan in order:
-  1. **Dependencies, config & cleanup** — Added anthropic SDK; added ai_model, ai_batch_size, ai_max_requests_per_minute to Settings; added AiTagError exception; deleted dead TrackList.tsx (superseded by TrackTable in Phase 2)
-  2. **Track model updates** — Replaced placeholder AI columns with spec-compliant ones: subgenre, mood, energy (1–10), ai_confidence (high/medium/low), ai_reasoning, source_genre, ai_status (untagged/ai_tagged/ai_tags_written/ai_failed); 2 tests
-  3. **Prompt builder (TDD)** — System prompt with DJ-centric genre taxonomy (~50 genres), tool use schema for structured output, build_track_summary(), build_batch_message(), group_tracks_into_batches() with artist grouping optimisation, parse_tool_result() with energy clamping and confidence validation; 34 tests
-  4. **Claude client** — Anthropic SDK wrapper with RateLimiter (timestamp-based throttle), exponential backoff retry on 429/529 (max 3 retries), TokenUsage tracking, cost estimation ($3/MTok input, $15/MTok output), validate_api_key(); 11 tests
-  5. **AI tagger pipeline** — AiTagger orchestrator with AiTagPipelineResult, _process_batch() with per-batch error isolation, cancellation via asyncio.Event, SSE event_generator() emitting ai_tag_batch_progress and ai_tag_complete events, source genre preservation; 8 tests
-  6. **API routes** — POST /api/tracks/ai-tag, GET /api/tracks/ai-tag/progress (SSE), POST /api/tracks/ai-tag/cancel, GET /api/tracks/ai-tag/status, POST /api/tracks/ai-tag/validate-key; 11 tests
-  7. **Frontend** — Extended TrackTable with 5 new columns (subgenre, mood, energy, ai_confidence, ai_status), energy colour coding (1–3 blue, 4–6 neutral, 7–8 amber, 9–10 red), AI confidence colour coding (high=green, medium=amber, low=red), genre tooltip showing AI reasoning, inline editing for new fields, ai_tagged/not_ai_tagged filter modes; Extended AnalysisControls with purple AI Tag button (disabled without API key), AI progress bar with count, token usage summary after completion, dismiss button; Extended API client with all AI tagging types and endpoints
-  8. **Integration tests & docs** — End-to-end AI tag flow, genre revert after AI tagging, re-tagging already-tagged tracks, missing API key error handling, write-tags ai_status transition; updated CLAUDE.md with Phase 3 status and repo structure; 7 tests
-- **Total: 462 tests passing (72 new), 8 clean commits, all pre-commit hooks green**
-
-### Issues encountered and resolved
-1. **Pre-commit not installed** — `python3: No module named pre_commit` after environment setup. Fixed with `uv pip install pre-commit` after activating venv.
-2. **pytest not found** — Dev dependencies were in `[project.optional-dependencies]` not `[dependency-groups]`. Fixed with `uv pip install -e ".[dev]"`.
-3. **Ruff E501 in system prompt** — Long lines in multiline string literal can't use `# noqa`. Fixed by extracting `_GENRE_LIST` and `_MOOD_EXAMPLES` helper variables with line continuations.
-4. **mypy FakeTrack.id** — Test helper class needed explicit type annotations on class attributes to satisfy mypy.
-5. **mypy dict annotation** — `tool_input` dict needed explicit `dict[str, list[object]]` type annotation.
-6. **Ruff B904 raise from** — 7 occurrences of `raise AiTagError(...)` inside except blocks needed `from None` or `from e`.
-7. **AsyncMock making sync methods async** — `get_token_usage()` is sync but `AsyncMock()` made it return a coroutine. Fixed by using `MagicMock()` for the client and explicitly setting `mock_client.tag_batch = AsyncMock()`.
-8. **Cancellation test design** — `cancel()` before `tag_tracks()` didn't work because the method clears the cancel event at start. Redesigned test to cancel during first batch processing via `side_effect`.
-9. **mypy Track | None in loop** — `track_map.get()` returns `Track | None` but loop variable `track` was already typed as `Track`. Fixed by using `matched_track` variable name.
-10. **SQLite "no such column: tracks.subgenre"** — Dev database had old schema. Fixed by deleting `rekordbot_dev.db` and letting `init_db()` recreate it.
-11. **Test isolation between test files** — `test_ai_tagging_routes.py` left data in DB that caused `test_ingest_routes.py::test_list_tracks_empty` to fail. Fixed by adding track cleanup and module state reset to conftest.py's shared `client` fixture.
+- Implemented all steps of the Phase 3 build plan
+- Claude client with rate limiting and retry, prompt builder with DJ genre taxonomy, AI tagger pipeline with batch processing and SSE
+- Extended frontend with AI columns, progress bar, token usage summary
+- 462 tests passing (72 new)
 
 ### Key decisions made
-1. Tool use (function calling) for structured output — guarantees parseable JSON with exact field names, types, and constraints
+1. Tool use (function calling) for structured AI output — more reliable than free-text parsing
 2. Artist grouping in batches — tracks by the same artist are kept together to help Claude recognise stylistic patterns
 3. Source genre preservation follows existing source_bpm/source_key pattern — original genre saved before AI overwrites it, enabling revert
 4. Timestamp-based rate limiting (not token bucket) — simpler, sufficient for single-user desktop app
@@ -357,3 +302,55 @@ Phase 4 implementation — Rekordbox XML Export, from feature brief to fully wor
 - Manual Rekordbox import verification (generate XML, import via File → Import Library, verify fields)
 - Merge `feature/phase-4-rekordbox` to `develop`, then to `main`
 - Begin Phase 4b (Rekordbox XML Import) or Phase 5 (Crate Builder & Set Planner)
+
+---
+
+## Session 9 — 2026-03-08
+
+### What was worked on
+Phase 4 close-out — doc fixes, UI wiring, and first real-world Rekordbox import test attempt.
+
+### Summary
+- Reviewed Phase 4 against the phase completion checklist, identified 3 gaps:
+  1. ExportControls not wired into the UI
+  2. Phase 4 not bolded in CLAUDE.md build plan table
+  3. Feature brief status needed updating
+- Applied all 3 fixes via Claude Code:
+  - ExportControls wired into TrackTable.tsx (rendered after OrganiseControls, receives trackCount and onRefresh props)
+  - Phase 4 bolded in CLAUDE.md
+  - Feature brief status already set to "Complete ✅" (was updated earlier in Session 8)
+- Ran first real-world ingestion test with `/Volumes/collection/music/import_test` (15 files: 7 FLAC, 1 AIF, 6 MP3, 1 M4A)
+- Full pipeline executed: ingest → analyse → organise → (export pending)
+- **Discovered Phase 1 bug: AIFF conversion drops all metadata tags**
+  - Root cause: `build_ffmpeg_command()` in `converter.py` does not include `-write_id3v2 1` flag for AIFF output
+  - ffmpeg's AIFF muxer silently drops Vorbis comments / ID3 tags without this flag
+  - Confirmed by ffprobe: source FLAC has full tags (artist, album, genre, label, BPM, etc.), but converted AIFF only has a bare `title`
+  - This affected all 7 FLAC → AIFF conversions (Q Lazzarus tracks) — all had null artist/album/genre in DB, causing them to be flagged as `review_needed` during organisation with confidence 0.0
+  - MP3 and M4A files were unaffected (they use `copy_as_is`, no conversion)
+  - Bug has been latent since Phase 1 — never caught because test fixtures were generated silence files, not real tagged audio
+
+### Issues encountered and resolved
+1. **Repo path changed** — Project directory is `/Users/daleb/Documents/projects/rekordbot`, not `~/Documents/projects/crateai` as referenced in CLAUDE.md. The repo was renamed at some point. CLAUDE.md needs updating.
+2. **Tauri dev script missing** — `make dev-frontend` failed because `package.json` has no `"tauri"` script defined. Workaround: run `npm run dev` for Vite-only frontend, or add `"tauri": "tauri"` to scripts.
+3. **analyse endpoint requires JSON body** — `POST /api/tracks/analyse` returns 422 without a body. Needs `{}` even though all fields are optional (Pydantic requires the body object to be present).
+4. **librosa audioread deprecation** — M4A file triggered PySoundFile fallback to audioread with deprecation warning. Known and harmless (documented in CLAUDE.md Known Issues).
+
+### Key decisions made
+1. The `-write_id3v2 1` fix is a targeted bugfix on the Phase 4 branch — it's a Phase 1 code change but blocking Phase 4 acceptance testing
+2. Re-ingest from clean slate after the fix (delete DB + clear output directory) to get correct metadata for the Rekordbox import test
+3. Created `rekordbox-import-test-guide.md` — step-by-step guide for the full pipeline test including the bugfix
+
+### Unresolved — blocking Phase 4 merge
+- [ ] Apply `-write_id3v2 1` bugfix to `converter.py`
+- [ ] Re-ingest test files from clean slate
+- [ ] Complete full pipeline: ingest → analyse → (AI tag optional) → organise → export
+- [ ] Manual Rekordbox import verification (the actual acceptance test)
+- [ ] Update CLAUDE.md Known Issues with the `-write_id3v2` note
+- [ ] Update CLAUDE.md repo path (rekordbot, not crateai)
+
+### What's next
+1. Apply the AIFF metadata bugfix (Claude Code prompt prepared in test guide)
+2. Re-run the full pipeline with clean data
+3. Complete the Rekordbox import test
+4. If test passes: merge `feature/phase-4-rekordbox` → `develop` → `main`, tag `phase-4-complete`
+5. Decide next phase: Phase 4b (XML Import) or Phase 5 (Crate Builder & Set Planner)
