@@ -464,3 +464,53 @@ Phase 5a implementation — Crate Builder, from feature brief to fully working A
 ### What's next
 - Merge `feature/phase-5a-crate-builder` → `develop`
 - Begin Phase 5b (Set Planner) — energy arc sequencing, lock-and-shuffle refinement, key compatibility
+
+---
+
+## Session 13 — 2026-03-08
+
+### What was worked on
+Phase 5b implementation — Set Planner, from feature brief to fully working AI-powered set planning system.
+
+### Summary
+- Working on branch `feature/phase-5b-set-planner`
+- Implemented all 9 steps of the Phase 5b build plan in order:
+  1. **Config & exceptions** — Added `set_track_duration_minutes: int = 7`, `set_candidate_multiplier: float = 2.5`, `set_max_tracks: int = 50` to Settings; added `SetPlanError` exception
+  2. **Data models** — Created `SetPlan` (name, description, duration_minutes, target_bpm_start/end, energy_arc, source_type, source_crate_ids JSON, harmonic_mixing, status), `SetTrack` (set_id, track_id, position, is_locked, is_candidate) with UniqueConstraint on (set_id, track_id), `SetSegment` (set_id, start/end_track_position, description); cascade delete; 11 tests
+  3. **BPM transition scoring (TDD)** — `score_bpm_transition()` returns 0.0–1.0 using threshold table (0–2 BPM diff = 1.0, 20+ = 0.0), `get_transition_quality()` returns labels (smooth/acceptable/noticeable/jarring/unknown), `suggest_bpm_range()` for sequence position; 29 tests
+  4. **Set prompt builder (TDD)** — System prompts for initial planning, replace, and reorder operations; tool schemas (`plan_set`, `replace_tracks`, `reorder_tracks`); `build_initial_prompt()` with description/tracks/parameters, `parse_initial_result()` with dedup and validation; `build_replace_prompt()` with locked tracks and segments; `build_reorder_prompt()` with lock indicators; result parsers that reject locked track modifications; 20 tests
+  5. **Set planner service** — `SetPlanner` class with SSE event queue and cancellation; CRUD operations (`create_set`, `get_set`, `list_sets`, `update_set`, `delete_set`); `lock_track`/`unlock_track` with automatic `recalculate_segments()`; `recalculate_segments()` rebuilds from locked positions preserving descriptions where boundaries unchanged; manual editing (`add_track_at_position`, `remove_track`, `move_track`); `get_candidates()`; async operations (`plan_initial_sequence`, `shuffle_replace`, `shuffle_reorder`) with Claude API calls; 26 tests
+  6. **API routes** — 14 endpoints: POST/GET `/api/sets`, GET/PUT/DELETE `/api/sets/{id}`, POST lock/unlock, PUT segments, POST shuffle, POST/DELETE tracks, POST move, GET candidates, POST export, GET progress (SSE); Pydantic request/response models; background task pattern with module-level `_planner`; 12 tests (including export route)
+  7. **XML export integration** — Added `build_set_playlists()` to xml_builder.py (preserves track position order, unlike unordered crate playlists); extended `build_playlists()` and `build_xml()` with optional `sets` parameter; added `_load_sets()` to xml_exporter.py (only exports sets with status "complete"); per-set export endpoint; 8 tests
+  8. **Frontend** — `SetPlannerView.tsx` (track sequence table with lock toggle, BPM/key transition indicators, segment dividers with inline editing, collapsible candidate panel, shuffle replace/reorder buttons, export button); `SetCreateDialog.tsx` (name, description, duration, BPM start/end, energy arc selector with custom option, source type with crate picker, harmonic mixing toggle, SSE progress); `SetListPanel.tsx` (set list with status badges and counts); `CrateSidebar.tsx` extended with Sets section (list, counts, + New button); `App.tsx` updated with set planner view switching; API client with all set types and 14 functions
+  9. **Integration tests & docs** — End-to-end create→lock→segment→export, track add/remove/move, segment description preservation across recalculation, XML playlist order verification, set/crate playlist coexistence, API route lifecycle test (create→lock→unlock→export with XML verification); updated CLAUDE.md with Phase 5b status, repo structure, and deliverables; 10 tests
+- **Total: 930 tests passing (116 new), 10 clean commits (including feature brief), all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **SQLite CASCADE not enforced** — Same issue as Phase 5a: tests needed to load relationships before delete and use `expire_all()` after. Changed one test to verify reference instead of cascade.
+2. **mypy `set()` type annotation** — `locked_positions = set()` needed explicit `locked_positions: set[int] = set()` for mypy.
+3. **Ruff SIM105** — `try/except pass` blocks for `json.loads` needed `contextlib.suppress(json.JSONDecodeError, TypeError)`.
+4. **mypy `to_thread` overloaded function** — Added `# type: ignore[arg-type]` on `asyncio.to_thread()` calls with `claude_client.client.messages.create` (same pattern as crate_assigner.py).
+5. **Unique file_path constraint in tests** — `_create_track` helpers generated duplicate paths across tests. Fixed with global counters.
+6. **Route tests using wrong DB** — Tests initially used `db_session` fixture (in-memory) while routes use `SessionLocal` (dev DB). Rewrote to use `SessionLocal` directly.
+7. **Integration test key mismatch** — Segment dict uses `start_track_position` not `start_position`. Fixed after inspecting `get_set()` return format.
+8. **Integration test table isolation** — Non-API tests using `SessionLocal` needed explicit table cleanup. Added `_clean_tables()` helper with `init_db()` call.
+9. **Frontend ESLint errors** — `deleteSet` imported but unused in CrateSidebar (removed); `setRefreshTrigger` state name collided with setter name from another state variable (renamed to `setsRefreshTrigger`).
+10. **Context window exhaustion** — Session exceeded context limit during Step 6 (API routes). Continued from summary in a new context window, completing Steps 6–9.
+11. **Ruff auto-formatting on commits** — Pre-commit ruff-format reformatted files on 5 of 10 commits. Re-staged and committed on second attempt each time.
+
+### Key decisions made
+1. TDD for pure logic modules (BPM transition, set prompt builder); tests-after for service, routes, XML integration
+2. Lock-and-shuffle is the core interaction pattern — locked tracks define segment boundaries, unlocked tracks are replaced or reordered by Claude
+3. Segment recalculation preserves descriptions when boundaries are unchanged — avoids losing user-written mood descriptions during iterative refinement
+4. 2.5x candidate multiplier — Claude suggests more tracks than needed, giving users a deep bench for swaps
+5. Two shuffle modes: "replace" (swap unlocked tracks with candidates) and "reorder" (rearrange unlocked tracks without changing the pool)
+6. Only sets with status "complete" are included in full library XML export — draft/planning sets excluded
+7. Per-set export endpoint triggers full library export with the set included (not standalone XML)
+8. Set playlists appear after crate playlists in the XML, sorted alphabetically, with track order preserved (unlike unordered crate playlists)
+9. Blue colour for set planner buttons — visually distinct from purple (crates/AI), amber (export), emerald (organisation)
+10. SetPlannerView is a full-page view (not a panel), accessed via sidebar set list or SetCreateDialog completion
+
+### What's next
+- Merge `feature/phase-5b-set-planner` → `develop`
+- Decide next phase: Phase 4b (Rekordbox XML Import) or Phase 6 (Polish & Packaging)
