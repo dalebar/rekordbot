@@ -133,13 +133,16 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ AI tagging pipeline separate from ingestion and analysis (tracks tagged after analysis, not during)
 - ✅ User review UI: energy colour coding, AI confidence indicators, genre tooltip with reasoning, AI filter modes
 
-### Module D — Rekordbox XML Export (Phase 4)
-- Map internal DB schema to Rekordbox track schema
-- Generate `rekordbox.xml` with track entries
-- Track paths as `file://localhost/` URIs with percent-encoded path components
-- CDJ generation compatibility handling
-- Export function
-- No TEMPO or POSITION_MARK export initially (track metadata only)
+### Module D — Rekordbox XML Export ✅ (Phase 4 — Complete)
+- ✅ Location encoder: RFC 3986 percent-encoding per path component, `file://localhost/` URI generation
+- ✅ Schema mapper: Track model → Rekordbox XML TRACK attributes (BPM, rating, key, kind, dates, fallbacks)
+- ✅ XML builder: DJ_PLAYLISTS document with PRODUCT, COLLECTION, PLAYLISTS sections
+- ✅ Auto-generated playlists from organised folder hierarchy (All Tracks + per-artist)
+- ✅ Rating scale mapping (0–5 → 0/51/102/153/204/255)
+- ✅ BPM as two-decimal float, Tonality in user's preferred key notation
+- ✅ Export service with configurable output path and warning collection
+- ✅ Manual Rekordbox import test passed — 15 tracks imported, all metadata correct, files playable
+- ✅ No TEMPO or POSITION_MARK export (track metadata only, beat grid deferred)
 
 ### Module D2 — Rekordbox XML Import (Phase 4b — Deferred)
 - Parse existing `rekordbox.xml`
@@ -168,6 +171,7 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - Organisation controls: propose/approve buttons, progress bar, organisation filter modes ✅ (Phase 2b)
 - Review queue: ambiguous track review with accept/edit/skip, preference rule creation ✅ (Phase 2b)
 - Preference rules panel: view and delete saved rules ✅ (Phase 2b)
+- Export controls: Export XML button, result summary with warning expansion ✅ (Phase 4)
 - Crate sidebar
 - Settings panel (API key, output paths, CDJ generation target, BPM range, key notation preference, folder template)
 
@@ -256,20 +260,20 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 4 — Rekordbox XML Export
+### Phase 4 — Rekordbox XML Export ✅ Complete
 **Goal:** Library exports cleanly into Rekordbox.
 
-- [ ] Map internal DB schema to Rekordbox track schema
-- [ ] Write XML entries (track paths as `file://localhost/` URIs, percent-encoded)
-- [ ] CDJ generation compatibility handling
-- [ ] Playlist/crate structure in XML
-- [ ] Export function
-- [ ] Rating scale mapping (0–5 → 0/51/102/153/204/255)
-- [ ] BPM as two-decimal float
-
-**Deliverable:** Generated XML that Rekordbox accepts without complaint.
-
-*Note: Requires a Rekordbox XML research spike before implementation — empirical testing of round-trip import, path encoding edge cases, and AIFF artwork handling.*
+**Delivered (10 commits, 706 tests total / 104 new):**
+- Location encoder: RFC 3986 percent-encoding per path component, `file://localhost/` URI generation, round-trip decodable; 25 tests (TDD)
+- Schema mapper: Track model → Rekordbox XML attribute mapping, BPM/rating/kind/date formatting, key notation conversion, file size/mtime from disk, fallbacks for missing metadata; 35 tests (TDD)
+- XML builder: DJ_PLAYLISTS document construction with PRODUCT/COLLECTION/PLAYLISTS, sequential TrackID assignment, folder-based playlist auto-generation (All Tracks + per-artist), UTF-8 encoding; 19 tests
+- Export service: full pipeline orchestrator, track filtering, warning collection, configurable output path with settings fallback; 9 tests
+- API routes: POST /api/export/rekordbox, GET /api/export/rekordbox/status; 5 tests
+- Frontend: ExportControls (amber Export XML button, result summary, warning expansion), API client types and endpoints
+- Integration tests: end-to-end create→export→parse→verify, location encoding round-trips, playlist structure verification, re-export after metadata changes; 11 tests
+- Bugfix: added `-write_id3v2 1` flag to AIFF conversion command (ffmpeg was silently dropping metadata tags during lossless → AIFF conversion)
+- Manual Rekordbox import test: 15 tracks imported via File → Import Library, all metadata correct, files playable, playlists generated
+- Feature brief: `docs/features/phase-4-rekordbox-xml-export.md`
 
 ---
 
@@ -329,9 +333,7 @@ feature/phase-1-converter    ← merged ✅
 feature/phase-2-metadata-tagging ← merged ✅
 feature/phase-3-claude       ← merged ✅
 feature/phase-2b-organiser   ← merged ✅
-feature/phase-4-rekordbox    ← next
-feature/phase-5-crates
-feature/phase-6-polish
+feature/phase-4-rekordbox    ← merged ✅
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
@@ -396,7 +398,7 @@ Every phase gets a feature brief in `docs/features/` before implementation start
 - Claude Code prompt (initial + continuation)
 - Finalised decisions table
 
-See `docs/features/phase-1-file-ingestion-conversion.md`, `docs/features/phase-2-metadata-tagging.md`, `docs/features/phase-3-claude-integration.md`, and `docs/features/phase-2b-file-organisation.md` for reference examples.
+See `docs/features/phase-1-file-ingestion-conversion.md`, `docs/features/phase-2-metadata-tagging.md`, `docs/features/phase-3-claude-integration.md`, `docs/features/phase-2b-file-organisation.md`, and `docs/features/phase-4-rekordbox-xml-export.md` for reference examples.
 
 ### Session Workflow
 
