@@ -647,6 +647,7 @@ Research completed:
 - mutagen, librosa, numpy, and anthropic have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2/3 services.
 - AIFF files use `IffID3.save()` which does not support the `v1` parameter — tag writer handles this with format-specific save calls.
 - librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
+- ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
 
 ## Phased Build Plan
 

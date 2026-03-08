@@ -51,6 +51,8 @@ class TestBuildFFmpegCommand:
             "pcm_s16be",
             "-f",
             "aiff",
+            "-write_id3v2",
+            "1",
             "/out/song.aiff",
         ]
 
@@ -74,6 +76,8 @@ class TestBuildFFmpegCommand:
             "pcm_s24be",
             "-f",
             "aiff",
+            "-write_id3v2",
+            "1",
             "/out/song.aiff",
         ]
 
@@ -97,6 +101,8 @@ class TestBuildFFmpegCommand:
             "pcm_s24be",
             "-f",
             "aiff",
+            "-write_id3v2",
+            "1",
             "/out/song.aiff",
         ]
 
@@ -143,8 +149,27 @@ class TestBuildFFmpegCommand:
             "pcm_s16be",
             "-f",
             "aiff",
+            "-write_id3v2",
+            "1",
             "/out/song.aiff",
         ]
+
+    def test_aiff_conversion_includes_write_id3v2_flag(self) -> None:
+        """AIFF conversion must include -write_id3v2 1 to preserve metadata tags."""
+        action = ConversionAction(
+            action="convert_to_aiff",
+            reason="test",
+            output_format="aiff",
+            output_bit_depth=16,
+            quality_warning=False,
+            warning_detail="",
+        )
+        info = _make_file_info(codec="pcm_s16le", bit_depth=16)
+        cmd = build_ffmpeg_command(Path("/in/song.wav"), Path("/out/song.aiff"), action, info)
+        id3v2_idx = cmd.index("-write_id3v2")
+        assert cmd[id3v2_idx + 1] == "1"
+        # Flag must appear before the output path (last element)
+        assert id3v2_idx < len(cmd) - 1
 
 
 class TestComputeFileHash:
