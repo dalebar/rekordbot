@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     organise_confidence_threshold: float = 0.7
     organise_unknown_fallback: str = "Unsorted"
 
+    # Phase 4: Rekordbox XML export settings
+    rekordbox_xml_path: str = ""
+
     # Phase 2: Analysis settings
     bpm_range_min: int = 70
     bpm_range_max: int = 180
