@@ -140,3 +140,50 @@ Phase 1 implementation — File Ingestion & Conversion, from feature brief to fu
 ### What's next
 - Merge `feature/phase-1-converter` to `develop`
 - Begin Phase 2 (Metadata & Tagging) — mutagen tag reading/writing, BPM detection, key detection
+
+---
+
+## Session 4 — 2026-03-08
+
+### What was worked on
+Phase 2 implementation — Metadata & Tagging, from feature brief to fully working analysis pipeline with Rekordbox-style review UI.
+
+### Summary
+- Created branch `feature/phase-2-metadata-tagging` from `develop`
+- Implemented all 11 steps of the Phase 2 build plan in order:
+  1. **Dependencies & config** — Added mutagen, librosa, numpy; added bpm_range_min/max, confidence_threshold, max_concurrent_analyses, default_key_notation to Settings
+  2. **Track model updates** — Added source_bpm, source_key, bpm_confidence, key_confidence, analysis_status columns
+  3. **Key notation mapping (TDD)** — Full Camelot ↔ Open Key ↔ classical key conversion; 171 tests covering all 24 keys × multiple notations
+  4. **Tag reader** — mutagen-based tag extraction from AIFF (ID3v2), MP3 (ID3v2), M4A (MP4 atoms); 24 tests
+  5. **BPM detector (TDD)** — librosa onset/beat_track with configurable half/double-time auto-correction; 20 tests
+  6. **Key detector (TDD)** — librosa chroma + HPSS harmonic separation + Krumhansl-Schmuckler algorithm; 14 tests
+  7. **Tag writer** — ID3v2.3 for AIFF/MP3 (no v1), MP4 atoms for M4A, preserves unmanaged tags; 12 tests
+  8. **Analysis pipeline** — asyncio.Semaphore batch processing, per-track error isolation, SSE progress events; 7 tests
+  9. **API routes** — POST /api/tracks/analyse, SSE progress, cancel, PUT /api/tracks/{id}, revert, bpm-multiply, POST /api/tracks/write-tags, enhanced GET /api/tracks; 15 tests
+  10. **Frontend** — TrackTable (Rekordbox-style sortable table, column visibility toggle via ColumnMenu, inline editing, BPM ×2/÷2, confidence indicators, filter modes), AnalysisControls toolbar with progress bar, TrackDetailPanel side panel
+  11. **Integration tests** — End-to-end ingest→analyse→write flow, tag round-trips, revert/multiply; 13 tests
+- **Total: 390 tests passing (276 new), 12 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **Stale dev database schema** — After adding new columns to the Track model, the on-disk dev DB didn't have them. `init_db()` in the test client fixture used the dev DB's engine, causing `OperationalError: no such column: tracks.source_bpm`. Fixed by deleting the stale dev DB so `init_db()` would recreate it with all columns. This surfaced twice (after model changes and during route tests).
+2. **AIFF `IffID3.save()` does not support `v1` parameter** — Tag writer initially called `audio.save(v1=0)` for all ID3 formats. AIFF's `IffID3` class doesn't accept this kwarg. Fixed with isinstance-based type detection: MP3 gets `save(v1=0)`, AIFF gets plain `save()`.
+3. **Test isolation / dev DB data leaking** — Tagging route tests inserted data via `SessionLocal` (dev DB). Subsequent tests asserting empty state failed because data persisted. Fixed by adding cleanup logic to the client fixture.
+4. **BPM conflict detection threshold** — Conflict detection used `> 0.5` BPM difference, but test data had exactly 0.5 difference (128.0 vs 127.5). Adjusted test data to clearly exceed the threshold.
+5. **Ruff lint violations on every commit** — Pre-commit hooks caught SIM118 (unnecessary `.keys()`), SIM105 (`try/except/pass` → `contextlib.suppress()`), E501 (line too long), and import ordering issues throughout Phase 2 code. All fixed before committing.
+6. **mypy type errors with numpy/mutagen/librosa** — All three lack mypy stubs; added `type: ignore[import-not-found]` on imports. Integration tests also needed explicit None guards where `float | None` values were used in arithmetic.
+7. **ESLint unused vars in frontend** — Unused imports (`useEffect`) and variables (`confidenceThreshold`) caught during frontend commit. Fixed before committing.
+8. **librosa audioread fallback warnings** — `PySoundFile failed. Trying audioread instead` warnings appeared with M4A files. Known librosa behavior, harmless, documented in Known Issues.
+
+### Key decisions made
+1. AIFF vs MP3 tag save divergence — isinstance-based type detection for format-specific save calls rather than a single code path
+2. TDD for pure logic modules (key notation, BPM correction, key correlation); tests-after for framework integration (routes, pipeline)
+3. Key stored internally as integer 1–24 (Camelot wheel mapping), converted to user-preferred notation on display/export
+4. TrackTable replaces TrackList as the primary track view — Rekordbox-style sortable table with inline editing
+5. Pragmatic test isolation fix (clean tracks table in fixture) rather than full test DB rearchitecture
+6. Per-track error isolation in analysis pipeline — one track failing doesn't abort the batch
+7. Confidence scores stored alongside detected values (bpm_confidence, key_confidence) for UI display and conflict detection
+8. Source values preserved (source_bpm, source_key) to enable revert-to-original after edits
+
+### What's next
+- Merge `feature/phase-2-metadata-tagging` to `develop`
+- Begin Phase 2b (File Organisation) or Phase 3 (Claude Integration)

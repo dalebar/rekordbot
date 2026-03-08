@@ -1,9 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  connectProgress,
-  postIngestCancel,
-  type FileProgressEvent,
-} from "./api/client";
+import { connectProgress, postIngestCancel, type FileProgressEvent } from "./api/client";
 
 interface BatchSummary {
   total: number;
@@ -18,14 +14,8 @@ interface ProcessingQueueProps {
   onComplete: () => void;
 }
 
-export default function ProcessingQueue({
-  batchId,
-  totalFiles,
-  onComplete,
-}: ProcessingQueueProps) {
-  const [files, setFiles] = useState<Map<string, FileProgressEvent>>(
-    new Map(),
-  );
+export default function ProcessingQueue({ batchId, totalFiles, onComplete }: ProcessingQueueProps) {
+  const [files, setFiles] = useState<Map<string, FileProgressEvent>>(new Map());
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
@@ -63,8 +53,8 @@ export default function ProcessingQueue({
           </h3>
           {summary && (
             <p className="text-xs text-gray-500">
-              {summary.succeeded} succeeded, {summary.failed} failed,{" "}
-              {summary.duplicates} duplicates
+              {summary.succeeded} succeeded, {summary.failed} failed, {summary.duplicates}{" "}
+              duplicates
             </p>
           )}
         </div>
@@ -116,9 +106,5 @@ function StatusBadge({ status }: { status: string }) {
     skipped: "text-yellow-400",
   };
 
-  return (
-    <span className={`ml-2 shrink-0 ${styles[status] ?? "text-gray-500"}`}>
-      {status}
-    </span>
-  );
+  return <span className={`ml-2 shrink-0 ${styles[status] ?? "text-gray-500"}`}>{status}</span>;
 }
