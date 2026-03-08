@@ -270,12 +270,18 @@ class AiTagger:
             tagged_ids = {r.track_id for r in response.results}
             for track_id in batch_track_ids:
                 if track_id not in tagged_ids:
+                    matched_track = track_map.get(track_id)
+                    if matched_track:
+                        matched_track.ai_status = "ai_failed"
                     result.tracks_failed += 1
 
             db_session.commit()
 
         except Exception as e:
             logger.exception("AI tagging batch %d/%d failed", batch_number, total_batches)
+            for track in batch:
+                track.ai_status = "ai_failed"
+            db_session.commit()
             result.tracks_failed = len(batch)
             result.errors.append(str(e))
 

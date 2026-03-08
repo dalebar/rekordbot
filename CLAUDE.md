@@ -401,6 +401,11 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.6
     max_concurrent_analyses: int = 1
     default_key_notation: str = "camelot"
+
+    # Phase 3: AI tagging settings
+    ai_model: str = "claude-sonnet-4-20250514"
+    ai_batch_size: int = 20
+    ai_max_requests_per_minute: int = 10
 ```
 
 **Environment variable naming:** All env vars are prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`, `REKORDBOT_LOG_LEVEL=DEBUG`).
@@ -604,7 +609,7 @@ Research completed:
 | **0** | Scaffolding | Repo, tooling, DB schema, Tauri+FastAPI skeleton, sidecar proof |
 | **1** | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
 | **2** | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
-| 3 | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
+| **3** | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
 | 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
 | 4 | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
