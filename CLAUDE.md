@@ -55,7 +55,8 @@ rekordbot/
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── database.py           ← Engine, session, Base
-│   │   └── track.py              ← Track model (Rekordbox-compatible + ingestion fields)
+│   │   ├── track.py              ← Track model (Rekordbox-compatible + ingestion fields)
+│   │   └── preference_rule.py    ← PreferenceRule model (Phase 2b)
 │   ├── services/
 │   │   ├── format_inspector.py   ← ffprobe wrapper, FileInfo dataclass
 │   │   ├── conversion.py         ← Conversion decision engine (pure logic)
@@ -70,11 +71,18 @@ rekordbot/
 │   │   ├── analysis.py           ← Analysis pipeline orchestrator with batch SSE
 │   │   ├── claude_client.py      ← Anthropic SDK wrapper with rate limiting and retry (Phase 3)
 │   │   ├── prompt_builder.py     ← Claude prompt/tool schema, batch grouping, result parsing (Phase 3)
-│   │   └── ai_tagger.py          ← AI tagging pipeline orchestrator with SSE (Phase 3)
+│   │   ├── ai_tagger.py          ← AI tagging pipeline orchestrator with SSE (Phase 3)
+│   │   ├── template_engine.py    ← Folder template parsing and resolution (Phase 2b)
+│   │   ├── confidence_scorer.py  ← Organisation confidence scoring (Phase 2b)
+│   │   ├── preference_store.py   ← Preference rule CRUD and application (Phase 2b)
+│   │   ├── claude_reasoner.py    ← Claude placement suggestions for ambiguous tracks (Phase 2b)
+│   │   ├── file_mover.py         ← File move operations with collision handling (Phase 2b)
+│   │   └── organiser.py          ← Organisation pipeline orchestrator (Phase 2b)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
-│   │   └── ai_tagging.py         ← AI tagging endpoints: tag, progress, cancel, status, validate (Phase 3)
+│   │   ├── ai_tagging.py         ← AI tagging endpoints: tag, progress, cancel, status, validate (Phase 3)
+│   │   └── organise.py           ← Organisation endpoints: propose, approve, resolve, preferences (Phase 2b)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -87,6 +95,9 @@ rekordbot/
 │   │   ├── AnalysisControls.tsx  ← Analysis toolbar with progress bar and filters
 │   │   ├── ColumnMenu.tsx        ← Right-click column visibility toggle
 │   │   ├── TrackDetailPanel.tsx  ← Side panel with full track editing
+│   │   ├── OrganiseControls.tsx  ← Organisation toolbar with propose/approve (Phase 2b)
+│   │   ├── ReviewQueue.tsx       ← Review queue for ambiguous tracks (Phase 2b)
+│   │   ├── PreferenceRulesPanel.tsx ← Preference rule management UI (Phase 2b)
 │   │   └── api/
 │   │       └── client.ts         ← Typed API client (health, ingest, analysis, tracks, SSE)
 │   ├── package.json
@@ -541,8 +552,23 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 
 ## Current Status
 
-**Phase:** 3 — Claude Integration
-**State:** Complete. All 8 steps implemented, 462 tests passing.
+**Phase:** 2b — File Organisation
+**State:** Complete. All 11 steps implemented, 602 tests passing.
+
+Phase 2b deliverables:
+- Template engine: configurable folder templates with fallback syntax (`{variable|"literal"}`), path sanitisation, output path building
+- Confidence scorer: base 0.5 scoring with deltas for metadata presence, VA compilation detection, bootleg indicator detection, preference rules
+- Preference store: CRUD for artist_folder/va_handling/custom_path rules with normalised key matching, rule application during proposal
+- Claude reasoner: placement suggestions for ambiguous tracks via tool use, batch processing
+- File mover: shutil.move wrapped in asyncio.to_thread(), collision handling (_1, _2 suffix), empty directory cleanup
+- Organiser pipeline: two-phase (propose + execute), SSE progress events, cancellation support, Claude enrichment for ambiguous tracks
+- API routes: POST /api/organise/propose, GET /api/organise/progress (SSE), POST /api/organise/cancel, GET /api/organise/proposal, POST /api/organise/approve, POST /api/organise/resolve/{id}, GET/POST/DELETE /api/preferences
+- Track model: proposed_path, previous_output_path, organisation_status (unorganised/proposed/review_needed/organised), organisation_confidence, organisation_reasoning
+- PreferenceRule model: rule_type + key UniqueConstraint, normalised key matching
+- Frontend: OrganiseControls (propose/approve buttons, progress bar, organisation filter modes), ReviewQueue (accept/skip/custom path), PreferenceRulesPanel (CRUD), TrackTable organisation_status column
+- API client: Full organisation type definitions, SSE consumer, all organisation and preference endpoints
+- Integration tests: end-to-end propose→approve flow, resolve flow, preference rule application, re-organisation after metadata changes
+- Feature brief: `docs/features/phase-2b-file-organisation.md`
 
 Phase 3 deliverables:
 - Claude client: Anthropic SDK wrapper with rate limiting (timestamp-based throttle), exponential backoff retry on 429/529, token usage tracking, cost estimation ($3/MTok input, $15/MTok output)
@@ -609,7 +635,7 @@ Research completed:
 | **1** | File Ingestion & Conversion | Drop zone, format detection, ffprobe inspection, ffmpeg pipeline, duplicate detection |
 | **2** | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
 | **3** | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
-| 2b | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
+| **2b** | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
 | 4 | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
 | 5 | Crate Builder & Set Planner | AI crate assignment, energy arc definition, track sequencing, key compatibility |
