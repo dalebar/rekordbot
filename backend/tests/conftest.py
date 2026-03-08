@@ -42,8 +42,12 @@ async def client():
 
     # Clean tables for test isolation
     from backend.models.crate import Crate, CrateTrack
+    from backend.models.set_plan import SetPlan, SetSegment, SetTrack
 
     db = SessionLocal()
+    db.query(SetTrack).delete()
+    db.query(SetSegment).delete()
+    db.query(SetPlan).delete()
     db.query(CrateTrack).delete()
     db.query(Crate).delete()
     db.query(Track).delete()
@@ -56,6 +60,7 @@ async def client():
     import backend.routes.export as export_module
     import backend.routes.ingest as ingest_module
     import backend.routes.organise as organise_module
+    import backend.routes.sets as sets_module
     import backend.routes.tagging as tagging_module
 
     ingest_module._queue = None
@@ -64,6 +69,7 @@ async def client():
     organise_module._organiser = None
     export_module._last_export = None
     crates_module._assigner = None
+    sets_module._planner = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
