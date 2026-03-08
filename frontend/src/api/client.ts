@@ -148,6 +148,7 @@ export interface Track {
   title: string | null;
   artist: string | null;
   album: string | null;
+  album_artist: string | null;
   genre: string | null;
   year: number | null;
   track_number: number | null;

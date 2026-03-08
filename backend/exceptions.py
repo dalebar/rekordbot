@@ -50,3 +50,10 @@ class AnalysisError(RekordBotError):
 
     def __init__(self, detail: str) -> None:
         super().__init__(error="analysis_failed", detail=detail, status_code=500)
+
+
+class AiTagError(RekordBotError):
+    """Raised when AI tagging (Claude API) fails."""
+
+    def __init__(self, detail: str, status_code: int = 500) -> None:
+        super().__init__(error="ai_tag_failed", detail=detail, status_code=status_code)
