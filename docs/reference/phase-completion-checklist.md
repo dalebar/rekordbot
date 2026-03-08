@@ -13,7 +13,7 @@ Go through every acceptance criterion in the phase's feature brief (`docs/featur
 ### 2. Confirm tests pass
 
 ```bash
-cd ~/Documents/projects/crateai
+cd ~/Documents/projects/rekordbot
 source .venv/bin/activate
 pytest                                 # all tests green
 make lint                              # Ruff + mypy clean
