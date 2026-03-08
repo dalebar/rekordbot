@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Phase 4: Rekordbox XML export settings
     rekordbox_xml_path: str = ""
 
+    # Phase 5a: Crate builder settings
+    crate_assignment_batch_size: int = 30
+
     # Phase 2: Analysis settings
     bpm_range_min: int = 70
     bpm_range_max: int = 180
