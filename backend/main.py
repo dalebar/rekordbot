@@ -32,6 +32,7 @@ from backend.routes.export import router as export_router  # noqa: E402
 from backend.routes.ingest import router as ingest_router  # noqa: E402
 from backend.routes.organise import router as organise_router  # noqa: E402
 from backend.routes.sets import router as sets_router  # noqa: E402
+from backend.routes.settings import router as settings_router  # noqa: E402
 from backend.routes.tagging import router as tagging_router  # noqa: E402
 
 # Configure logging
@@ -92,6 +93,7 @@ app.include_router(organise_router)
 app.include_router(export_router)
 app.include_router(crates_router)
 app.include_router(sets_router)
+app.include_router(settings_router)
 
 
 @app.exception_handler(RekordBotError)
