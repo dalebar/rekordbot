@@ -75,6 +75,9 @@ class TrackUpdate(BaseModel):
     bpm: float | None = None
     key: int | None = None
     rating: int | None = None
+    subgenre: str | None = None
+    mood: str | None = None
+    energy: int | None = None
 
 
 class BPMMultiplyRequest(BaseModel):
@@ -120,6 +123,15 @@ class TrackDetailResponse(BaseModel):
     source_key: int | None = None
     has_bpm_conflict: bool = False
     has_key_conflict: bool = False
+
+    # AI tagging
+    subgenre: str | None = None
+    mood: str | None = None
+    energy: int | None = None
+    ai_confidence: str | None = None
+    ai_reasoning: str | None = None
+    source_genre: str | None = None
+    ai_status: str = "untagged"
 
     model_config = {"from_attributes": True}
 
@@ -178,6 +190,13 @@ def _track_to_detail(track: Track) -> TrackDetailResponse:
         source_key=track.source_key,
         has_bpm_conflict=has_bpm_conflict,
         has_key_conflict=has_key_conflict,
+        subgenre=track.subgenre,
+        mood=track.mood,
+        energy=track.energy,
+        ai_confidence=track.ai_confidence,
+        ai_reasoning=track.ai_reasoning,
+        source_genre=track.source_genre,
+        ai_status=track.ai_status,
     )
 
 
@@ -290,6 +309,12 @@ async def write_tags(request: WriteTagsRequest) -> WriteTagsResponse:
 
         results = await write_tags_batch(tracks, db_session)
 
+        # Update ai_status for AI-tagged tracks that were written successfully
+        for track, result in zip(tracks, results, strict=False):
+            if result.success and track.ai_status == "ai_tagged":
+                track.ai_status = "ai_tags_written"
+        db_session.commit()
+
         succeeded = sum(1 for r in results if r.success)
         failed = sum(1 for r in results if not r.success)
 
@@ -360,12 +385,23 @@ async def revert_field(track_id: int, field: str) -> TrackDetailResponse:
                     status_code=404,
                 )
             track.key = track.source_key
+        elif field == "genre":
+            if track.source_genre is None:
+                from backend.exceptions import RekordBotError
+
+                raise RekordBotError(
+                    error="no_source_value",
+                    detail="No original genre value to revert to",
+                    status_code=404,
+                )
+            track.genre = track.source_genre
         else:
             from backend.exceptions import RekordBotError
 
             raise RekordBotError(
                 error="invalid_field",
-                detail=f"Cannot revert field '{field}'. Only 'bpm' and 'key' are supported.",
+                detail=f"Cannot revert field '{field}'. "
+                "Only 'bpm', 'key', and 'genre' are supported.",
                 status_code=400,
             )
 
