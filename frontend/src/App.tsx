@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { getHealth, type HealthResponse, type IngestResponse } from "./api/client";
+import {
+  getHealth,
+  setApiErrorHandler,
+  clearApiErrorHandler,
+  type HealthResponse,
+  type IngestResponse,
+} from "./api/client";
+import { useToast } from "./ToastProvider";
 import CrateCreateDialog from "./CrateCreateDialog";
 import CrateSidebar from "./CrateSidebar";
 import DropZone from "./DropZone";
@@ -9,8 +16,17 @@ import SetPlannerView from "./SetPlannerView";
 import TrackTable from "./TrackTable";
 
 function App() {
+  const { addToast } = useToast();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Register global API error handler for toast notifications
+  useEffect(() => {
+    setApiErrorHandler((err) => {
+      addToast("error", err.detail || err.error || "An unexpected error occurred");
+    });
+    return () => clearApiErrorHandler();
+  }, [addToast]);
   const [batch, setBatch] = useState<IngestResponse | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedCrateId, setSelectedCrateId] = useState<number | null>(null);
