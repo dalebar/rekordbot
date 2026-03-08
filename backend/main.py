@@ -2,12 +2,14 @@
 
 import logging
 import os
+import shutil
 import signal
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -47,9 +49,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — initialise database on startup."""
+    """Application lifespan — initialise database on startup, run health checks."""
     init_db()
     logger.info("rekordbot backend started on port %d", settings.port)
+
+    # Startup health checks (non-blocking — log warnings only)
+    _run_startup_health_checks()
 
     # Start watchdog if running as sidecar (--parent-pid provided)
     parent_pid = parse_parent_pid()
@@ -113,6 +118,17 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError) -> JSON
     )
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Handle pydantic validation errors with a consistent JSON response."""
+    errors = exc.errors()
+    detail = "; ".join(f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in errors)
+    return JSONResponse(
+        status_code=422,
+        content={"error": "validation_error", "detail": detail},
+    )
+
+
 @app.get("/health")
 async def health() -> dict:
     """Health check endpoint for sidecar readiness detection."""
@@ -125,6 +141,28 @@ async def shutdown() -> dict:
     logger.info("Shutdown requested")
     os.kill(os.getpid(), signal.SIGTERM)
     return {"status": "shutting_down"}
+
+
+def _run_startup_health_checks() -> None:
+    """Run non-blocking health checks on startup and log warnings."""
+    # Check ffmpeg
+    if shutil.which(settings.ffmpeg_path) is None:
+        logger.warning("ffmpeg not found at '%s' — ingestion will fail", settings.ffmpeg_path)
+
+    # Check output directory
+    output_dir = settings.output_directory
+    if output_dir and output_dir != "~/rekordbot/library":
+        from backend.services.config_manager import validate_output_directory
+
+        valid, msg = validate_output_directory(output_dir)
+        if not valid:
+            logger.warning("Output directory issue: %s", msg)
+    else:
+        logger.info("No output directory configured yet")
+
+    # Check API key
+    if not settings.anthropic_api_key:
+        logger.info("No API key configured — AI features disabled")
 
 
 if __name__ == "__main__":
