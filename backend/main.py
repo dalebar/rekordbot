@@ -12,16 +12,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from backend.config import settings
-from backend.exceptions import RekordBotError
-from backend.models.database import init_db
-from backend.routes.ai_tagging import router as ai_tagging_router
-from backend.routes.crates import router as crates_router
-from backend.routes.export import router as export_router
-from backend.routes.ingest import router as ingest_router
-from backend.routes.organise import router as organise_router
-from backend.routes.sets import router as sets_router
-from backend.routes.tagging import router as tagging_router
+from backend.services.config_manager import apply_config_to_env, get_db_path, load_config
+
+# Load config from JSON file BEFORE Settings instantiation.
+# This sets env vars that pydantic-settings will pick up.
+_config = load_config()
+apply_config_to_env(_config)
+
+# In packaged mode (--parent-pid present), use app data directory for DB.
+if "--parent-pid" in sys.argv and "REKORDBOT_DB_URL" not in os.environ:
+    os.environ["REKORDBOT_DB_URL"] = get_db_path()
+
+from backend.config import settings  # noqa: E402
+from backend.exceptions import RekordBotError  # noqa: E402
+from backend.models.database import init_db  # noqa: E402
+from backend.routes.ai_tagging import router as ai_tagging_router  # noqa: E402
+from backend.routes.crates import router as crates_router  # noqa: E402
+from backend.routes.export import router as export_router  # noqa: E402
+from backend.routes.ingest import router as ingest_router  # noqa: E402
+from backend.routes.organise import router as organise_router  # noqa: E402
+from backend.routes.sets import router as sets_router  # noqa: E402
+from backend.routes.tagging import router as tagging_router  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
