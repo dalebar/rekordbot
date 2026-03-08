@@ -2,26 +2,41 @@
 
 import logging
 import os
+import shutil
 import signal
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from backend.config import settings
-from backend.exceptions import RekordBotError
-from backend.models.database import init_db
-from backend.routes.ai_tagging import router as ai_tagging_router
-from backend.routes.crates import router as crates_router
-from backend.routes.export import router as export_router
-from backend.routes.ingest import router as ingest_router
-from backend.routes.organise import router as organise_router
-from backend.routes.sets import router as sets_router
-from backend.routes.tagging import router as tagging_router
+from backend.services.config_manager import apply_config_to_env, get_db_path, load_config
+from backend.services.watchdog import parse_parent_pid, start_watchdog
+
+# Load config from JSON file BEFORE Settings instantiation.
+# This sets env vars that pydantic-settings will pick up.
+_config = load_config()
+apply_config_to_env(_config)
+
+# In packaged mode (--parent-pid present), use app data directory for DB.
+if "--parent-pid" in sys.argv and "REKORDBOT_DB_URL" not in os.environ:
+    os.environ["REKORDBOT_DB_URL"] = get_db_path()
+
+from backend.config import settings  # noqa: E402
+from backend.exceptions import RekordBotError  # noqa: E402
+from backend.models.database import init_db  # noqa: E402
+from backend.routes.ai_tagging import router as ai_tagging_router  # noqa: E402
+from backend.routes.crates import router as crates_router  # noqa: E402
+from backend.routes.export import router as export_router  # noqa: E402
+from backend.routes.ingest import router as ingest_router  # noqa: E402
+from backend.routes.organise import router as organise_router  # noqa: E402
+from backend.routes.sets import router as sets_router  # noqa: E402
+from backend.routes.settings import router as settings_router  # noqa: E402
+from backend.routes.tagging import router as tagging_router  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -34,9 +49,18 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — initialise database on startup."""
+    """Application lifespan — initialise database on startup, run health checks."""
     init_db()
     logger.info("rekordbot backend started on port %d", settings.port)
+
+    # Startup health checks (non-blocking — log warnings only)
+    _run_startup_health_checks()
+
+    # Start watchdog if running as sidecar (--parent-pid provided)
+    parent_pid = parse_parent_pid()
+    if parent_pid is not None:
+        start_watchdog(parent_pid)
+
     yield
 
 
@@ -81,6 +105,7 @@ app.include_router(organise_router)
 app.include_router(export_router)
 app.include_router(crates_router)
 app.include_router(sets_router)
+app.include_router(settings_router)
 
 
 @app.exception_handler(RekordBotError)
@@ -90,6 +115,17 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError) -> JSON
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": exc.error, "detail": exc.detail},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Handle pydantic validation errors with a consistent JSON response."""
+    errors = exc.errors()
+    detail = "; ".join(f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in errors)
+    return JSONResponse(
+        status_code=422,
+        content={"error": "validation_error", "detail": detail},
     )
 
 
@@ -105,6 +141,28 @@ async def shutdown() -> dict:
     logger.info("Shutdown requested")
     os.kill(os.getpid(), signal.SIGTERM)
     return {"status": "shutting_down"}
+
+
+def _run_startup_health_checks() -> None:
+    """Run non-blocking health checks on startup and log warnings."""
+    # Check ffmpeg
+    if shutil.which(settings.ffmpeg_path) is None:
+        logger.warning("ffmpeg not found at '%s' — ingestion will fail", settings.ffmpeg_path)
+
+    # Check output directory
+    output_dir = settings.output_directory
+    if output_dir and output_dir != "~/rekordbot/library":
+        from backend.services.config_manager import validate_output_directory
+
+        valid, msg = validate_output_directory(output_dir)
+        if not valid:
+            logger.warning("Output directory issue: %s", msg)
+    else:
+        logger.info("No output directory configured yet")
+
+    # Check API key
+    if not settings.anthropic_api_key:
+        logger.info("No API key configured — AI features disabled")
 
 
 if __name__ == "__main__":

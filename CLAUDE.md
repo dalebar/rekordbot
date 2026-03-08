@@ -90,7 +90,9 @@ rekordbot/
 │   │   ├── location_encoder.py   ← Rekordbox Location URI encoding (Phase 4)
 │   │   ├── xml_schema_mapper.py  ← Track model → XML attribute mapping (Phase 4)
 │   │   ├── xml_builder.py        ← Rekordbox XML document construction (Phase 4)
-│   │   └── xml_exporter.py       ← Export pipeline orchestrator (Phase 4)
+│   │   ├── xml_exporter.py       ← Export pipeline orchestrator (Phase 4)
+│   │   ├── config_manager.py    ← JSON config persistence and env var integration (Phase 6a)
+│   │   └── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
@@ -98,7 +100,8 @@ rekordbot/
 │   │   ├── organise.py           ← Organisation endpoints: propose, approve, resolve, preferences (Phase 2b)
 │   │   ├── export.py             ← Rekordbox XML export endpoints (Phase 4)
 │   │   ├── crates.py             ← Crate CRUD, assignment, progress SSE endpoints (Phase 5a)
-│   │   └── sets.py               ← Set planner CRUD, shuffle, export, progress SSE (Phase 5b)
+│   │   ├── sets.py               ← Set planner CRUD, shuffle, export, progress SSE (Phase 5b)
+│   │   └── settings.py          ← Settings CRUD, validation, first-run status (Phase 6a)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -118,6 +121,9 @@ rekordbot/
 │   │   ├── SetPlannerView.tsx   ← Set planning interface with track sequence and controls (Phase 5b)
 │   │   ├── SetCreateDialog.tsx  ← Set creation modal with parameters (Phase 5b)
 │   │   ├── SetListPanel.tsx     ← Set list with status and counts (Phase 5b)
+│   │   ├── SettingsPanel.tsx    ← Settings panel with main and advanced sections (Phase 6a)
+│   │   ├── SetupWizard.tsx      ← First-run setup wizard (Phase 6a)
+│   │   ├── ToastProvider.tsx    ← Toast notification context and hook (Phase 6a)
 │   │   ├── ReviewQueue.tsx       ← Review queue for ambiguous tracks (Phase 2b)
 │   │   ├── PreferenceRulesPanel.tsx ← Preference rule management UI (Phase 2b)
 │   │   └── api/
@@ -148,7 +154,8 @@ rekordbot/
     │   ├── phase-3-claude-integration.md
     │   ├── phase-4-rekordbox-xml-export.md
     │   ├── phase-5a-crate-builder.md
-│   └── phase-5b-set-planner.md
+│   ├── phase-5b-set-planner.md
+│   └── phase-6a-app-shell.md
     └── research/
         ├── rekordbox-xml-cdj-compatibility.md
         └── tauri-python-backend.md
@@ -588,14 +595,27 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 - Rust spawns sidecar on Ready, kills on ExitRequested
 - Health check polling before marking backend as ready
 - HTTP shutdown endpoint as graceful shutdown mechanism
-- Self-termination watchdog deferred to Phase 6
+- Self-termination watchdog: daemon thread polling parent PID every 5s with 10s grace period, started via `--parent-pid` CLI arg
 
 ## Current Status
 
-**Phase:** 5b — Set Planner
-**State:** Complete. All 9 steps implemented, 930 tests passing (116 Phase 5b tests: 11 model + 29 BPM transition + 20 prompt builder + 26 service + 12 routes + 8 XML set + 10 integration).
+**Phase:** 6a — App Shell & Packaging
+**State:** Complete. All 10 steps implemented, 1013 tests passing (83 Phase 6a tests: 34 config manager + 12 settings routes + 8 watchdog + 4 error handling + 11 bitrate + 1 existing fix + 13 integration).
 
-**Next:** Phase 4b — Rekordbox XML Import (or Phase 6 — Polish & Packaging).
+**Next:** Phase 6b — Polish & Distribution (or Phase 4b — Rekordbox XML Import).
+
+Phase 6a deliverables:
+- Config manager: JSON config file at ~/Library/Application Support/rekordbot/config.json, env var integration with REKORDBOT_ prefix, config file → env vars → pydantic-settings pipeline, env vars take precedence (TDD, 34 tests)
+- Settings API: GET/PUT /api/settings with API key masking (sk-ant-...XXXX), POST validate-key (Anthropic SDK test call), POST validate-directory, GET status (first-run check, ffmpeg availability) (12 tests)
+- Self-termination watchdog: daemon thread polling parent PID every 5 seconds, 10-second grace period, os.kill(pid, 0) existence check, --parent-pid CLI argument parsing, Tauri passes PID on sidecar spawn (8 tests)
+- Error handling: RequestValidationError handler with standard {error, detail} JSON, startup health checks for ffmpeg/output directory/API key (non-blocking), UnhandledExceptionMiddleware catch-all (4 tests)
+- BitRate fix: lossy files use source_bitrate from ffprobe, lossless files compute from sample_rate × bit_depth × channels, fallback to 0, compute_bitrate() pure function (11 tests)
+- Frontend toast system: ToastProvider context + useToast() hook, toast types (success/error/warning/info), auto-dismiss for success/info (5s), sticky for errors, global API error handler via setApiErrorHandler()
+- Frontend settings panel: SettingsPanel with main section (API key with test, output directory with browse/validate, key notation dropdown, folder template with live preview, AAC toggle) and advanced section (BPM range, confidence, track duration, max tracks), save with validation
+- Frontend first-run wizard: SetupWizard with Welcome → Config → Done steps, output directory required with validation, API key optional with test, config saved on completion, App.tsx routing based on /api/settings/status
+- Tauri packaging: dialog plugin for folder picker, --parent-pid passed to sidecar, resources config for ffmpeg bundling, build: make build → PyInstaller + Tauri .app bundle
+- Integration tests: first-run flow, settings persistence, API key masking round-trip, directory validation, error format standardisation, bitrate computation (13 tests)
+- Feature brief: `docs/features/phase-6a-app-shell.md`
 
 Phase 5b deliverables:
 - BPM transition scoring: threshold-based scoring (0.0–1.0), quality labels (smooth/acceptable/noticeable/jarring), BPM range suggestion for sequence positions (TDD, 29 tests)
@@ -715,5 +735,6 @@ Research completed:
 | **4** | Rekordbox XML Export | ✅ Done | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
 | **5a** | Crate Builder | ✅ Done | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
 | **5b** | Set Planner | ✅ Done | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
+| **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
+| **6b** | Polish & Distribution | ⬅️ Next | UI polish, code signing, notarisation, .dmg packaging, auto-update |
 | 4b | Rekordbox XML Import | — | Parse existing XML, merge with internal DB, conflict resolution |
-| 6 | Polish & Packaging | — | UI polish, error handling, settings panel, macOS packaging, code signing |

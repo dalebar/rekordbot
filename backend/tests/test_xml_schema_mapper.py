@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from backend.services.xml_schema_mapper import (
     TrackXmlResult,
+    compute_bitrate,
     format_bpm,
     format_date,
     format_kind,
@@ -153,6 +154,11 @@ class TestTrackToXmlAttrs:
             duration = 342.5
             bit_rate = 2116
             sample_rate = 44100
+            bit_depth = 24
+            source_bit_depth = 24
+            channels = 2
+            is_lossy = False
+            source_bitrate = None
             imported_at = datetime(2026, 3, 1, 10, 0, 0)
 
         track = MockTrack()
@@ -281,3 +287,73 @@ class TestTrackToXmlAttrs:
         result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
         assert result.attrs["Composer"] == "Test Composer"
         assert result.attrs["Remixer"] == "DJ Remix"
+
+    @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
+    @patch("backend.services.xml_schema_mapper._get_file_mtime", return_value="2026-03-08")
+    def test_bitrate_lossy_uses_source_bitrate(self, mock_mtime, mock_size) -> None:
+        """Lossy files should use source_bitrate from ffprobe."""
+        track = self._make_track(is_lossy=True, source_bitrate=320, sample_rate=44100, channels=2)
+        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        assert result.attrs["BitRate"] == "320"
+
+    @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
+    @patch("backend.services.xml_schema_mapper._get_file_mtime", return_value="2026-03-08")
+    def test_bitrate_lossless_computed(self, mock_mtime, mock_size) -> None:
+        """Lossless files should compute bitrate from sample_rate * bit_depth * channels."""
+        track = self._make_track(
+            is_lossy=False,
+            sample_rate=44100,
+            bit_depth=16,
+            channels=2,
+            source_bitrate=None,
+        )
+        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        # 44100 * 16 * 2 / 1000 = 1411
+        assert result.attrs["BitRate"] == "1411"
+
+    @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
+    @patch("backend.services.xml_schema_mapper._get_file_mtime", return_value="2026-03-08")
+    def test_bitrate_fallback_zero(self, mock_mtime, mock_size) -> None:
+        """Missing bitrate data falls back to 0."""
+        track = self._make_track(
+            is_lossy=None,
+            source_bitrate=None,
+            sample_rate=None,
+            bit_depth=None,
+            source_bit_depth=None,
+            channels=None,
+        )
+        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        assert result.attrs["BitRate"] == "0"
+
+
+class TestComputeBitrate:
+    """Tests for compute_bitrate() — pure math, TDD."""
+
+    def test_cd_quality_stereo(self) -> None:
+        """44.1kHz/16-bit stereo = 1411 kbps."""
+        assert compute_bitrate(44100, 16, 2) == 1411
+
+    def test_hd_quality_stereo(self) -> None:
+        """96kHz/24-bit stereo = 4608 kbps."""
+        assert compute_bitrate(96000, 24, 2) == 4608
+
+    def test_48khz_24bit(self) -> None:
+        """48kHz/24-bit stereo = 2304 kbps."""
+        assert compute_bitrate(48000, 24, 2) == 2304
+
+    def test_mono(self) -> None:
+        """44.1kHz/16-bit mono = 705 kbps."""
+        assert compute_bitrate(44100, 16, 1) == 705
+
+    def test_none_sample_rate(self) -> None:
+        assert compute_bitrate(None, 16, 2) == 0
+
+    def test_none_bit_depth(self) -> None:
+        assert compute_bitrate(44100, None, 2) == 0
+
+    def test_none_channels(self) -> None:
+        assert compute_bitrate(44100, 16, None) == 0
+
+    def test_all_none(self) -> None:
+        assert compute_bitrate(None, None, None) == 0

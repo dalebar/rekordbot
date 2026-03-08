@@ -18,8 +18,25 @@ export interface HealthResponse {
 const BASE_URL = import.meta.env.DEV ? "http://127.0.0.1:8420" : "http://127.0.0.1:8420";
 
 /**
+ * Global error callback — set by the toast system to auto-show errors.
+ * Components don't need to handle API errors individually when this is set.
+ */
+let onApiError: ((error: ApiError) => void) | null = null;
+
+/** Register a global API error handler (called by ToastProvider). */
+export function setApiErrorHandler(handler: (error: ApiError) => void): void {
+  onApiError = handler;
+}
+
+/** Clear the global API error handler. */
+export function clearApiErrorHandler(): void {
+  onApiError = null;
+}
+
+/**
  * Typed fetch wrapper that handles error responses.
  * Throws an ApiError-shaped object on non-2xx responses.
+ * Also calls the global error handler if registered.
  */
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -35,6 +52,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       error: "unknown",
       detail: `HTTP ${response.status}`,
     }));
+    onApiError?.(errorBody);
     throw errorBody;
   }
 
@@ -1113,4 +1131,89 @@ export function connectCrateProgress(
   });
 
   return es;
+}
+
+// --- Phase 6a: Settings API ---
+
+/** Settings response from GET /api/settings. */
+export interface SettingsResponse {
+  anthropic_api_key: string;
+  output_directory: string;
+  default_key_notation: string;
+  folder_template: string;
+  convert_aac_to_mp3: boolean;
+  bpm_range_min: number;
+  bpm_range_max: number;
+  confidence_threshold: number;
+  set_track_duration_minutes: number;
+  set_max_tracks: number;
+}
+
+/** Settings update request. */
+export interface SettingsUpdateRequest {
+  anthropic_api_key?: string;
+  output_directory?: string;
+  default_key_notation?: string;
+  folder_template?: string;
+  convert_aac_to_mp3?: boolean;
+  bpm_range_min?: number;
+  bpm_range_max?: number;
+  confidence_threshold?: number;
+  set_track_duration_minutes?: number;
+  set_max_tracks?: number;
+}
+
+/** Settings status (first-run check). */
+export interface SettingsStatusResponse {
+  configured: boolean;
+  has_api_key: boolean;
+  has_output_directory: boolean;
+  ffmpeg_available: boolean;
+  output_directory_writable: boolean;
+}
+
+/** Validate key response. */
+export interface SettingsValidateKeyResponse {
+  valid: boolean;
+  error: string;
+}
+
+/** Validate directory response. */
+export interface SettingsValidateDirectoryResponse {
+  valid: boolean;
+  error: string;
+}
+
+/** Get current settings (API key masked). */
+export function getSettings(): Promise<SettingsResponse> {
+  return request<SettingsResponse>("/api/settings");
+}
+
+/** Update settings. */
+export function updateSettings(body: SettingsUpdateRequest): Promise<SettingsResponse> {
+  return request<SettingsResponse>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Validate an API key. */
+export function validateApiKey(key: string): Promise<SettingsValidateKeyResponse> {
+  return request<SettingsValidateKeyResponse>("/api/settings/validate-key", {
+    method: "POST",
+    body: JSON.stringify({ key }),
+  });
+}
+
+/** Validate an output directory path. */
+export function validateDirectory(path: string): Promise<SettingsValidateDirectoryResponse> {
+  return request<SettingsValidateDirectoryResponse>("/api/settings/validate-directory", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** Get settings status (first-run check). */
+export function getSettingsStatus(): Promise<SettingsStatusResponse> {
+  return request<SettingsStatusResponse>("/api/settings/status");
 }

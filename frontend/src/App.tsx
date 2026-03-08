@@ -1,16 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
-import { getHealth, type HealthResponse, type IngestResponse } from "./api/client";
+import {
+  getHealth,
+  getSettingsStatus,
+  setApiErrorHandler,
+  clearApiErrorHandler,
+  type HealthResponse,
+  type IngestResponse,
+} from "./api/client";
+import { useToast } from "./ToastProvider";
 import CrateCreateDialog from "./CrateCreateDialog";
 import CrateSidebar from "./CrateSidebar";
 import DropZone from "./DropZone";
 import ProcessingQueue from "./ProcessingQueue";
 import SetCreateDialog from "./SetCreateDialog";
+import SettingsPanel from "./SettingsPanel";
 import SetPlannerView from "./SetPlannerView";
+import SetupWizard from "./SetupWizard";
 import TrackTable from "./TrackTable";
 
 function App() {
+  const { addToast } = useToast();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showWizard, setShowWizard] = useState<boolean | null>(null);
+
+  // Register global API error handler for toast notifications
+  useEffect(() => {
+    setApiErrorHandler((err) => {
+      addToast("error", err.detail || err.error || "An unexpected error occurred");
+    });
+    return () => clearApiErrorHandler();
+  }, [addToast]);
+
   const [batch, setBatch] = useState<IngestResponse | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedCrateId, setSelectedCrateId] = useState<number | null>(null);
@@ -19,11 +40,17 @@ function App() {
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
   const [showSetCreateDialog, setShowSetCreateDialog] = useState(false);
   const [setsRefreshTrigger, setSetsRefreshTrigger] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     getHealth()
       .then(setHealth)
       .catch(() => setError("Backend unavailable"));
+
+    // Check if first-run wizard should be shown
+    getSettingsStatus()
+      .then((status) => setShowWizard(!status.configured))
+      .catch(() => setShowWizard(false));
   }, []);
 
   const handleBatchStarted = useCallback((response: IngestResponse) => {
@@ -53,6 +80,20 @@ function App() {
     setActiveSetId(null);
   }, []);
 
+  // Show wizard on first run
+  if (showWizard === true) {
+    return <SetupWizard onComplete={() => setShowWizard(false)} />;
+  }
+
+  // Still loading status check
+  if (showWizard === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-500">
+        Loading...
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-gray-950 text-gray-100">
       {/* Crate sidebar */}
@@ -64,6 +105,7 @@ function App() {
         onSetSelect={handleSetSelect}
         onNewSet={() => setShowSetCreateDialog(true)}
         setRefreshTrigger={setsRefreshTrigger}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       {/* Main content */}
@@ -87,7 +129,9 @@ function App() {
         </header>
 
         {/* Content area */}
-        {activeSetId ? (
+        {showSettings ? (
+          <SettingsPanel onClose={() => setShowSettings(false)} />
+        ) : activeSetId ? (
           <SetPlannerView setId={activeSetId} onBack={handleBackToLibrary} />
         ) : (
           <main className="flex flex-1 flex-col overflow-hidden p-6">
