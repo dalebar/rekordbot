@@ -16,6 +16,7 @@ from backend.config import settings
 from backend.exceptions import RekordBotError
 from backend.models.database import init_db
 from backend.routes.ai_tagging import router as ai_tagging_router
+from backend.routes.export import router as export_router
 from backend.routes.ingest import router as ingest_router
 from backend.routes.organise import router as organise_router
 from backend.routes.tagging import router as tagging_router
@@ -75,6 +76,7 @@ app.include_router(ingest_router)
 app.include_router(tagging_router)
 app.include_router(ai_tagging_router)
 app.include_router(organise_router)
+app.include_router(export_router)
 
 
 @app.exception_handler(RekordBotError)
