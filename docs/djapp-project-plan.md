@@ -111,22 +111,27 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ Rekordbox-style tag review UI with sortable table, column visibility toggle, inline editing
 - ✅ Analysis pipeline separate from ingestion (tracks analysed after import, not during)
 
-### Module C — Claude AI Layer (Phase 3)
-- Genre and subgenre inference from filename + existing tags
-- Mood/energy scoring (e.g. 1–10 scale)
-- Smart tag suggestions (label, year, style descriptors)
-- Batch processing with rate limiting
-
 ### Module B2 — File Organisation & Structure (Phase 2b)
-- User-configurable folder template (e.g. `Artist/Album/Track`, `Genre/Artist/Track`, custom)
-- Automated organisation pass based on AI-enriched tags (genre, mood, energy from Phase 3)
-- Ambiguity detection — flags low-confidence cases for human review
-- Review queue UI: ambiguous cases surfaced with Claude-powered reasoning (integrated from the start, not bolted on)
-- "Decide once, remember forever" preference engine — stores user decisions as rules for future imports
+- User-configurable folder template (default `{artist}/{album}/{title}`, with fallback syntax `{variable|"literal"}`)
+- Automated organisation pass — proposes moves based on enriched tags from Phases 1–3
+- Confidence scoring — flags ambiguous cases (missing tags, VA compilations, bootlegs, low AI confidence) for human review
+- Review queue UI: ambiguous tracks surfaced with Claude-powered placement suggestions (reuses Module C's client infrastructure)
+- "Decide once, remember forever" preference engine — user decisions saved as rules (`artist_folder`, `va_handling`, `custom_path`) and applied to future imports
 - Handles edge cases: bootlegs, white labels, VA compilations, remixer vs original artist ambiguity
-- Duplicate detection before moving (hash + near-match filename)
+- Dry-run default — proposes folder structure without moving anything; batch approval for high-confidence, individual review for ambiguous
+- Path collision handling before moving (suffix `_1`, `_2`); exact duplicate detection via Phase 1's SHA-256 hash (near-duplicate audio fingerprinting deferred)
 - Files are only moved once user has approved — no silent background renaming
-- Runs *after* AI tagging (uses fully enriched metadata) and *before* Rekordbox XML export (so paths are final)
+- Runs *after* AI tagging (uses enriched metadata including genre, mood, energy) and *before* Rekordbox XML export (so paths are final)
+
+### Module C — Claude AI Layer ✅ (Phase 3 — Complete)
+- ✅ Anthropic SDK integration with rate limiting (timestamp-based throttle) and exponential backoff retry on 429/529
+- ✅ Tool use (function calling) for structured output — genre, subgenre, mood, energy (1–10), confidence (high/medium/low), reasoning per track
+- ✅ DJ-centric genre taxonomy (~50 electronic genres) with BPM/key as classification signals
+- ✅ Batch processing (configurable batch size, artist-grouped for context) with per-batch error isolation
+- ✅ Token usage tracking and cost estimation surfaced in SSE events and API responses
+- ✅ Original genre preserved for comparison/revert (source_genre)
+- ✅ AI tagging pipeline separate from ingestion and analysis (tracks tagged after analysis, not during)
+- ✅ User review UI: energy colour coding, AI confidence indicators, genre tooltip with reasoning, AI filter modes
 
 ### Module D — Rekordbox XML Export (Phase 4)
 - Map internal DB schema to Rekordbox track schema
@@ -157,10 +162,11 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - Library grid view (sortable, filterable)
 - File drop zone ✅ (Phase 1)
 - Processing queue with progress ✅ (Phase 1)
-- Track list ✅ (Phase 1, basic — replaced by Rekordbox-style tag review table in Phase 2)
 - Rekordbox-style tag review table with column visibility toggle, inline editing, confidence indicators ✅ (Phase 2)
+- AI tagging controls: AI Tag button, progress bar with token usage summary, AI filter modes ✅ (Phase 3)
+- AI-enriched columns: mood, energy (colour-coded), subgenre, AI confidence (colour-coded), genre tooltip with AI reasoning ✅ (Phase 3)
 - Crate sidebar
-- Settings panel (API key, output paths, CDJ generation target, BPM range, key notation preference)
+- Settings panel (API key, output paths, CDJ generation target, BPM range, key notation preference, folder template)
 
 ---
 
@@ -214,34 +220,34 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 3 — Claude Integration
-**Goal:** Claude enriches tags beyond what algorithms can do.
+### Phase 2b — File Organisation & Structure
+**Goal:** Clean metadata now drives a clean, user-approved file structure before anything touches Rekordbox.
 
-- [ ] Anthropic SDK integration
-- [ ] Prompt engineering for genre/mood/energy inference
-- [ ] Batch tagging with rate limiting and retry logic
-- [ ] User review / accept / reject UI for AI suggestions
-- [ ] Store AI tag confidence scores in DB
+- [ ] Template engine (configurable folder pattern with `{variable|"fallback"}` syntax, default `{artist}/{album}/{title}`)
+- [ ] Automated organisation pass — proposes moves based on enriched tags, confidence-scored
+- [ ] Confidence scoring — flags ambiguous cases (missing tags, VA, bootlegs, low AI confidence, multiple fallbacks)
+- [ ] Claude-powered reasoning for ambiguous tracks (reuses Phase 3's ClaudeClient, optional — works without API key)
+- [ ] Review queue UI — ambiguous tracks with accept/edit/skip actions, Claude suggestions alongside template proposals
+- [ ] Preference engine — user decisions saved as rules (`artist_folder`, `va_handling`, `custom_path`) and applied automatically
+- [ ] Dry-run default — proposes structure without moving anything; batch approval for high-confidence, individual review for ambiguous
+- [ ] File mover with collision handling, empty directory cleanup, DB path updates
+- [ ] Confirmed moves written to DB (so Rekordbox XML uses final paths)
 
-**Deliverable:** Files with AI-enriched metadata; user can review before writing.
+**Deliverable:** Files in a clean, user-approved folder structure. No files moved without explicit confirmation. Feature brief: `docs/features/phase-2b-file-organisation.md`
 
 ---
 
-### Phase 2b — File Organisation & Structure
-**Goal:** AI-enriched metadata now drives a clean, user-approved file structure before anything touches Rekordbox.
+### Phase 3 — Claude Integration ✅ Complete
+**Goal:** Claude enriches tags beyond what algorithms can do.
 
-**Depends on:** Phase 3 (Claude Integration) — the organiser uses AI-enriched genre/mood/energy for placement decisions and Claude-powered reasoning for ambiguous cases.
-
-- [ ] Template engine (configurable folder pattern with variables: `{artist}`, `{album}`, `{genre}`, `{year}`, etc.)
-- [ ] Automated organisation pass — proposes moves based on AI-enriched tags
-- [ ] Confidence scoring — flags ambiguous cases (missing tags, VA, bootlegs, edits)
-- [ ] Review queue UI — ambiguous tracks surfaced with Claude-powered reasoning (integrated from the start)
-- [ ] User preference store — decisions saved as rules and applied to future imports
-- [ ] Duplicate check before any file is moved
-- [ ] Dry-run mode — shows proposed structure without moving anything
-- [ ] Confirmed moves written to DB (so Rekordbox XML uses final paths)
-
-**Deliverable:** Files in a clean, user-approved folder structure. No files moved without explicit confirmation.
+**Delivered (8 commits, 462 tests total / 72 new):**
+- Claude client: Anthropic SDK wrapper with timestamp-based rate limiting, exponential backoff retry on 429/529, token usage tracking, cost estimation
+- Prompt builder: System prompt with DJ-centric genre taxonomy (~50 genres), tool use schema for structured output, artist-grouped batch message builder, result parser with validation
+- AI tagger pipeline: Batch orchestrator with per-batch error isolation, cancellation via asyncio.Event, SSE progress events, source genre preservation for revert
+- API routes: POST /api/tracks/ai-tag, GET /api/tracks/ai-tag/progress (SSE), POST /api/tracks/ai-tag/cancel, GET /api/tracks/ai-tag/status, POST /api/tracks/ai-tag/validate-key
+- Track model: subgenre, mood, energy (1–10), ai_confidence (high/medium/low), ai_reasoning, source_genre, ai_status
+- Frontend: TrackTable with mood, energy (colour-coded), AI confidence columns, genre tooltip with AI reasoning, AI filter modes; AnalysisControls with AI Tag button, progress bar, token usage summary
+- Feature brief: `docs/features/phase-3-claude-integration.md`
 
 ---
 
@@ -316,8 +322,8 @@ develop                      ← integration branch
 feature/phase-0-scaffold     ← merged ✅
 feature/phase-1-converter    ← merged ✅
 feature/phase-2-metadata-tagging ← merged ✅
-feature/phase-3-claude       ← next
-feature/phase-2b-organiser
+feature/phase-3-claude       ← merged ✅
+feature/phase-2b-organiser   ← next
 feature/phase-4-rekordbox
 feature/phase-5-crates
 feature/phase-6-polish
@@ -385,7 +391,7 @@ Every phase gets a feature brief in `docs/features/` before implementation start
 - Claude Code prompt (initial + continuation)
 - Finalised decisions table
 
-See `docs/features/phase-1-file-ingestion-conversion.md` and `docs/features/phase-2-metadata-tagging.md` for reference examples.
+See `docs/features/phase-1-file-ingestion-conversion.md`, `docs/features/phase-2-metadata-tagging.md`, and `docs/features/phase-3-claude-integration.md` for reference examples.
 
 ### Session Workflow
 

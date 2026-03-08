@@ -9,7 +9,7 @@ A reference for starting Claude Code sessions. Follow this every time.
 ### 1. Git setup
 
 ```bash
-cd ~/Documents/projects/crateai
+cd ~/Documents/projects/rekordbot
 git checkout develop
 git pull                              # if working across machines
 git checkout -b feature/<phase-name>  # e.g. feature/phase-1-converter
@@ -50,7 +50,7 @@ Use this when you're resuming work on a phase you already started — e.g. you s
 ### 1. Environment
 
 ```bash
-cd ~/Documents/projects/crateai
+cd ~/Documents/projects/rekordbot
 git checkout feature/<phase-name>      # switch to the feature branch
 uv sync
 source .venv/bin/activate
