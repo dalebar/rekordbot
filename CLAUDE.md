@@ -125,7 +125,13 @@ rekordbot/
 │   └── dev-setup.sh
 └── docs/
     ├── features/
-    │   └── phase-0-scaffold.md
+    │   ├── phase-0-scaffold.md
+    │   ├── phase-1-file-ingestion-conversion.md
+    │   ├── phase-2-metadata-tagging.md
+    │   ├── phase-2b-file-organisation.md
+    │   ├── phase-3-claude-integration.md
+    │   ├── phase-4-rekordbox-xml-export.md
+    │   └── phase-5a-crate-builder.md
     └── research/
         ├── rekordbox-xml-cdj-compatibility.md
         └── tauri-python-backend.md
@@ -427,6 +433,9 @@ class Settings(BaseSettings):
     folder_template: str = "{artist}/{album}/{title}"
     organise_confidence_threshold: float = 0.7
     organise_unknown_fallback: str = "Unsorted"
+
+    # Phase 4: Rekordbox XML export settings
+    rekordbox_xml_path: str = ""
 ```
 
 **Environment variable naming:** All env vars are prefixed with `REKORDBOT_` (e.g. `REKORDBOT_PORT=8420`, `REKORDBOT_LOG_LEVEL=DEBUG`).
@@ -564,7 +573,9 @@ async def rekordbot_error_handler(request: Request, exc: RekordBotError):
 ## Current Status
 
 **Phase:** 4 — Rekordbox XML Export
-**State:** Complete. All 8 steps implemented, 706 tests passing.
+**State:** Complete. All 8 steps implemented, 706 tests passing. Manual Rekordbox import test passed (15 tracks, all metadata correct, files playable). Merged to `develop`, tagged `phase-4-complete`.
+
+**Next:** Phase 5a — Crate Builder. Feature brief written (`docs/features/phase-5a-crate-builder.md`), ready for implementation.
 
 Phase 4 deliverables:
 - Location encoder: RFC 3986 percent-encoding per path component, file://localhost/ URI generation, round-trip decodable (TDD, 25 tests)
@@ -658,7 +669,8 @@ Research completed:
 | **2** | Metadata & Tagging | mutagen tag reading/writing, BPM detection (librosa), key detection (librosa chroma + K-S), tag review UI |
 | **3** | Claude Integration | Anthropic SDK, genre/mood/energy inference, batch processing, AI review UI |
 | **2b** | File Organisation | Template engine, automated org proposals, confidence scoring, review queue, Claude-powered reasoning |
-| **4** | **Rekordbox XML Export** | **Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility** |
+| **4** | Rekordbox XML Export | Generate XML from DB, track schema mapping, playlist/crate structure, CDJ compatibility |
+| 5a | Crate Builder | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
+| 5b | Set Planner | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | 4b | Rekordbox XML Import | Parse existing XML, merge with internal DB, conflict resolution (deferred) |
-| 5 | Crate Builder & Set Planner | AI crate assignment, energy arc definition, track sequencing, key compatibility |
-| 6 | Polish & Packaging | UI polish, error handling, settings panel, macOS packaging, code signing, auto-update |
+| 6 | Polish & Packaging | UI polish, error handling, settings panel, macOS packaging, code signing |
