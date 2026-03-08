@@ -22,6 +22,7 @@ def init_db() -> None:
     from backend.models import (  # noqa: F401 — ensure models registered
         crate,
         preference_rule,
+        set_plan,
         track,
     )
 
