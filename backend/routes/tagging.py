@@ -133,6 +133,12 @@ class TrackDetailResponse(BaseModel):
     source_genre: str | None = None
     ai_status: str = "untagged"
 
+    # Organisation
+    organisation_status: str = "unorganised"
+    proposed_path: str | None = None
+    previous_output_path: str | None = None
+    organisation_confidence: float | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -197,6 +203,10 @@ def _track_to_detail(track: Track) -> TrackDetailResponse:
         ai_reasoning=track.ai_reasoning,
         source_genre=track.source_genre,
         ai_status=track.ai_status,
+        organisation_status=track.organisation_status,
+        proposed_path=track.proposed_path,
+        previous_output_path=track.previous_output_path,
+        organisation_confidence=track.organisation_confidence,
     )
 
 

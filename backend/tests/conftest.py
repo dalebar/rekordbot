@@ -49,11 +49,13 @@ async def client():
     # Reset module-level queue state between tests
     import backend.routes.ai_tagging as ai_tagging_module
     import backend.routes.ingest as ingest_module
+    import backend.routes.organise as organise_module
     import backend.routes.tagging as tagging_module
 
     ingest_module._queue = None
     tagging_module._analysis_queue = None
     ai_tagging_module._ai_tagger = None
+    organise_module._organiser = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
