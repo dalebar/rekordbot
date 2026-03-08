@@ -235,3 +235,32 @@ Phase 3 implementation — Claude AI Integration, from feature brief to fully wo
 ### What's next
 - Merge `feature/phase-3-claude` to `develop`
 - Begin Phase 2b (File Organisation) — template engine, automated org proposals, confidence scoring, review queue
+
+---
+
+## Session 6 — 2026-03-08
+
+### What was worked on
+Phase 3 verification — review of implementation against the feature brief to catch gaps before closing the phase.
+
+### Summary
+- Reviewed 5 items flagged for verification against the feature brief and codebase
+- Found and fixed two gaps:
+  1. **ai_status = "ai_failed" never set** — Frontend rendered the `ai_failed` status with red colour coding, but the backend AI tagger pipeline never actually set it. Tracks that failed (missing from Claude's response or batch exception) stayed as `"untagged"`. Fixed by setting `ai_status = "ai_failed"` in both failure paths in `ai_tagger.py:_process_batch()`
+  2. **CLAUDE.md incomplete updates** — Phase 3 config settings (ai_model, ai_batch_size, ai_max_requests_per_minute) were missing from the Configuration Management example code block. Phase 3 was not bolded in the Phased Build Plan table. Both fixed.
+- Confirmed 3 items were already correct:
+  - write-tags endpoint transitions ai_status from "ai_tagged" to "ai_tags_written" (with integration test coverage)
+  - anthropic SDK has `type: ignore[import-not-found]` and is documented in CLAUDE.md Known Issues
+  - Feature brief already marked `Status: Complete`
+
+### Issues encountered and resolved
+1. **ai_failed status gap** — Backend pipeline incremented `tracks_failed` counter but never persisted the failure status to the track's `ai_status` column. Fixed in two places: tracks missing from Claude's tool response, and entire batch exception handler.
+2. **CLAUDE.md config example stale** — The Settings code block in Configuration Management only showed up to Phase 2 settings. Added Phase 3 settings block.
+3. **Build plan table styling** — Phase 3 row wasn't bolded like Phases 0–2. Fixed.
+
+### Key decisions made
+1. ai_failed is an intentional extension beyond the original spec's three states — mirrors the failure tracking pattern from Phase 1/2 analysis_status
+
+### What's next
+- Merge `feature/phase-3-claude` to `develop`
+- Begin Phase 2b (File Organisation) — template engine, automated org proposals, confidence scoring, review queue
