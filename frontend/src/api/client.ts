@@ -167,6 +167,15 @@ export interface Track {
   source_key: number | null;
   has_bpm_conflict: boolean;
   has_key_conflict: boolean;
+
+  // AI tagging
+  subgenre: string | null;
+  mood: string | null;
+  energy: number | null;
+  ai_confidence: string | null;
+  ai_reasoning: string | null;
+  source_genre: string | null;
+  ai_status: string;
 }
 
 /** Track list response with pagination. */
@@ -247,6 +256,9 @@ export interface TrackUpdate {
   bpm?: number;
   key?: number;
   rating?: number;
+  subgenre?: string;
+  mood?: string;
+  energy?: number;
 }
 
 /** Update a single track's metadata. */
@@ -258,7 +270,7 @@ export function updateTrack(trackId: number, update: TrackUpdate): Promise<Track
 }
 
 /** Revert a field to its source value. */
-export function revertField(trackId: number, field: "bpm" | "key"): Promise<Track> {
+export function revertField(trackId: number, field: "bpm" | "key" | "genre"): Promise<Track> {
   return request<Track>(`/api/tracks/${trackId}/revert/${field}`, {
     method: "PUT",
   });
@@ -308,6 +320,122 @@ export function connectAnalysisProgress(
   es.addEventListener("analysis_batch_complete", (e) => {
     const data = JSON.parse(e.data);
     onBatchComplete?.(data);
+    es.close();
+  });
+
+  es.addEventListener("error", () => {
+    es.close();
+  });
+
+  return es;
+}
+
+// --- Phase 3: AI Tagging API ---
+
+/** AI tag request body. */
+export interface AiTagRequest {
+  track_ids?: number[];
+  options?: {
+    skip_if_tagged?: boolean;
+    model?: string;
+  };
+}
+
+/** AI tag response. */
+export interface AiTagResponse {
+  batch_id: string;
+  total_tracks: number;
+  total_batches: number;
+  message: string;
+}
+
+/** AI tag status response. */
+export interface AiTagStatus {
+  status: string;
+  token_usage?: {
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_requests: number;
+    estimated_cost_usd: number;
+  };
+}
+
+/** AI tag progress event data. */
+export interface AiTagProgressEvent {
+  batch_number: number;
+  total_batches: number;
+  tracks_tagged: number;
+  tracks_total: number;
+  tracks_failed: number;
+  token_usage: {
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost_usd: number;
+  };
+}
+
+/** AI tag complete event data. */
+export interface AiTagCompleteEvent {
+  total_tracks: number;
+  succeeded: number;
+  failed: number;
+  total_batches: number;
+  token_usage: {
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost_usd: number;
+  };
+}
+
+/** Validate key response. */
+export interface ValidateKeyResponse {
+  valid: boolean;
+  model?: string;
+  error?: string;
+}
+
+/** Start AI tagging tracks. */
+export function postAiTag(body: AiTagRequest): Promise<AiTagResponse> {
+  return request<AiTagResponse>("/api/tracks/ai-tag", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Cancel current AI tagging batch. */
+export function postAiTagCancel(): Promise<{ status: string; message: string }> {
+  return request<{ status: string; message: string }>("/api/tracks/ai-tag/cancel", {
+    method: "POST",
+  });
+}
+
+/** Get AI tagging status. */
+export function getAiTagStatus(): Promise<AiTagStatus> {
+  return request<AiTagStatus>("/api/tracks/ai-tag/status");
+}
+
+/** Validate the configured API key. */
+export function postValidateApiKey(): Promise<ValidateKeyResponse> {
+  return request<ValidateKeyResponse>("/api/tracks/ai-tag/validate-key", {
+    method: "POST",
+  });
+}
+
+/** Connect to AI tag SSE progress stream. Returns an EventSource. */
+export function connectAiTagProgress(
+  onEvent: (event: AiTagProgressEvent) => void,
+  onComplete?: (data: AiTagCompleteEvent) => void,
+): EventSource {
+  const es = new EventSource(`${BASE_URL}/api/tracks/ai-tag/progress`);
+
+  es.addEventListener("ai_tag_batch_progress", (e) => {
+    const data = JSON.parse(e.data) as AiTagProgressEvent;
+    onEvent(data);
+  });
+
+  es.addEventListener("ai_tag_complete", (e) => {
+    const data = JSON.parse(e.data) as AiTagCompleteEvent;
+    onComplete?.(data);
     es.close();
   });
 
