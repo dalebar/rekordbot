@@ -35,9 +35,12 @@ async def client():
     """Async HTTP client for testing FastAPI endpoints."""
     from backend.main import app
     from backend.models.database import SessionLocal, init_db
+
+    # Drop and recreate all tables to pick up schema changes
+    from backend.models.database import engine as prod_engine
     from backend.models.track import Track
 
-    # Ensure tables exist (lifespan doesn't run with ASGITransport)
+    Base.metadata.drop_all(prod_engine)
     init_db()
 
     # Clean tables for test isolation
@@ -58,6 +61,7 @@ async def client():
     import backend.routes.ai_tagging as ai_tagging_module
     import backend.routes.crates as crates_module
     import backend.routes.export as export_module
+    import backend.routes.import_xml as import_xml_module
     import backend.routes.ingest as ingest_module
     import backend.routes.organise as organise_module
     import backend.routes.sets as sets_module
@@ -70,6 +74,11 @@ async def client():
     export_module._last_export = None
     crates_module._assigner = None
     sets_module._planner = None
+    import_xml_module._import_in_progress = False
+    import_xml_module._cancel_event = None
+    import_xml_module._last_progress = None
+    import_xml_module._last_summary = None
+    import_xml_module._progress_queue = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
