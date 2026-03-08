@@ -83,7 +83,6 @@ rekordbot/
 │   │   ├── App.tsx               ← Main layout with drop zone, queue, track table
 │   │   ├── DropZone.tsx          ← Drag-and-drop + Tauri folder dialog
 │   │   ├── ProcessingQueue.tsx   ← SSE consumer, live file status
-│   │   ├── TrackList.tsx         ← Basic track list (Phase 1, superseded by TrackTable)
 │   │   ├── TrackTable.tsx        ← Rekordbox-style sortable table with inline editing
 │   │   ├── AnalysisControls.tsx  ← Analysis toolbar with progress bar and filters
 │   │   ├── ColumnMenu.tsx        ← Right-click column visibility toggle
