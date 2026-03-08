@@ -67,6 +67,8 @@ def build_ffmpeg_command(
             codec,
             "-f",
             "aiff",
+            "-write_id3v2",
+            "1",
             str(output_path),
         ]
 

@@ -64,3 +64,10 @@ class OrganisationError(RekordBotError):
 
     def __init__(self, detail: str, status_code: int = 500) -> None:
         super().__init__(error="organisation_failed", detail=detail, status_code=status_code)
+
+
+class ExportError(RekordBotError):
+    """Raised when Rekordbox XML export fails."""
+
+    def __init__(self, detail: str, status_code: int = 500) -> None:
+        super().__init__(error="export_failed", detail=detail, status_code=status_code)
