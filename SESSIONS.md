@@ -313,3 +313,47 @@ Phase 2b implementation — File Organisation & Structure, from feature brief to
 ### What's next
 - Merge `feature/phase-2b-organiser` to `develop`
 - Begin Phase 4 (Rekordbox XML Export) — XML generation from DB, track schema mapping, playlist/crate structure
+
+---
+
+## Session 8 — 2026-03-08
+
+### What was worked on
+Phase 4 implementation — Rekordbox XML Export, from feature brief to fully working export pipeline with UI.
+
+### Summary
+- Working on branch `feature/phase-4-rekordbox` (created from `develop`)
+- Implemented all 8 steps of the Phase 4 build plan in order:
+  1. **Config & exceptions** — Added rekordbox_xml_path to Settings; added ExportError exception (already staged from planning session)
+  2. **Location encoder (TDD)** — RFC 3986 percent-encoding per path component via `urllib.parse.quote(safe="")`, `file://localhost/` URI generation, round-trip decodable; 25 tests
+  3. **Schema mapper (TDD)** — Track model → XML attribute mapping: format_bpm() two-decimal float, format_rating() non-linear scale (0/51/102/153/204/255), format_kind() extension → "AIFF File"/"MP3 File", format_date() datetime → yyyy-mm-dd, track_to_xml_attrs() with fallbacks (filename stem for title, "Unknown Artist"), file size/mtime from disk, key notation via key_to_display(), optional attrs omitted when None; 35 tests
+  4. **XML builder** — DJ_PLAYLISTS document construction with PRODUCT (Name="rekordbot"), COLLECTION with sequential TrackID assignment, PLAYLISTS with ROOT → rekordbot folder → "All Tracks" + per-artist playlists derived from folder hierarchy, write_xml() with XML declaration and UTF-8 encoding, ET.indent() for readable output; 19 tests
+  5. **Export service** — Pipeline orchestrator: load tracks from DB, filter by file_path presence, build XML via builder, count playlists, write to disk; configurable output path with 3-level fallback (explicit → setting → output_directory/rekordbox.xml); 9 tests
+  6. **API routes** — POST /api/export/rekordbox (trigger export, returns ExportResponse), GET /api/export/rekordbox/status (last export info with timestamp); registered in main.py; conftest.py updated with export module state reset; 5 tests
+  7. **Frontend** — ExportControls.tsx (amber Export XML button, disabled when no tracks, result summary with exported/skipped counts, expandable warnings list, dismiss button); API client extended with ExportResult, ExportStatus, ExportOptions types, exportRekordboxXml() and getExportStatus() functions
+  8. **Integration tests & docs** — End-to-end create tracks → export → parse XML → verify all attributes, location encoding round-trip with 7 path patterns (spaces, unicode, special chars, parentheses, apostrophes), playlist structure verification (All Tracks count, per-artist counts, TrackID/Key consistency), re-export after metadata change, API integration test; updated CLAUDE.md with Phase 4 status, repo structure, and deliverables; 11 tests
+- **Total: 706 tests passing (104 new), 8 clean commits, all pre-commit hooks green**
+
+### Issues encountered and resolved
+1. **Research doc filename mismatch** — CLAUDE.md referenced `rekordbox-xml-cdj-compatibility.md` but actual file was `rekordbox-xml-cdj-compatibility-research.md`. Used Glob to find the correct filename.
+2. **pytest not installed in venv** — `uv sync --dev` reported packages audited but pytest was missing. Fixed with explicit `uv pip install pytest pytest-asyncio httpx`.
+3. **mypy MockTrack attr-defined errors** — Test helper class using empty `class MockTrack: pass` with dynamic attribute assignment caused 23+ mypy errors. Fixed by converting to `@dataclass` with explicit typed fields.
+4. **mypy union-attr on Element.find()** — `Element.find()` returns `Element | None`, so chaining `.get()` or `.findall()` directly fails mypy. Fixed by storing result in variable and asserting `is not None` before use.
+5. **Ruff formatting on every commit** — Pre-commit ruff-format reformatted test files on 5 of 8 commits. Re-added and committed on second attempt each time.
+6. **Track model has `file_path` not `output_path`** — Feature spec referenced `Track.output_path` but the actual model uses `file_path` (updated by the organiser after moving files). Used `file_path` throughout the implementation.
+
+### Key decisions made
+1. TDD for pure logic modules (location encoder, schema mapper); tests-after for XML builder, export service, routes
+2. `file_path` used as the canonical file location for export — after Phase 2b organisation, this is the organised path
+3. Optional XML attributes (Composer, AlbumArtist, Grouping, Remixer, Label, Mix) omitted when None — matches Rekordbox export behaviour
+4. File size and mtime read from disk at export time (not from DB) — files may have been modified since ingestion
+5. `get_file_size()` and `_get_file_mtime()` mocked in tests — isolates XML generation logic from filesystem state
+6. Playlist structure derived from `file_path` relative to `output_directory` — top-level folder becomes playlist name
+7. Amber/orange colour for Export XML button — visually distinct from blue (analysis), purple (AI), emerald (organisation)
+8. No SSE for export — sub-second operation for typical DJ library sizes
+
+### What's next
+- Wire ExportControls into App.tsx alongside existing toolbar sections
+- Manual Rekordbox import verification (generate XML, import via File → Import Library, verify fields)
+- Merge `feature/phase-4-rekordbox` to `develop`, then to `main`
+- Begin Phase 4b (Rekordbox XML Import) or Phase 5 (Crate Builder & Set Planner)
