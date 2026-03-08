@@ -16,7 +16,7 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 - **Metadata:** mutagen (ID3 tag reading/writing for AIFF and MP3)
 - **BPM/Key detection:** librosa (BPM via beat_track, key via chroma + Krumhansl-Schmuckler)
 - **AI layer:** Anthropic Python SDK (Claude) — genre/mood inference, crate building, set planning
-- **Rekordbox export:** Custom XML generation via xml.etree.ElementTree
+- **Rekordbox XML:** Custom export/import via xml.etree.ElementTree
 - **Packaging:** PyInstaller (`--onedir`) for Python backend + Tauri bundler for desktop app
 - **Tag format target:** ID3v2.3 (universal CDJ compatibility)
 - **Package management:** uv (fast resolver, lockfile, venv management)
@@ -91,6 +91,10 @@ rekordbot/
 │   │   ├── xml_schema_mapper.py  ← Track model → XML attribute mapping (Phase 4)
 │   │   ├── xml_builder.py        ← Rekordbox XML document construction (Phase 4)
 │   │   ├── xml_exporter.py       ← Export pipeline orchestrator (Phase 4)
+│   │   ├── xml_parser.py         ← Rekordbox XML parsing with location decoding (Phase 4b)
+│   │   ├── track_matcher.py      ← Track matching (path/hash) and conflict detection (Phase 4b)
+│   │   ├── conflict_resolver.py  ← Import conflict resolution (per-track and bulk) (Phase 4b)
+│   │   ├── xml_importer.py       ← XML import pipeline orchestrator with SSE progress (Phase 4b)
 │   │   ├── config_manager.py    ← JSON config persistence and env var integration (Phase 6a)
 │   │   └── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
 │   ├── routes/
@@ -101,7 +105,8 @@ rekordbot/
 │   │   ├── export.py             ← Rekordbox XML export endpoints (Phase 4)
 │   │   ├── crates.py             ← Crate CRUD, assignment, progress SSE endpoints (Phase 5a)
 │   │   ├── sets.py               ← Set planner CRUD, shuffle, export, progress SSE (Phase 5b)
-│   │   └── settings.py          ← Settings CRUD, validation, first-run status (Phase 6a)
+│   │   ├── settings.py          ← Settings CRUD, validation, first-run status (Phase 6a)
+│   │   └── import_xml.py        ← Rekordbox XML import, conflicts, SSE progress (Phase 4b)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
@@ -122,6 +127,8 @@ rekordbot/
 │   │   ├── SetCreateDialog.tsx  ← Set creation modal with parameters (Phase 5b)
 │   │   ├── SetListPanel.tsx     ← Set list with status and counts (Phase 5b)
 │   │   ├── SettingsPanel.tsx    ← Settings panel with main and advanced sections (Phase 6a)
+│   │   ├── ImportControls.tsx    ← Rekordbox XML import toolbar with progress (Phase 4b)
+│   │   ├── ConflictReviewPanel.tsx ← Import conflict review and resolution UI (Phase 4b)
 │   │   ├── SetupWizard.tsx      ← First-run setup wizard (Phase 6a)
 │   │   ├── ToastProvider.tsx    ← Toast notification context and hook (Phase 6a)
 │   │   ├── ReviewQueue.tsx       ← Review queue for ambiguous tracks (Phase 2b)
@@ -155,7 +162,8 @@ rekordbot/
     │   ├── phase-4-rekordbox-xml-export.md
     │   ├── phase-5a-crate-builder.md
 │   ├── phase-5b-set-planner.md
-│   └── phase-6a-app-shell.md
+│   ├── phase-6a-app-shell.md
+│   └── phase-4b-xml-import.md
     └── research/
         ├── rekordbox-xml-cdj-compatibility.md
         └── tauri-python-backend.md
@@ -340,12 +348,15 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 - Key stored internally as integer 1–24 (Camelot wheel mapping), converted to user-preferred notation on display/export
 
 ### Rekordbox XML
-- Export-only in Phase 4 (import/merge deferred to Phase 4b or later)
+- Export (Phase 4) and import (Phase 4b) via xml.etree.ElementTree
 - Track paths as `file://localhost/` URIs with percent-encoded path components
 - Rating uses non-linear scale: 0/51/102/153/204/255 for 0–5 stars
 - BPM as two-decimal float (e.g. "128.00")
 - Playlists reference tracks by TrackID (KeyType="0")
-- No TEMPO or POSITION_MARK export initially (metadata only)
+- No TEMPO or POSITION_MARK export/import (metadata only)
+- Import matching: path match (primary) → SHA-256 hash match (secondary) → new track
+- Import conflicts stored as JSON in Track.import_conflicts (cleared on resolution)
+- Imported playlists become Crates with folder paths flattened to name prefixes
 
 ### Tauri/Backend Integration
 - Python backend runs as Tauri sidecar (PyInstaller `--onedir`)
@@ -357,9 +368,9 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6a — App Shell & Packaging (complete)
-**Tests:** 1013 passing across all phases
-**Next:** Phase 4b — Rekordbox XML Import
+**Phase:** 4b — Rekordbox XML Import (complete)
+**Tests:** 1143 passing across all phases
+**Next:** Phase 6b — Polish & Distribution
 
 ### Phase Summary
 
@@ -374,6 +385,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 5a — Crate Builder | 814 | `docs/features/phase-5a-crate-builder.md` |
 | 5b — Set Planner | 930 | `docs/features/phase-5b-set-planner.md` |
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
+| 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -399,5 +411,5 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 | **5a** | Crate Builder | ✅ Done | AI-powered smart playlists from free-text descriptions, key compatibility utility, sidebar UI, XML playlist export |
 | **5b** | Set Planner | ✅ Done | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
-| **4b** | Rekordbox XML Import | ⬅️ Next | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
-| 6b | Polish & Distribution | — | UI polish, code signing, notarisation, .dmg packaging, auto-update |
+| **4b** | Rekordbox XML Import | ✅ Done | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
+| 6b | Polish & Distribution | ⬅️ Next | UI polish, code signing, notarisation, .dmg packaging, auto-update |
