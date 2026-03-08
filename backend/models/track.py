@@ -68,11 +68,13 @@ class Track(Base):
     analysis_status: Mapped[str] = mapped_column(Text, default="unanalysed")
 
     # AI enrichment (populated by Claude layer in Phase 3)
-    energy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    subgenre: Mapped[str | None] = mapped_column(Text, nullable=True)
     mood: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ai_genre: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ai_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    ai_tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    energy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_confidence: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    ai_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_genre: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_status: Mapped[str] = mapped_column(Text, default="untagged")
 
     # Operational
     date_added: Mapped[str] = mapped_column(Text, default=lambda: date.today().isoformat())
