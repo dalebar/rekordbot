@@ -76,6 +76,10 @@ class Track(Base):
     source_genre: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_status: Mapped[str] = mapped_column(Text, default="untagged")
 
+    # Import (populated by XML import in Phase 4b)
+    import_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    import_conflicts: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Organisation (populated by organiser in Phase 2b)
     proposed_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     previous_output_path: Mapped[str | None] = mapped_column(Text, nullable=True)
