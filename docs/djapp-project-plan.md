@@ -337,27 +337,40 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 **Deliverable:** Existing Rekordbox users can import their library into rekordbot.
 
-*Deferred until after the core creative workflow (5a/5b) is complete. Export-only is sufficient for the initial workflow. Import adds significant complexity around conflict resolution.*
+*Deferred until after Phase 6a (app shell) and real-world dogfooding. Import is essential for crate building and set planning with an existing library, but the app needs to be usable as a standalone desktop app first.*
 
 ---
 
-### Phase 6 — Polish & Packaging
+### Phase 6a — App Shell & Packaging
+**Goal:** Transform rekordbot from a dev-mode-only project into a working desktop application launchable from Finder.
+
+- [ ] Settings persistence (JSON config file in `~/Library/Application Support/rekordbot/`)
+- [ ] Settings panel (Main: API key, output directory, key notation, folder template, AAC conversion. Advanced: BPM range, confidence threshold, track duration, max tracks per set)
+- [ ] First-run wizard (Welcome → Essential config → Done)
+- [ ] Error handling standardisation (toast notifications, standard error format, startup health checks)
+- [ ] Self-termination watchdog (parent PID polling)
+- [ ] BitRate population in XML export
+- [ ] Tauri `.app` bundle (no code signing, no `.dmg`)
+
+**Deliverable:** Working `.app` that can be launched from Finder and runs the full pipeline end-to-end.
+
+---
+
+### Phase 6b — Polish & Distribution
 **Goal:** Something you'd hand to a friend without embarrassment.
 
 - [ ] UI polish pass
-- [ ] Error handling and user-facing messages
-- [ ] Settings panel (API key management, paths, preferences)
-- [ ] Tauri packaging (Mac .dmg)
-- [ ] Basic onboarding / first-run experience
 - [ ] Performance profiling (large libraries)
-- [ ] Self-termination watchdog for Python backend
-- [ ] Alembic migration setup (needed once real users have persistent databases)
-- [ ] Code signing
+- [ ] Alembic migration setup
+- [ ] Code signing and notarisation
+- [ ] `.dmg` packaging
+- [ ] Basic onboarding tutorial (beyond the first-run wizard)
 - [ ] Bootleg detection refinement (false positives on "single edit", "radio edit" etc.)
-- [ ] BitRate population in XML export
-- [ ] Folder template editor UI
+- [ ] Folder template editor UI (visual drag-and-drop)
+- [ ] Drag-and-drop reordering in set planner
+- [ ] Windows packaging
 
-**Deliverable:** Distributable app.
+**Deliverable:** Distributable, signed app.
 
 ---
 
@@ -376,6 +389,7 @@ feature/phase-2b-organiser   ← merged ✅
 feature/phase-4-rekordbox    ← merged ✅
 feature/phase-5a-crate-builder ← merged ✅
 feature/phase-5b-set-planner   ← merged ✅
+feature/phase-6a-app-shell     ← current
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
