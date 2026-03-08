@@ -132,7 +132,8 @@ async def analyse_track(
         # Step 2: Load audio with librosa (once, shared between detectors)
         import librosa  # type: ignore[import-not-found]
 
-        y, sr = await asyncio.to_thread(librosa.load, str(file_path), sr=22050, mono=True)
+        y, loaded_sr = await asyncio.to_thread(librosa.load, str(file_path), sr=22050, mono=True)
+        sr: int = int(loaded_sr)
 
         # Update duration from librosa (more reliable than tag-based)
         track.duration = float(len(y)) / sr

@@ -172,7 +172,8 @@ def detect_key(
             if not file_path.exists():
                 logger.warning("File not found for key detection: %s", file_path)
                 return None
-            y, loaded_sr = librosa.load(str(file_path), sr=sr, mono=True)
+            y, loaded_sr_raw = librosa.load(str(file_path), sr=sr, mono=True)
+            loaded_sr = int(loaded_sr_raw)
         actual_sr = loaded_sr if loaded_sr is not None else sr
 
         # Separate harmonic component (remove percussive elements)
