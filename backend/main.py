@@ -32,6 +32,7 @@ from backend.models.database import init_db  # noqa: E402
 from backend.routes.ai_tagging import router as ai_tagging_router  # noqa: E402
 from backend.routes.crates import router as crates_router  # noqa: E402
 from backend.routes.export import router as export_router  # noqa: E402
+from backend.routes.import_xml import router as import_xml_router  # noqa: E402
 from backend.routes.ingest import router as ingest_router  # noqa: E402
 from backend.routes.organise import router as organise_router  # noqa: E402
 from backend.routes.sets import router as sets_router  # noqa: E402
@@ -103,6 +104,7 @@ app.include_router(tagging_router)
 app.include_router(ai_tagging_router)
 app.include_router(organise_router)
 app.include_router(export_router)
+app.include_router(import_xml_router)
 app.include_router(crates_router)
 app.include_router(sets_router)
 app.include_router(settings_router)

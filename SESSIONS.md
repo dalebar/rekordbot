@@ -560,3 +560,68 @@ Phase 6a implementation — App Shell & Packaging, transforming rekordbot from a
 ### What's next
 - Merge `feature/phase-6a-app-shell` → `develop`
 - Decide next phase: Phase 6b (Polish & Distribution) or Phase 4b (Rekordbox XML Import)
+
+---
+
+## Session 15 — 2026-03-08
+
+### What was worked on
+Phase 4b — Rekordbox XML Import. Full implementation from Track model changes through integration tests.
+
+### Summary
+Built the complete Rekordbox XML import pipeline in 8 steps:
+1. **Track model** — Added `import_source` and `import_conflicts` fields
+2. **XML parser (TDD)** — `xml_parser.py` with location decoding, BPM/rating/tonality parsing, playlist extraction
+3. **Track matcher (TDD)** — `track_matcher.py` with path match → hash match → new track strategy, field-level conflict detection
+4. **Conflict resolver** — `conflict_resolver.py` with per-track and bulk resolution (accept rekordbox / keep rekordbot)
+5. **Import service** — `xml_importer.py` orchestrator with SSE progress, playlist-to-crate conversion
+6. **API routes** — `import_xml.py` with SSE progress streaming, cancel support, conflict endpoints
+7. **Frontend UI** — `ImportControls.tsx` (Tauri file dialog, progress bar) and `ConflictReviewPanel.tsx` (per-field toggle, bulk resolve)
+8. **Integration tests** — 6 end-to-end tests covering full round-trip, playlists, hash matching, large imports, missing files, bulk resolution
+
+### Tests
+130 new tests (5 model + 63 parser + 25 matcher + 11 resolver + 11 importer + 9 routes + 6 integration). Total: 1143 passing.
+
+### Files created
+- `backend/services/xml_parser.py` — Rekordbox XML parser
+- `backend/services/track_matcher.py` — Track matching and conflict detection
+- `backend/services/conflict_resolver.py` — Conflict resolution service
+- `backend/services/xml_importer.py` — Import pipeline orchestrator
+- `backend/routes/import_xml.py` — Import API routes
+- `frontend/src/ImportControls.tsx` — Import toolbar component
+- `frontend/src/ConflictReviewPanel.tsx` — Conflict review UI
+- `backend/tests/test_track_import_fields.py`
+- `backend/tests/test_xml_parser.py`
+- `backend/tests/test_track_matcher.py`
+- `backend/tests/test_conflict_resolver.py`
+- `backend/tests/test_xml_importer.py`
+- `backend/tests/test_import_routes.py`
+- `backend/tests/test_phase4b_integration.py`
+
+### Files modified
+- `backend/models/track.py` — Added import_source, import_conflicts columns
+- `backend/exceptions.py` — Added XmlImportError
+- `backend/main.py` — Registered import_xml router
+- `backend/tests/conftest.py` — Schema refresh and import state reset
+- `frontend/src/api/client.ts` — Phase 4b types and API functions
+- `frontend/src/App.tsx` — ImportControls and ConflictReviewPanel integration
+- `CLAUDE.md` — Updated status, repo structure, design decisions
+
+### Key decisions made
+1. Track matching: path first (exact file_path match), then SHA-256 hash (handles moved files), else create new track
+2. Conflict detection thresholds: BPM difference > 0.5, any difference for key/rating/genre, string fields only when both non-empty
+3. Conflicts stored as JSON in Track.import_conflicts (denormalized, temporary) — cleared to None on resolution
+4. Imported tracks get import_source="rekordbox_xml", conversion_status="complete", analysis_status="not_analysed"
+5. Playlists become Crates with folder paths flattened to name prefixes (e.g. "Genre/House")
+6. SSE progress uses asyncio.Queue bridge for thread→async communication
+7. Cancel support via threading.Event checked between track imports
+
+### Issues encountered and resolved
+1. **conftest.py schema stale** — `create_all(checkfirst=True)` didn't add new columns. Fixed with `drop_all` before `init_db()`.
+2. **Ruff SIM102/SIM105/B904/E501/F841** — Various lint fixes (nested ifs, contextlib.suppress, raise from, line length, unused vars).
+3. **mypy arg-type/union-attr** — Type ignore for test helper kwargs, assert not None before attribute access.
+4. **5 pre-existing export test failures** — PermissionError on `/Volumes/collection` in test_export_routes.py and test_phase4_integration.py (not caused by Phase 4b).
+
+### What's next
+- Merge `feature/phase-4b-xml-import` → `develop` → `main`
+- Phase 6b — Polish & Distribution

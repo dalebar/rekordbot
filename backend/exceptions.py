@@ -85,3 +85,10 @@ class SetPlanError(RekordBotError):
 
     def __init__(self, detail: str, status_code: int = 500) -> None:
         super().__init__(error="set_plan_failed", detail=detail, status_code=status_code)
+
+
+class XmlImportError(RekordBotError):
+    """Raised when Rekordbox XML import fails."""
+
+    def __init__(self, detail: str, status_code: int = 500) -> None:
+        super().__init__(error="xml_import_failed", detail=detail, status_code=status_code)

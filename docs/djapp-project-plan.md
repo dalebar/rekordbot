@@ -144,10 +144,15 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ Manual Rekordbox import test passed — 15 tracks imported, all metadata correct, files playable
 - ✅ No TEMPO or POSITION_MARK export (track metadata only, beat grid deferred)
 
-### Module D2 — Rekordbox XML Import (Phase 4b — Deferred)
-- Parse existing `rekordbox.xml`
-- Merge with internal DB
-- Conflict resolution
+### Module D2 — Rekordbox XML Import ✅ (Phase 4b — Complete)
+- ✅ XML parser: location URI decoding, BPM/rating/tonality parsing, playlist extraction with folder path flattening
+- ✅ Track matching: path match (primary) → SHA-256 hash match (secondary) → new track creation
+- ✅ Conflict detection: field-specific thresholds (BPM > 0.5 difference, any difference for key/rating/genre)
+- ✅ Conflict resolution: per-track field toggle (accept rekordbox / keep rekordbot), bulk resolve actions
+- ✅ Import service: SSE progress reporting, cancellation support, playlist-to-crate conversion
+- ✅ Imported tracks enter with analysis_status="not_analysed", ai_status="untagged" (ready for rekordbot pipeline)
+- ✅ No TEMPO or POSITION_MARK import (metadata only, matching export behaviour)
+- ✅ Import UI: Tauri file dialog, progress bar, conflict review panel with per-field toggle
 
 ### Module E — Crate Builder ✅ (Phase 5a — Complete)
 - ✅ User creates crates by providing a free-text description of the vibe (e.g. "Deep & dubby minimal house, 118–124 BPM, hypnotic and warm")
@@ -195,6 +200,8 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - First-run wizard: Welcome → Config (output directory required, API key optional) → Done, gates app entry via /api/settings/status ✅ (Phase 6a)
 - Toast notifications: success/error/warning/info with auto-dismiss, global API error handler ✅ (Phase 6a)
 - Settings button in sidebar footer ✅ (Phase 6a)
+- Import controls: Import XML button with Tauri file dialog, progress bar, summary display ✅ (Phase 4b)
+- Conflict review panel: expandable per-track conflicts, per-field toggle (RB/rbot), bulk resolve actions ✅ (Phase 4b)
 
 ---
 
@@ -331,16 +338,19 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 4b — Rekordbox XML Import (Deferred)
+### Phase 4b — Rekordbox XML Import ✅ Complete
 **Goal:** Import and merge an existing Rekordbox library.
 
-- [ ] Parse existing `rekordbox.xml`
-- [ ] Merge with internal DB
-- [ ] Conflict resolution (existing tracks vs imported tracks)
-
-**Deliverable:** Existing Rekordbox users can import their library into rekordbot.
-
-*Deferred until after Phase 6a (app shell) and real-world dogfooding. Import is essential for crate building and set planning with an existing library, but the app needs to be usable as a standalone desktop app first.*
+**Delivered (8 commits, 1143 tests total / 130 new):**
+- XML parser: Rekordbox XML parsing with location URI decoding (`file://localhost/` → filesystem path), BPM/rating/tonality extraction, playlist tree traversal with folder path flattening to name prefixes; 63 tests (TDD)
+- Track matcher: path match (primary) → SHA-256 hash match (secondary) → new track strategy, field-level conflict detection with configurable thresholds (BPM > 0.5, any difference for key/rating/genre); 25 tests (TDD)
+- Conflict resolver: per-track resolution with field toggle (accept rekordbox / keep rekordbot), bulk resolution (resolve all rekordbox / resolve all rekordbot), JSON conflict storage in Track.import_conflicts; 11 tests
+- Import service: pipeline orchestrator with SSE progress, playlist-to-crate conversion (assignment_method="imported", auto_refresh=False), cancellation via threading.Event; 11 tests
+- API routes: POST /api/import/rekordbox, GET /api/import/progress (SSE), POST /api/import/cancel, GET /api/import/conflicts, POST /api/import/conflicts/{id}/resolve, POST /api/import/conflicts/resolve-all; 9 tests
+- Frontend: ImportControls (Tauri file dialog, progress bar, summary display), ConflictReviewPanel (expandable per-track conflicts, per-field RB/rbot toggle, bulk resolve actions)
+- Track model: import_source, import_conflicts columns
+- Integration tests: full round-trip, playlist import, hash matching, large imports, missing files, bulk resolution; 6 tests
+- Feature brief: `docs/features/phase-4b-xml-import.md`
 
 ---
 
@@ -393,7 +403,8 @@ feature/phase-2b-organiser   ← merged ✅
 feature/phase-4-rekordbox    ← merged ✅
 feature/phase-5a-crate-builder ← merged ✅
 feature/phase-5b-set-planner   ← merged ✅
-feature/phase-6a-app-shell     ← current (ready to merge)
+feature/phase-6a-app-shell     ← merged ✅
+feature/phase-4b-xml-import    ← current (ready to merge)
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
@@ -458,7 +469,7 @@ Every phase gets a feature brief in `docs/features/` before implementation start
 - Claude Code prompt (initial + continuation)
 - Finalised decisions table
 
-See `docs/features/` for all phase briefs (phase-0 through phase-5b).
+See `docs/features/` for all phase briefs (phase-0 through phase-6a, plus phase-4b).
 
 ### Session Workflow
 
