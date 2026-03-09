@@ -18,10 +18,13 @@ from backend.models.database import Base  # noqa: E402
 
 target_metadata = Base.metadata
 
-# Set the DB URL from the app's config system (not hardcoded in alembic.ini).
-from backend.config import settings  # noqa: E402
+# Set the DB URL from the app's config system if not already set programmatically.
+# When called via run_migrations(), the URL is pre-set on the Config object.
+# When called via the CLI (alembic upgrade head), we fall back to Settings.
+if not config.get_main_option("sqlalchemy.url"):
+    from backend.config import settings  # noqa: E402
 
-config.set_main_option("sqlalchemy.url", settings.db_url)
+    config.set_main_option("sqlalchemy.url", settings.db_url)
 
 
 def run_migrations_offline() -> None:

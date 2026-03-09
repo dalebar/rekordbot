@@ -28,7 +28,7 @@ if "--parent-pid" in sys.argv and "REKORDBOT_DB_URL" not in os.environ:
 
 from backend.config import settings  # noqa: E402
 from backend.exceptions import RekordBotError  # noqa: E402
-from backend.models.database import init_db  # noqa: E402
+from backend.models.database import engine  # noqa: E402
 from backend.routes.ai_tagging import router as ai_tagging_router  # noqa: E402
 from backend.routes.crates import router as crates_router  # noqa: E402
 from backend.routes.export import router as export_router  # noqa: E402
@@ -38,6 +38,7 @@ from backend.routes.organise import router as organise_router  # noqa: E402
 from backend.routes.sets import router as sets_router  # noqa: E402
 from backend.routes.settings import router as settings_router  # noqa: E402
 from backend.routes.tagging import router as tagging_router  # noqa: E402
+from backend.services.migration_runner import run_migrations  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -50,8 +51,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — initialise database on startup, run health checks."""
-    init_db()
+    """Application lifespan — run migrations and initialise on startup."""
+    run_migrations(engine)
     logger.info("rekordbot backend started on port %d", settings.port)
 
     # Startup health checks (non-blocking — log warnings only)
