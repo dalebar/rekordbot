@@ -1,4 +1,4 @@
-.PHONY: dev-backend dev-frontend build-backend build test lint format
+.PHONY: dev-backend dev-frontend build-backend build build-dmg test lint format
 
 dev-backend:
 	uv run uvicorn backend.main:app --reload --port 8420
@@ -11,6 +11,13 @@ build-backend:
 
 build: build-backend
 	cd frontend && npm run tauri build
+
+build-dmg:
+	@echo "Building Python sidecar..."
+	./scripts/build-backend.sh
+	@echo "Building Tauri app + DMG..."
+	cd frontend && npm run tauri build
+	@echo "DMG ready at frontend/src-tauri/target/release/bundle/dmg/"
 
 test:
 	uv run pytest
