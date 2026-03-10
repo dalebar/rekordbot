@@ -13,11 +13,7 @@ build: build-backend
 	cd frontend && npm run tauri build
 
 build-dmg:
-	@echo "Building Python sidecar..."
-	./scripts/build-backend.sh
-	@echo "Building Tauri app + DMG..."
-	cd frontend && npm run tauri build
-	@echo "DMG ready at frontend/src-tauri/target/release/bundle/dmg/"
+	bash scripts/build-dmg.sh
 
 test:
 	uv run pytest

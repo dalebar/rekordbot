@@ -40,6 +40,13 @@ from backend.routes.settings import router as settings_router  # noqa: E402
 from backend.routes.tagging import router as tagging_router  # noqa: E402
 from backend.services.migration_runner import run_migrations  # noqa: E402
 
+# Ensure UTF-8 output encoding in bundled mode (PyInstaller with piped
+# stdout defaults to ASCII when not attached to a terminal).
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -71,12 +78,8 @@ app = FastAPI(title="rekordbot", version="0.1.0", lifespan=lifespan)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-        "http://localhost:1420",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

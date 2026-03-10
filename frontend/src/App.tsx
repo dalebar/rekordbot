@@ -46,15 +46,46 @@ function App() {
   const [showConflicts, setShowConflicts] = useState(false);
   const [conflictCount, setConflictCount] = useState(0);
 
+  // Poll for backend readiness. In dev mode the backend is already running
+  // so the first attempt succeeds. In production the sidecar takes ~2s to
+  // start, so we retry every 500ms for up to 20 attempts (10s).
   useEffect(() => {
-    getHealth()
-      .then(setHealth)
-      .catch(() => setError("Backend unavailable"));
+    let cancelled = false;
 
-    // Check if first-run wizard should be shown
-    getSettingsStatus()
-      .then((status) => setShowWizard(!status.configured))
-      .catch(() => setShowWizard(false));
+    const pollBackend = async () => {
+      const maxAttempts = 20;
+      for (let i = 0; i < maxAttempts; i++) {
+        if (cancelled) return;
+        try {
+          const h = await getHealth();
+          if (cancelled) return;
+          setHealth(h);
+          setError(null);
+          // Backend is up — check first-run status
+          try {
+            const status = await getSettingsStatus();
+            if (!cancelled) setShowWizard(!status.configured);
+          } catch {
+            if (!cancelled) setShowWizard(false);
+          }
+          return;
+        } catch {
+          // Backend not ready yet — wait and retry
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+      // All attempts exhausted
+      if (!cancelled) {
+        setError("Backend unavailable");
+        setShowWizard(false);
+      }
+    };
+
+    pollBackend();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleBatchStarted = useCallback((response: IngestResponse) => {

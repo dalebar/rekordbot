@@ -625,3 +625,97 @@ Built the complete Rekordbox XML import pipeline in 8 steps:
 ### What's next
 - Merge `feature/phase-4b-xml-import` → `develop` → `main`
 - Phase 6b — Polish & Distribution
+
+---
+
+## Session 16 — 2026-03-09/10
+
+### What was worked on
+Phase 6b — .dmg Packaging & Migration Setup. Alembic migration infrastructure (Steps 1–3) and .dmg build pipeline (Step 4).
+
+### Summary
+Spanned two context windows due to the complexity of resolving PyInstaller + Tauri bundling incompatibilities.
+
+**Steps 1–3: Alembic Migration Infrastructure**
+- Added Alembic dependency via `uv add alembic`
+- Created baseline migration (`001_baseline.py`) capturing all 7 tables as a single snapshot
+- Implemented `migration_runner.py` with three-way DB state detection (fresh/pre-Alembic/migrated)
+- Replaced `init_db()` with `run_migrations(engine)` in the lifespan handler
+- `env.py` imports Base from models and conditionally sets DB URL (supports both programmatic and Settings-based URL resolution)
+- 11 new tests for migration runner; 1154 tests total (11 new)
+
+**Step 4: .dmg Build Pipeline**
+- Researched PyInstaller `--onedir` + Tauri bundling incompatibility: Tauri's `externalBin` only copies a single executable, not PyInstaller's `_internal/` directory. Documented 5 options in `docs/research/pyinstaller-onedir-tauri-bundling.md`.
+- Tried Option 1 (`bundle.macOS.files`) — failed because placing sidecar directly in `Contents/MacOS/` triggers PyInstaller's `.app` bundle mode, which changes library resolution paths
+- Implemented Option 3 (post-build injection): `scripts/build-dmg.sh` runs a 4-step pipeline (PyInstaller → Tauri .app → inject sidecar into `Contents/MacOS/sidecar/` → hdiutil .dmg)
+- Updated `lib.rs` with dual-mode sidecar spawning: production uses `std::process::Command` from sidecar/ subdir, dev uses Tauri sidecar API
+- Fixed CORS: WebKit preflight returning 400 because FastAPI's `allow_origins` didn't match the actual webview origin. Fixed with `allow_origins=["*"]` (safe — backend is local-only on 127.0.0.1)
+- Fixed Content-Type header: API client was setting `Content-Type: application/json` on GET requests, triggering unnecessary CORS preflights. Now only set on POST/PUT/PATCH.
+- Fixed CSP: Added `ipc:` and `http://ipc.localhost` to `connect-src` for Tauri IPC protocol
+- Fixed frontend startup: Added polling-based backend readiness (20 retries × 500ms) instead of single immediate health check that failed before sidecar was ready
+- Fixed UTF-8 encoding: PyInstaller sidecar stdout defaults to ASCII when piped. Added `reconfigure(encoding="utf-8")` in `main.py`
+- Updated app icons (user-provided custom icons)
+- Enabled Tauri `devtools` feature for debugging production builds
+- Added `build-backend.sh` `--add-data` flags for Alembic files in PyInstaller bundle
+- Added `"tauri"` script to `package.json`
+- Added `build-dmg` target to Makefile
+- Successfully built and launched .dmg: wizard completes, file ingestion works (15/15 files succeeded)
+
+### Files created
+- `backend/services/migration_runner.py` — Alembic startup migration runner
+- `backend/alembic.ini` — Alembic configuration
+- `backend/alembic/env.py` — Migration environment
+- `backend/alembic/script.py.mako` — Migration template
+- `backend/alembic/versions/001_baseline.py` — Baseline migration (7 tables)
+- `backend/tests/test_migration_runner.py` — Migration runner tests
+- `scripts/build-dmg.sh` — Full .dmg build pipeline
+- `docs/features/phase-6b-dmg-packaging.md` — Feature brief
+- `docs/research/pyinstaller-onedir-tauri-bundling.md` — Research document
+
+### Files modified
+- `backend/main.py` — Migration runner replaces init_db, CORS wildcard, UTF-8 stdout
+- `frontend/src-tauri/src/lib.rs` — Dual-mode sidecar spawning (production vs dev)
+- `frontend/src-tauri/tauri.conf.json` — Bundle targets, CSP with IPC, DMG layout
+- `frontend/src-tauri/Cargo.toml` — devtools feature
+- `frontend/src/App.tsx` — Polling-based backend readiness
+- `frontend/src/api/client.ts` — Content-Type only on POST/PUT/PATCH
+- `frontend/src/ImportControls.tsx` — TypeScript fix for dialog result type
+- `frontend/package.json` — Added tauri script
+- `scripts/build-backend.sh` — Alembic data files in PyInstaller
+- `Makefile` — build-dmg target
+- `CLAUDE.md` — Phase 6b status, repo structure, design decisions, known issues
+- `docs/djapp-project-plan.md` — Phase 6b–6f breakdown
+- `.gitignore` — screenshots directory
+- `frontend/src-tauri/icons/*` — Custom app icons
+
+### Issues encountered and resolved
+1. **PyInstaller not found** — `uv sync` doesn't install optional deps; fixed with `uv sync --extra dev`
+2. **Missing npm "tauri" script** — Added `"tauri": "tauri"` to package.json
+3. **Cargo not installed** — Installed via `rustup`; fixed `~/.zshenv` ownership (`sudo chown`)
+4. **TypeScript error in ImportControls.tsx** — `result.path` on `never` type; simplified to `result`
+5. **Empty resources/ directory** — Tauri build failed on `resources/*` glob; user copied ffmpeg binary
+6. **`com.apple.provenance` xattr** — macOS Sequoia security flag causing permission denied; fixed with `cargo clean`
+7. **PyInstaller `.app` mode detection** — Sidecar in `Contents/MacOS/` triggers wrong library resolution; fixed by placing in `Contents/MacOS/sidecar/` subdirectory
+8. **Alembic env.py overriding DB URL** — Always set URL from Settings, overriding test URLs; made conditional
+9. **Alembic autogenerate empty migration** — Ran against existing dev DB; used temp empty DB
+10. **CORS preflight 400** — WebKit origin not matching `allow_origins`; fixed with wildcard `["*"]`
+11. **Content-Type triggering preflight** — GET requests had `Content-Type: application/json`; now only on POST/PUT/PATCH
+12. **CSP blocking Tauri IPC** — Added `ipc:` and `http://ipc.localhost` to `connect-src`
+13. **Frontend "Backend unavailable"** — Single immediate health check failed before sidecar ready; replaced with polling retries
+14. **ASCII codec error on unicode** — PyInstaller piped stdout defaults to ASCII; forced UTF-8 via `reconfigure()`
+15. **`resource_dir()` path wrong in lib.rs** — Changed to `std::env::current_exe()` for reliable sidecar path resolution
+16. **Ruff B017** — `pytest.raises(Exception)` flagged; changed to `pytest.raises((CommandError, Exception))`
+17. **mypy import-not-found for alembic** — No type stubs; added `# type: ignore[import-not-found]`
+
+### Key decisions made
+1. `--onedir` maintained (not `--onefile`) — deliberate Session 1 decision backed by research (zombie process risk, code signing, startup time)
+2. Sidecar in `Contents/MacOS/sidecar/` subdirectory — prevents PyInstaller `.app` mode detection
+3. Post-build injection approach (Option 3) — Tauri builds .app, then script injects PyInstaller output
+4. CORS wildcard `["*"]` — safe for local-only desktop app (backend binds to 127.0.0.1 only)
+5. Frontend polling (not Tauri event listener) for backend readiness — more reliable, avoids race condition with event registration timing
+6. Tauri `devtools` feature kept enabled during development for production debugging
+
+### What's next
+- End-to-end verification with full pipeline (wizard → ingest → analyse → organise → export)
+- Merge `feature/phase-6b-dmg-packaging` → `develop` → `main`
+- Phase 6c — UI Review & Bug Fixing (dogfooding with real library)
