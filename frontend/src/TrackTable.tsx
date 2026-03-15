@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   bpmMultiply,
+  deleteTracks,
   getCrate,
   getTracks,
   updateTrack,
@@ -8,6 +9,7 @@ import {
   type Track,
   type TrackUpdate,
 } from "./api/client";
+import { useToast } from "./ToastProvider";
 import AnalysisControls, { type FilterMode } from "./AnalysisControls";
 import ColumnMenu, { type ColumnConfig } from "./ColumnMenu";
 import ExportControls from "./ExportControls";
@@ -72,6 +74,10 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
   const [editingCell, setEditingCell] = useState<{ trackId: number; field: string } | null>(null);
   const [editValue, setEditValue] = useState("");
   const [crateTrackIds, setCrateTrackIds] = useState<Set<number> | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { addToast } = useToast();
 
   const loadTracks = useCallback(async () => {
     setLoading(true);
@@ -249,6 +255,27 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
     setDetailTrack(updated);
   }, []);
 
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      const result = await deleteTracks([...selectedIds], deleteFiles);
+      addToast(
+        "success",
+        `Deleted ${result.deleted} track${result.deleted !== 1 ? "s" : ""}${result.file_errors > 0 ? ` (${result.file_errors} file error${result.file_errors !== 1 ? "s" : ""})` : ""}`,
+      );
+      setSelectedIds(new Set());
+      setDetailTrack(null);
+      await loadTracks();
+    } catch {
+      // Global error handler shows toast
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+      setDeleteFiles(false);
+    }
+  }, [selectedIds, deleteFiles, addToast, loadTracks]);
+
   if (loading && tracks.length === 0) {
     return <p className="text-sm text-gray-600">Loading tracks...</p>;
   }
@@ -298,12 +325,22 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
         />
       )}
 
-      {/* Track count */}
+      {/* Track count and actions */}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">
-          {filteredTracks.length} of {total} tracks
-          {selectedIds.size > 0 && ` (${selectedIds.size} selected)`}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            {filteredTracks.length} of {total} tracks
+            {selectedIds.size > 0 && ` (${selectedIds.size} selected)`}
+          </span>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="rounded bg-red-900/50 px-2 py-0.5 text-xs text-red-300 hover:bg-red-800/50"
+            >
+              Delete Selected
+            </button>
+          )}
+        </div>
         <button onClick={loadTracks} className="text-xs text-gray-500 hover:text-gray-300">
           Refresh
         </button>
@@ -386,6 +423,49 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
           onClose={() => setColumnMenuPos(null)}
           position={columnMenuPos}
         />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-96 rounded-lg border border-gray-700 bg-gray-900 p-5 shadow-xl">
+            <h3 className="mb-3 text-sm font-medium text-gray-200">
+              Delete {selectedIds.size} track{selectedIds.size !== 1 ? "s" : ""}?
+            </h3>
+            <p className="mb-4 text-xs text-gray-400">
+              This removes the selected tracks from rekordbot's database and any crates or sets they
+              belong to.
+            </p>
+            <label className="mb-4 flex items-center gap-2 text-xs text-gray-300">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                onChange={(e) => setDeleteFiles(e.target.checked)}
+                className="rounded border-gray-600"
+              />
+              Also delete output files from disk
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteFiles(false);
+                }}
+                disabled={deleting}
+                className="rounded px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deleting}
+                className="rounded bg-red-700 px-3 py-1.5 text-xs text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
