@@ -171,7 +171,9 @@ class TestApplyConfigToEnv:
         from backend.services.config_manager import apply_config_to_env
 
         config = {"output_directory": "/tmp/music", "bpm_range_min": 60}
-        with patch.dict(os.environ, {}, clear=False):
+        # Remove any pre-existing env vars (may leak from main.py import)
+        env_clean = {k: v for k, v in os.environ.items() if not k.startswith("REKORDBOT_")}
+        with patch.dict(os.environ, env_clean, clear=True):
             apply_config_to_env(config)
             assert os.environ.get("REKORDBOT_OUTPUT_DIRECTORY") == "/tmp/music"
             assert os.environ.get("REKORDBOT_BPM_RANGE_MIN") == "60"
@@ -211,7 +213,9 @@ class TestApplyConfigToEnv:
         from backend.services.config_manager import apply_config_to_env
 
         config = {"unknown_setting": "value", "output_directory": "/tmp"}
-        with patch.dict(os.environ, {}, clear=False):
+        # Remove any pre-existing env vars (may leak from main.py import)
+        env_clean = {k: v for k, v in os.environ.items() if not k.startswith("REKORDBOT_")}
+        with patch.dict(os.environ, env_clean, clear=True):
             apply_config_to_env(config)
             assert "REKORDBOT_UNKNOWN_SETTING" not in os.environ
             assert os.environ.get("REKORDBOT_OUTPUT_DIRECTORY") == "/tmp"
