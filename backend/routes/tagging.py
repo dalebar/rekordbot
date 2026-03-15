@@ -4,7 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse  # type: ignore[import-not-found]
 
@@ -504,7 +504,7 @@ async def list_tracks(
 
 
 @router.delete("/tracks", response_model=DeleteTracksResponse)
-async def delete_tracks(request: DeleteTracksRequest) -> DeleteTracksResponse:
+async def delete_tracks(request: DeleteTracksRequest = Body(...)) -> DeleteTracksResponse:  # noqa: B008
     """Delete tracks by ID, optionally removing output files from disk."""
     if not request.track_ids:
         return DeleteTracksResponse(deleted=0, not_found=0, file_errors=0)
