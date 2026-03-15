@@ -43,7 +43,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // Setting it on GET requests triggers unnecessary CORS preflight checks.
   const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
   const method = (options?.method ?? "GET").toUpperCase();
-  if (["POST", "PUT", "PATCH"].includes(method) && !headers["Content-Type"]) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
