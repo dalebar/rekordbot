@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from backend.config import Settings
 from backend.exceptions import ConversionError, DuplicateTrackError
+from backend.models.crate import CrateTrack
+from backend.models.set_plan import SetTrack
 from backend.models.track import Track
 from backend.services.conversion import ConversionAction, decide_conversion
 from backend.services.format_inspector import FileInfo, inspect_file
@@ -165,14 +167,26 @@ async def convert_file(
         # Step 4: Check for duplicates
         existing = db_session.query(Track).filter_by(file_hash=file_hash).first()
         if existing:
-            logger.info("Duplicate detected for %s (matches track %d)", path.name, existing.id)
-            return TrackResult(
-                success=False,
-                duplicate=True,
-                file_path=str(path),
-                action="skip_duplicate",
-                error=f"Duplicate of existing track: {existing.file_path}",
-            )
+            if Path(existing.file_path).exists():
+                logger.info("Duplicate detected for %s (matches track %d)", path.name, existing.id)
+                return TrackResult(
+                    success=False,
+                    duplicate=True,
+                    file_path=str(path),
+                    action="skip_duplicate",
+                    error=f"Duplicate of existing track: {existing.file_path}",
+                )
+            else:
+                # Output file is missing — clean up orphaned record and continue
+                logger.warning(
+                    "Orphaned track %d (file missing: %s) — cleaning up",
+                    existing.id,
+                    existing.file_path,
+                )
+                db_session.query(CrateTrack).filter_by(track_id=existing.id).delete()
+                db_session.query(SetTrack).filter_by(track_id=existing.id).delete()
+                db_session.delete(existing)
+                db_session.commit()
 
         # Step 5: Generate output path
         output_dir = Path(settings.output_directory).expanduser()

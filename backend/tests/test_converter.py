@@ -1,11 +1,17 @@
-"""Tests for converter service — build_ffmpeg_command and compute_file_hash (TDD)."""
+"""Tests for converter service — build_ffmpeg_command, compute_file_hash, orphan handling."""
 
 import hashlib
 from pathlib import Path
 
+from backend.config import Settings
+from backend.models.crate import Crate, CrateTrack
+from backend.models.set_plan import SetPlan, SetTrack
+from backend.models.track import Track
 from backend.services.conversion import ConversionAction
-from backend.services.converter import build_ffmpeg_command, compute_file_hash
+from backend.services.converter import build_ffmpeg_command, compute_file_hash, convert_file
 from backend.services.format_inspector import FileInfo
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "audio"
 
 
 def _make_file_info(
@@ -201,3 +207,120 @@ class TestComputeFileHash:
         file2.write_bytes(b"content b")
 
         assert compute_file_hash(file1) != compute_file_hash(file2)
+
+
+class TestDuplicateDetectionOrphanHandling:
+    """Tests for duplicate detection with missing file handling in convert_file()."""
+
+    async def test_duplicate_with_existing_file_returns_duplicate(
+        self, db_session, tmp_path: Path
+    ) -> None:
+        """When a duplicate is found and the matched file still exists, return duplicate."""
+        fixture = FIXTURES_DIR / "silence_320k.mp3"
+        file_hash = compute_file_hash(fixture)
+
+        # Create an existing track with matching hash whose file exists on disk
+        output_file = tmp_path / "output" / "existing.mp3"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_bytes(b"existing track data")
+
+        existing_track = Track(
+            file_path=str(output_file),
+            file_hash=file_hash,
+            conversion_status="complete",
+        )
+        db_session.add(existing_track)
+        db_session.commit()
+
+        settings = Settings(output_directory=str(tmp_path / "new_output"), db_url="sqlite://")
+        result = await convert_file(fixture, db_session, settings)
+
+        assert result.success is False
+        assert result.duplicate is True
+        # Original track should still exist in DB
+        assert db_session.query(Track).filter_by(file_hash=file_hash).first() is not None
+
+    async def test_duplicate_with_missing_file_cleans_orphan_and_continues(
+        self, db_session, tmp_path: Path
+    ) -> None:
+        """When a duplicate is found but the matched file is missing, clean up and continue."""
+        fixture = FIXTURES_DIR / "silence_320k.mp3"
+        file_hash = compute_file_hash(fixture)
+
+        # Create an orphaned track — file_path points to a non-existent file
+        orphan = Track(
+            file_path=str(tmp_path / "deleted" / "gone.mp3"),
+            file_hash=file_hash,
+            conversion_status="complete",
+        )
+        orphan_path = str(tmp_path / "deleted" / "gone.mp3")
+        db_session.add(orphan)
+        db_session.commit()
+
+        settings = Settings(output_directory=str(tmp_path / "output"), db_url="sqlite://")
+        result = await convert_file(fixture, db_session, settings)
+
+        # Processing should continue and succeed
+        assert result.success is True
+        assert result.duplicate is False
+        assert result.track is not None
+        assert result.track.file_hash == file_hash
+
+        # Orphaned record should be gone — only the new track should have this hash
+        tracks_with_hash = db_session.query(Track).filter_by(file_hash=file_hash).all()
+        assert len(tracks_with_hash) == 1
+        assert tracks_with_hash[0].file_path != orphan_path
+
+    async def test_orphan_with_crate_and_set_associations_cascades(
+        self, db_session, tmp_path: Path
+    ) -> None:
+        """When an orphaned track has CrateTrack/SetTrack rows, they are also cleaned up."""
+        fixture = FIXTURES_DIR / "silence_320k.mp3"
+        file_hash = compute_file_hash(fixture)
+
+        # Create orphaned track
+        orphan = Track(
+            file_path=str(tmp_path / "deleted" / "gone.mp3"),
+            file_hash=file_hash,
+            conversion_status="complete",
+        )
+        db_session.add(orphan)
+        db_session.commit()
+        orphan_id = orphan.id
+
+        # Create a crate with this track
+        crate = Crate(name="Test Crate", description="test")
+        db_session.add(crate)
+        db_session.commit()
+        crate_track = CrateTrack(crate_id=crate.id, track_id=orphan_id, assignment_method="ai")
+        db_session.add(crate_track)
+        db_session.commit()
+
+        # Create a set with this track
+        set_plan = SetPlan(name="Test Set", description="test")
+        db_session.add(set_plan)
+        db_session.commit()
+        set_track = SetTrack(set_id=set_plan.id, track_id=orphan_id, position=1)
+        db_session.add(set_track)
+        db_session.commit()
+
+        settings = Settings(output_directory=str(tmp_path / "output"), db_url="sqlite://")
+        result = await convert_file(fixture, db_session, settings)
+
+        # Processing should succeed
+        assert result.success is True
+        assert result.track is not None
+
+        # Orphan record should be replaced — only the new track should have this hash
+        tracks_with_hash = db_session.query(Track).filter_by(file_hash=file_hash).all()
+        assert len(tracks_with_hash) == 1
+        new_track = tracks_with_hash[0]
+        assert new_track.file_path != str(tmp_path / "deleted" / "gone.mp3")
+
+        # CrateTrack/SetTrack rows for the orphan should be cleaned up
+        assert db_session.query(CrateTrack).filter_by(track_id=orphan_id).first() is None
+        assert db_session.query(SetTrack).filter_by(track_id=orphan_id).first() is None
+
+        # Crate and set themselves should still exist
+        assert db_session.query(Crate).filter_by(id=crate.id).first() is not None
+        assert db_session.query(SetPlan).filter_by(id=set_plan.id).first() is not None
