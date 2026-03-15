@@ -305,6 +305,24 @@ export function revertField(trackId: number, field: "bpm" | "key" | "genre"): Pr
   });
 }
 
+/** Delete tracks response. */
+export interface DeleteTracksResponse {
+  deleted: number;
+  not_found: number;
+  file_errors: number;
+}
+
+/** Delete tracks by ID, optionally removing output files from disk. */
+export function deleteTracks(
+  trackIds: number[],
+  deleteFiles = false,
+): Promise<DeleteTracksResponse> {
+  return request<DeleteTracksResponse>("/api/tracks", {
+    method: "DELETE",
+    body: JSON.stringify({ track_ids: trackIds, delete_files: deleteFiles }),
+  });
+}
+
 /** Multiply BPM by a factor (2 or 0.5). */
 export function bpmMultiply(trackId: number, factor: 2 | 0.5): Promise<Track> {
   return request<Track>(`/api/tracks/${trackId}/bpm-multiply`, {
