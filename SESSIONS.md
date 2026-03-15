@@ -719,3 +719,36 @@ Spanned two context windows due to the complexity of resolving PyInstaller + Tau
 - End-to-end verification with full pipeline (wizard → ingest → analyse → organise → export)
 - Merge `feature/phase-6b-dmg-packaging` → `develop` → `main`
 - Phase 6c — UI Review & Bug Fixing (dogfooding with real library)
+
+---
+
+## Session 17 — 2026-03-15
+
+### What was worked on
+Phase 6b close-out — manual end-to-end verification from .dmg install, bug triage, merge decision.
+
+### Summary
+Ran the .dmg through manual acceptance testing. App installs, launches, connects to backend, and the core ingestion pipeline works. Several bugs discovered during testing — triaged as Phase 6c items rather than 6b blockers, since 6b's deliverable (installable .dmg + safe schema evolution) is met.
+
+**What passed:**
+- .dmg installs to Applications via drag-and-drop
+- App launches (right-click → Open for Gatekeeper bypass)
+- Backend sidecar spawns, frontend connects ("Connected to rekordbot backend v0.1.0")
+- First-run wizard completes, config persisted to `~/Library/Application Support/rekordbot/`
+- File ingestion: 15/15 files converted successfully
+- Converted files tagged correctly and playable in Rekordbox
+
+**Bugs found (deferred to 6c):**
+1. **Organisation not applied after ingestion** — Files converted and tagged but not placed into the expected folder structure (Artist/Album). Needs investigation: may be a missing auto-organisation step, or a path resolution issue in packaged mode.
+2. **Ghost tracks after file deletion** — Deleting converted files from disk leaves orphaned DB records. UI shows tracks without details. No way to clean up orphaned records from the UI — need a delete/remove tracks feature.
+3. **Re-import blocked by ghost tracks** — Re-importing the same files fails (15 failed) because SHA-256 duplicate detection collides with the orphaned DB records pointing to deleted files. Duplicate detection needs to handle the case where the existing file is missing from disk.
+
+### Key decisions made
+1. Merge 6b as-is — the phase deliverable (installable .dmg + Alembic migrations) is complete. Bugs are dogfooding issues for 6c.
+2. Phase 6c will prioritise the ingestion → organisation → export loop since that's the immediately useful workflow.
+3. The three bugs above become the initial 6c backlog.
+
+### What's next
+- Merge `feature/phase-6b-dmg-packaging` → `develop` → `main` with `--no-ff` and phase tag
+- Branch `feature/phase-6c-dogfooding` from `develop`
+- Begin Phase 6c focusing on ingestion/organisation/export workflow bugs

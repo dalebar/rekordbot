@@ -394,10 +394,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6b — .dmg Packaging & Migration Setup (in progress)
-**Branch:** `feature/phase-6b-dmg-packaging`
+**Phase:** 6c — UI Review & Bug Fixing (next)
+**Branch:** `feature/phase-6c-dogfooding` (to be created from `develop`)
 **Tests:** 1154 passing across all phases
-**Next step:** End-to-end verification, then merge to develop/main
+**Next step:** Merge 6b → develop → main, branch 6c, begin dogfooding with real library
 
 ### Phase Summary
 
@@ -413,7 +413,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 5b — Set Planner | 930 | `docs/features/phase-5b-set-planner.md` |
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
-| 6b — .dmg Packaging & Migration | — | `docs/features/phase-6b-dmg-packaging.md` |
+| 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -421,7 +421,7 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 
 - ffprobe does not report `bits_per_raw_sample` for PCM codecs — format inspector falls back to `bits_per_sample` field. Both fields are checked.
 - sse-starlette has no mypy type stubs — `type: ignore[import-not-found]` used in `routes/ingest.py` and `routes/tagging.py`.
-- mutagen, librosa, numpy, and anthropic have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2/3 services.
+- mutagen, librosa, numpy, anthropic, and alembic have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2/3 services and migration runner.
 - AIFF files use `IffID3.save()` which does not support the `v1` parameter — tag writer handles this with format-specific save calls.
 - librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
 - ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
@@ -442,8 +442,8 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 | **5b** | Set Planner | ✅ Done | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
 | **4b** | Rekordbox XML Import | ✅ Done | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
-| **6b** | .dmg Packaging & Migration Setup | ⬅️ Current | Alembic baseline migration, automatic startup migration, .dmg packaging |
-| 6c | UI Review & Bug Fixing | Not started | Dogfooding phase — import real library, fix bugs and UX friction |
+| **6b** | .dmg Packaging & Migration Setup | ✅ Done | Alembic baseline migration, automatic startup migration, .dmg packaging, post-build sidecar injection |
+| **6c** | UI Review & Bug Fixing | ⬅️ Current | Dogfooding phase — import real library, fix bugs and UX friction |
 | 6d | Performance Optimisation | Not started | Profile with real library data, targeted optimisation |
 | 6e | UI Polish & Design | Not started | Serious design pass, folder template editor, drag-and-drop, custom .dmg background |
 | 6f | Signing & Distribution | Not started | Code signing, notarisation, signed .dmg, onboarding docs |
