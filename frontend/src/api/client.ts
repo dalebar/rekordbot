@@ -39,12 +39,17 @@ export function clearApiErrorHandler(): void {
  * Also calls the global error handler if registered.
  */
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  // Only set Content-Type for requests with a body (POST, PUT, PATCH).
+  // Setting it on GET requests triggers unnecessary CORS preflight checks.
+  const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
+  const method = (options?.method ?? "GET").toUpperCase();
+  if (["POST", "PUT", "PATCH"].includes(method) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {

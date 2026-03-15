@@ -370,21 +370,68 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 6b — Polish & Distribution
-**Goal:** Something you'd hand to a friend without embarrassment.
+### Phase 6b — .dmg Packaging & Migration Setup
+**Goal:** Get the app into a launchable `.dmg` with database migration infrastructure, so Dale can start dogfooding with real data.
 
-- [ ] UI polish pass
-- [ ] Performance profiling (large libraries)
-- [ ] Alembic migration setup
-- [ ] Code signing and notarisation
-- [ ] `.dmg` packaging
-- [ ] Basic onboarding tutorial (beyond the first-run wizard)
+- [x] Alembic initialisation with baseline migration (captures full current schema)
+- [x] Automatic migration on backend startup (fresh DB / pre-Alembic DB / already-migrated DB)
+- [x] `.dmg` packaging with sidecar injection (PyInstaller → Tauri .app → inject sidecar/ → hdiutil)
+- [x] `make build-dmg` target for full build pipeline
+- [ ] End-to-end verification: install from `.dmg` → wizard → full pipeline → data persists
+
+**Deliverable:** Installable `.dmg` with safe schema evolution. Gate to dogfooding.
+
+*Feature brief: `docs/features/phase-6b-dmg-packaging.md`*
+
+---
+
+### Phase 6c — UI Review & Bug Fixing
+**Goal:** Use the app for real and fix everything that breaks.
+
+- [ ] Import Rekordbox library, run full pipeline, exercise all features
+- [ ] Collect and fix bugs, UX friction, unexpected behaviour
 - [ ] Bootleg detection refinement (false positives on "single edit", "radio edit" etc.)
+- [ ] Scope determined by real-world use — intentionally open-ended
+
+**Deliverable:** Stable app that works correctly with a real DJ library.
+
+---
+
+### Phase 6d — Performance Optimisation
+**Goal:** Fast and responsive with large libraries.
+
+- [ ] Profile with real library data (import speed, analysis throughput, UI responsiveness)
+- [ ] Large XML handling optimisation
+- [ ] Targeted optimisation based on actual bottlenecks
+
+**Deliverable:** Performance meets expectations for a library of thousands of tracks.
+
+---
+
+### Phase 6e — UI Polish & Design
+**Goal:** Serious design pass — layout, colour, typography, interaction quality.
+
+- [ ] UI polish pass (spacing, alignment, visual hierarchy, colour system)
 - [ ] Folder template editor UI (visual drag-and-drop)
 - [ ] Drag-and-drop reordering in set planner
-- [ ] Windows packaging
+- [ ] Custom `.dmg` background image
+- [ ] Any other UX improvements deferred from earlier phases
 
-**Deliverable:** Distributable, signed app.
+**Deliverable:** Professional-looking app you'd be proud to show.
+
+---
+
+### Phase 6f — Signing & Distribution
+**Goal:** Signed, notarised app that installs without Gatekeeper warnings.
+
+- [ ] Apple Developer certificate ($99/year)
+- [ ] Code signing (all binaries: PyInstaller output, ffmpeg, .app bundle)
+- [ ] Notarisation (Apple's automated security review)
+- [ ] Signed `.dmg` that double-click installs
+- [ ] Basic onboarding tutorial / user documentation
+- [ ] Windows packaging (separate track, may become its own project)
+
+**Deliverable:** Distributable, signed app you can hand to friends.
 
 ---
 
@@ -404,7 +451,8 @@ feature/phase-4-rekordbox    ← merged ✅
 feature/phase-5a-crate-builder ← merged ✅
 feature/phase-5b-set-planner   ← merged ✅
 feature/phase-6a-app-shell     ← merged ✅
-feature/phase-4b-xml-import    ← current (ready to merge)
+feature/phase-4b-xml-import    ← merged ✅
+feature/phase-6b-dmg-packaging ← current
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.

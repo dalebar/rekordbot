@@ -28,7 +28,7 @@ if "--parent-pid" in sys.argv and "REKORDBOT_DB_URL" not in os.environ:
 
 from backend.config import settings  # noqa: E402
 from backend.exceptions import RekordBotError  # noqa: E402
-from backend.models.database import init_db  # noqa: E402
+from backend.models.database import engine  # noqa: E402
 from backend.routes.ai_tagging import router as ai_tagging_router  # noqa: E402
 from backend.routes.crates import router as crates_router  # noqa: E402
 from backend.routes.export import router as export_router  # noqa: E402
@@ -38,6 +38,14 @@ from backend.routes.organise import router as organise_router  # noqa: E402
 from backend.routes.sets import router as sets_router  # noqa: E402
 from backend.routes.settings import router as settings_router  # noqa: E402
 from backend.routes.tagging import router as tagging_router  # noqa: E402
+from backend.services.migration_runner import run_migrations  # noqa: E402
+
+# Ensure UTF-8 output encoding in bundled mode (PyInstaller with piped
+# stdout defaults to ASCII when not attached to a terminal).
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 # Configure logging
 logging.basicConfig(
@@ -50,8 +58,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — initialise database on startup, run health checks."""
-    init_db()
+    """Application lifespan — run migrations and initialise on startup."""
+    run_migrations(engine)
     logger.info("rekordbot backend started on port %d", settings.port)
 
     # Startup health checks (non-blocking — log warnings only)
@@ -70,12 +78,8 @@ app = FastAPI(title="rekordbot", version="0.1.0", lifespan=lifespan)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-        "http://localhost:1420",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

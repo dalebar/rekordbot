@@ -36,6 +36,8 @@ uv run pyinstaller \
     --name rekordbot-server \
     --noconfirm \
     --clean \
+    --add-data "backend/alembic.ini:backend" \
+    --add-data "backend/alembic:backend/alembic" \
     backend/main.py
 
 # Create Tauri binaries directory

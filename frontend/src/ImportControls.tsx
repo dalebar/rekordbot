@@ -29,7 +29,7 @@ export default function ImportControls({ onRefresh, onConflicts }: ImportControl
         multiple: false,
       });
       if (result) {
-        filePath = typeof result === "string" ? result : result.path;
+        filePath = result;
       }
     } catch {
       // Tauri not available — use prompt fallback for dev

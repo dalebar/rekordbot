@@ -6,8 +6,12 @@ use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
 /// State to hold the sidecar child process for cleanup on exit.
+/// In production (bundled .app), we spawn via std::process::Command
+/// to support the sidecar/ subdirectory layout. In dev mode, we use
+/// Tauri's sidecar API.
 struct SidecarState {
-    child: Option<tauri_plugin_shell::process::CommandChild>,
+    shell_child: Option<tauri_plugin_shell::process::CommandChild>,
+    process_child: Option<std::process::Child>,
 }
 
 /// Poll the backend /health endpoint until it responds or we time out.
@@ -37,49 +41,86 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Mutex::new(SidecarState { child: None }))
+        .manage(Mutex::new(SidecarState {
+            shell_child: None,
+            process_child: None,
+        }))
         .setup(|app| {
             let handle = app.handle().clone();
+            let parent_pid = std::process::id().to_string();
 
-            // Spawn the Python backend sidecar with parent PID for watchdog
-            let sidecar_command = app
-                .shell()
-                .sidecar("rekordbot-server")
-                .unwrap()
-                .args(["--parent-pid", &std::process::id().to_string()]);
-            let (mut rx, child) = sidecar_command.spawn().unwrap_or_else(|e| {
-                panic!("Failed to spawn sidecar: {}", e);
-            });
-
-            info!("Sidecar spawned (pid: {})", child.pid());
-
-            // Store the child process for cleanup
-            let state = app.state::<Mutex<SidecarState>>();
-            state.lock().unwrap().child = Some(child);
-
-            // Forward sidecar stdout/stderr to logs
-            tauri::async_runtime::spawn(async move {
-                use tauri_plugin_shell::process::CommandEvent;
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stdout(line) => {
-                            info!("[sidecar] {}", String::from_utf8_lossy(&line));
-                        }
-                        CommandEvent::Stderr(line) => {
-                            warn!("[sidecar] {}", String::from_utf8_lossy(&line));
-                        }
-                        CommandEvent::Terminated(payload) => {
-                            info!("Sidecar terminated: {:?}", payload);
-                            break;
-                        }
-                        CommandEvent::Error(err) => {
-                            error!("Sidecar error: {}", err);
-                            break;
-                        }
-                        _ => {}
-                    }
+            // In production, the sidecar lives in a sidecar/ subdirectory inside
+            // Contents/MacOS/ to prevent PyInstaller from detecting .app bundle
+            // mode (which changes library resolution paths). In dev mode, we use
+            // Tauri's sidecar API which handles target-triple naming.
+            let sidecar_path = std::env::current_exe().ok().and_then(|exe| {
+                // exe is Contents/MacOS/rekordbot — look for sidecar/ next to it
+                let sidecar_bin = exe.parent()?.join("sidecar").join("rekordbot-server");
+                if sidecar_bin.exists() {
+                    Some(sidecar_bin)
+                } else {
+                    None
                 }
             });
+
+            if let Some(sidecar_bin) = sidecar_path {
+                // Production mode: spawn from sidecar/ subdirectory
+                info!("Spawning sidecar from: {:?}", sidecar_bin);
+                let child = std::process::Command::new(&sidecar_bin)
+                    .args(["--parent-pid", &parent_pid])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to spawn sidecar: {}", e);
+                    });
+
+                info!("Sidecar spawned (pid: {})", child.id());
+
+                let state = app.state::<Mutex<SidecarState>>();
+                state.lock().unwrap().process_child = Some(child);
+            } else {
+                // Dev mode: use Tauri's sidecar API
+                info!("Spawning sidecar via Tauri shell plugin (dev mode)");
+                let sidecar_command = app
+                    .shell()
+                    .sidecar("rekordbot-server")
+                    .unwrap()
+                    .args(["--parent-pid", &parent_pid]);
+                let (mut rx, child) = sidecar_command.spawn().unwrap_or_else(|e| {
+                    panic!("Failed to spawn sidecar: {}", e);
+                });
+
+                info!("Sidecar spawned (pid: {})", child.pid());
+
+                let state = app.state::<Mutex<SidecarState>>();
+                state.lock().unwrap().shell_child = Some(child);
+
+                // Forward sidecar stdout/stderr to logs (only in dev mode
+                // where we have the Tauri shell event stream)
+                tauri::async_runtime::spawn(async move {
+                    use tauri_plugin_shell::process::CommandEvent;
+                    while let Some(event) = rx.recv().await {
+                        match event {
+                            CommandEvent::Stdout(line) => {
+                                info!("[sidecar] {}", String::from_utf8_lossy(&line));
+                            }
+                            CommandEvent::Stderr(line) => {
+                                warn!("[sidecar] {}", String::from_utf8_lossy(&line));
+                            }
+                            CommandEvent::Terminated(payload) => {
+                                info!("Sidecar terminated: {:?}", payload);
+                                break;
+                            }
+                            CommandEvent::Error(err) => {
+                                error!("Sidecar error: {}", err);
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
 
             // Poll health endpoint and emit event when ready
             tauri::async_runtime::spawn(async move {
@@ -99,9 +140,13 @@ pub fn run() {
                 info!("Window close requested — killing sidecar");
                 let state = window.state::<Mutex<SidecarState>>();
                 let mut guard = state.lock().unwrap();
-                if let Some(child) = guard.child.take() {
+                if let Some(child) = guard.shell_child.take() {
                     let _ = child.kill();
-                    info!("Sidecar kill signal sent");
+                    info!("Sidecar kill signal sent (shell)");
+                }
+                if let Some(mut child) = guard.process_child.take() {
+                    let _ = child.kill();
+                    info!("Sidecar kill signal sent (process)");
                 }
             }
         })

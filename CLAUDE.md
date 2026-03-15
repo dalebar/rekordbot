@@ -11,7 +11,7 @@ Target user: Dale and his DJ peers, with monetisation potential later.
 - **Backend:** Python 3.12, FastAPI, uvicorn
 - **Frontend:** React 19, TypeScript, Vite, Tailwind CSS v4
 - **Desktop shell:** Tauri v2 (Rust)
-- **Database:** SQLite via SQLAlchemy (sync mode) — Alembic deferred until real users need schema migrations
+- **Database:** SQLite via SQLAlchemy (sync mode), Alembic for schema migrations (Phase 6b)
 - **Audio conversion:** ffmpeg (via subprocess), ffprobe for container inspection
 - **Metadata:** mutagen (ID3 tag reading/writing for AIFF and MP3)
 - **BPM/Key detection:** librosa (BPM via beat_track, key via chroma + Krumhansl-Schmuckler)
@@ -52,6 +52,12 @@ rekordbot/
 │   ├── main.py                   ← FastAPI entry point
 │   ├── config.py                 ← pydantic-settings configuration
 │   ├── exceptions.py             ← Custom exception hierarchy
+│   ├── alembic.ini               ← Alembic config (DB URL set in env.py, not here)
+│   ├── alembic/
+│   │   ├── env.py                ← Migration environment (imports Base, engine, Settings)
+│   │   ├── script.py.mako        ← Migration template
+│   │   └── versions/
+│   │       └── 001_baseline.py   ← Initial migration: full current schema (Phase 6b)
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── database.py           ← Engine, session, Base
@@ -60,6 +66,7 @@ rekordbot/
 │   │   ├── crate.py              ← Crate and CrateTrack models (Phase 5a)
 │   │   └── set_plan.py           ← SetPlan, SetTrack, SetSegment models (Phase 5b)
 │   ├── services/
+│   │   ├── migration_runner.py   ← Alembic startup migration (fresh/pre-Alembic/migrated detection)
 │   │   ├── format_inspector.py   ← ffprobe wrapper, FileInfo dataclass
 │   │   ├── conversion.py         ← Conversion decision engine (pure logic)
 │   │   ├── naming.py             ← Output path generation with collision handling
@@ -150,7 +157,8 @@ rekordbot/
 │       ├── tauri.conf.json
 │       └── Cargo.toml
 ├── scripts/
-│   ├── build-backend.sh
+│   ├── build-backend.sh          ← PyInstaller build (includes Alembic data files)
+│   ├── build-dmg.sh              ← Full .dmg pipeline (PyInstaller → Tauri → inject sidecar → hdiutil)
 │   └── dev-setup.sh
 └── docs/
     ├── features/
@@ -163,10 +171,12 @@ rekordbot/
     │   ├── phase-5a-crate-builder.md
 │   ├── phase-5b-set-planner.md
 │   ├── phase-6a-app-shell.md
-│   └── phase-4b-xml-import.md
+│   ├── phase-4b-xml-import.md
+│   └── phase-6b-dmg-packaging.md
     └── research/
         ├── rekordbox-xml-cdj-compatibility.md
-        └── tauri-python-backend.md
+        ├── tauri-python-backend.md
+        └── pyinstaller-onedir-tauri-bundling.md
 ```
 
 ## Git Workflow
@@ -365,12 +375,29 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 - Health check polling before marking backend as ready
 - HTTP shutdown endpoint as graceful shutdown mechanism
 - Self-termination watchdog: daemon thread polling parent PID every 5s with 10s grace period, started via `--parent-pid` CLI arg
+- Production sidecar lives in `Contents/MacOS/sidecar/` subdirectory (prevents PyInstaller `.app` mode detection)
+- Rust code detects production vs dev mode: `std::process::Command` from sidecar/ subdir vs Tauri sidecar API
+- Frontend polls backend health on mount with retries (20 attempts × 500ms) for sidecar startup delay
+- CORS allows all origins (`allow_origins=["*"]`) — safe since backend only binds to 127.0.0.1
+- `.dmg` built via `make build-dmg`: PyInstaller → Tauri .app → inject sidecar/_internal/ → hdiutil .dmg
+
+### Database Migrations (Phase 6b)
+- Alembic manages schema evolution — `init_db()` with `create_all()` is no longer called in production
+- Baseline migration (`001_baseline.py`) captures the full current schema as a single snapshot (not per-phase migrations)
+- Migration runs automatically on backend startup in the lifespan handler, before FastAPI begins serving
+- Three DB states handled: fresh DB → `alembic upgrade head` creates all tables; pre-Alembic DB (exists but no `alembic_version` table) → `alembic stamp head` marks as current without modifying tables; already-migrated DB → `upgrade head` is a no-op
+- `env.py` imports `Base` from `backend.models.database` — single source of truth for model metadata
+- Database URL in Alembic comes from the same Settings/config system as the rest of the app
+- Test databases continue using `create_all()` for speed — tests do NOT run Alembic
+- Alembic config path must resolve correctly in both dev mode and packaged mode (PyInstaller `sys._MEIPASS`)
+- Future schema changes add new migration files to `backend/alembic/versions/`; startup runner applies them automatically
 
 ## Current Status
 
-**Phase:** 4b — Rekordbox XML Import (complete)
-**Tests:** 1143 passing across all phases
-**Next:** Phase 6b — Polish & Distribution
+**Phase:** 6c — UI Review & Bug Fixing (next)
+**Branch:** `feature/phase-6c-dogfooding` (to be created from `develop`)
+**Tests:** 1154 passing across all phases
+**Next step:** Merge 6b → develop → main, branch 6c, begin dogfooding with real library
 
 ### Phase Summary
 
@@ -386,6 +413,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 5b — Set Planner | 930 | `docs/features/phase-5b-set-planner.md` |
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
+| 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -393,10 +421,12 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 
 - ffprobe does not report `bits_per_raw_sample` for PCM codecs — format inspector falls back to `bits_per_sample` field. Both fields are checked.
 - sse-starlette has no mypy type stubs — `type: ignore[import-not-found]` used in `routes/ingest.py` and `routes/tagging.py`.
-- mutagen, librosa, numpy, and anthropic have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2/3 services.
+- mutagen, librosa, numpy, anthropic, and alembic have no mypy type stubs — `type: ignore[import-not-found]` used throughout Phase 2/3 services and migration runner.
 - AIFF files use `IffID3.save()` which does not support the `v1` parameter — tag writer handles this with format-specific save calls.
 - librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
 - ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
+- PyInstaller `--onedir` sidecar must live in `Contents/MacOS/sidecar/` (not directly in `Contents/MacOS/`) to prevent PyInstaller's bootloader from detecting `.app` bundle mode, which changes library resolution paths and breaks `_internal/` lookup.
+- In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `main.py` forces UTF-8 via `reconfigure()` to prevent crashes on unicode characters in logs/metadata.
 
 ## Phased Build Plan
 
@@ -412,4 +442,8 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 | **5b** | Set Planner | ✅ Done | Energy arc set sequencing, lock-and-shuffle refinement, segmented mood descriptions, key compatibility |
 | **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
 | **4b** | Rekordbox XML Import | ✅ Done | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
-| 6b | Polish & Distribution | ⬅️ Next | UI polish, code signing, notarisation, .dmg packaging, auto-update |
+| **6b** | .dmg Packaging & Migration Setup | ✅ Done | Alembic baseline migration, automatic startup migration, .dmg packaging, post-build sidecar injection |
+| **6c** | UI Review & Bug Fixing | ⬅️ Current | Dogfooding phase — import real library, fix bugs and UX friction |
+| 6d | Performance Optimisation | Not started | Profile with real library data, targeted optimisation |
+| 6e | UI Polish & Design | Not started | Serious design pass, folder template editor, drag-and-drop, custom .dmg background |
+| 6f | Signing & Distribution | Not started | Code signing, notarisation, signed .dmg, onboarding docs |
