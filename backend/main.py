@@ -68,27 +68,27 @@ _log_datefmt = "%H:%M:%S"
 
 logging.basicConfig(level=_log_level, format=_log_format, datefmt=_log_datefmt)
 
-# In packaged mode, also log to a rotating file for debugging
-if "--parent-pid" in sys.argv:
-    _log_dir = Path.home() / "Library" / "Application Support" / "rekordbot"
-    _log_dir.mkdir(parents=True, exist_ok=True)
-    _file_handler = logging.handlers.RotatingFileHandler(
-        _log_dir / "rekordbot.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-    )
-    _file_handler.setLevel(_log_level)
-    _file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
-    logging.getLogger().addHandler(_file_handler)
-    logging.getLogger().info("File logging initialised: %s", _log_dir / "rekordbot.log")
-
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — run migrations and initialise on startup."""
+    # Attach file handler AFTER uvicorn's logging reconfiguration so it isn't stripped
+    if "--parent-pid" in sys.argv:
+        _log_dir = Path.home() / "Library" / "Application Support" / "rekordbot"
+        _log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            _log_dir / "rekordbot.log",
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
+        logging.getLogger().addHandler(file_handler)
+        logger.info("File logging initialised: %s", _log_dir / "rekordbot.log")
+
     run_migrations(engine)
     logger.info("rekordbot backend started on port %d", settings.port)
 
