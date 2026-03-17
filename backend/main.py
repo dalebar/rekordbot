@@ -31,8 +31,8 @@ if "--parent-pid" in sys.argv:
 
     # Resolve bundled ffmpeg/ffprobe in .app bundle.
     # Sidecar is at Contents/MacOS/sidecar/rekordbot-server
-    # Resources are at Contents/Resources/
-    _resources_dir = Path(sys.executable).parent.parent.parent / "Resources"
+    # Tauri places resources/ contents into Contents/Resources/resources/
+    _resources_dir = Path(sys.executable).parent.parent.parent / "Resources" / "resources"
     _bundled_ffmpeg = _resources_dir / "ffmpeg"
     if _bundled_ffmpeg.exists():
         os.environ.setdefault("REKORDBOT_FFMPEG_PATH", str(_bundled_ffmpeg))
