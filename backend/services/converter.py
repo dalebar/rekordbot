@@ -45,6 +45,7 @@ def build_ffmpeg_command(
     output_path: Path,
     action: ConversionAction,
     file_info: FileInfo,
+    ffmpeg_path: str = "ffmpeg",
 ) -> list[str]:
     """Build the ffmpeg command for a conversion.
 
@@ -53,6 +54,7 @@ def build_ffmpeg_command(
         output_path: Destination file path.
         action: The conversion action to perform.
         file_info: Parsed info about the source file.
+        ffmpeg_path: Path to the ffmpeg binary.
 
     Returns:
         List of command-line arguments for ffmpeg.
@@ -61,7 +63,7 @@ def build_ffmpeg_command(
         bit_depth = action.output_bit_depth or 16
         codec = AIFF_CODEC_MAP.get(bit_depth, "pcm_s24be")
         return [
-            "ffmpeg",
+            ffmpeg_path,
             "-y",
             "-i",
             str(input_path),
@@ -76,7 +78,7 @@ def build_ffmpeg_command(
 
     if action.action == "convert_to_mp3":
         return [
-            "ffmpeg",
+            ffmpeg_path,
             "-y",
             "-i",
             str(input_path),
@@ -194,7 +196,7 @@ async def convert_file(
 
         # Step 6: Execute conversion or copy
         if action.action in ("convert_to_aiff", "convert_to_mp3"):
-            cmd = build_ffmpeg_command(path, output_path, action, file_info)
+            cmd = build_ffmpeg_command(path, output_path, action, file_info, settings.ffmpeg_path)
             await _run_ffmpeg(cmd)
         else:
             # copy_as_is
