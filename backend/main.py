@@ -81,6 +81,7 @@ if "--parent-pid" in sys.argv:
     _file_handler.setLevel(_log_level)
     _file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
     logging.getLogger().addHandler(_file_handler)
+    logging.getLogger().info("File logging initialised: %s", _log_dir / "rekordbot.log")
 
 logger = logging.getLogger(__name__)
 
