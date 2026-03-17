@@ -333,7 +333,7 @@ logger.error("Conversion failed for %s: %s", filename, str(error))
 ### Output
 
 - During development (uvicorn): logs to stdout, human-readable format
-- In production (sidecar): logs to stdout, captured by Tauri's sidecar event stream, forwarded to the app's log file via Tauri's log system
+- In production (sidecar): logs to stdout AND to a rotating file at `~/Library/Application Support/rekordbot/rekordbot.log` (5MB max, 3 backups). File handler added automatically when `--parent-pid` is present.
 
 ## Error Handling
 
@@ -379,6 +379,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 - Rust code detects production vs dev mode: `std::process::Command` from sidecar/ subdir vs Tauri sidecar API
 - Frontend polls backend health on mount with retries (20 attempts × 500ms) for sidecar startup delay
 - CORS allows all origins (`allow_origins=["*"]`) — safe since backend only binds to 127.0.0.1
+- Bundled ffmpeg resolved at startup: sidecar detects `Contents/Resources/ffmpeg` relative to its own executable and sets `REKORDBOT_FFMPEG_PATH` before Settings instantiation
 - `.dmg` built via `make build-dmg`: PyInstaller → Tauri .app → inject sidecar/_internal/ → hdiutil .dmg
 
 ### Database Migrations (Phase 6b)
@@ -394,10 +395,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6c — UI Review & Bug Fixing (next)
-**Branch:** `feature/phase-6c-dogfooding` (to be created from `develop`)
-**Tests:** 1154 passing across all phases
-**Next step:** Merge 6b → develop → main, branch 6c, begin dogfooding with real library
+**Phase:** 6c — UI Review & Bug Fixing (in progress)
+**Branch:** `feature/phase-6c-dogfooding`
+**Tests:** 1163 passing across all phases
+**Next step:** Rebuild .dmg and verify fixes with real library
 
 ### Phase Summary
 
@@ -414,6 +415,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
+| 6c — UI Review & Bug Fixing | 1163 | (dogfooding — no feature brief) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -427,6 +429,8 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
 - PyInstaller `--onedir` sidecar must live in `Contents/MacOS/sidecar/` (not directly in `Contents/MacOS/`) to prevent PyInstaller's bootloader from detecting `.app` bundle mode, which changes library resolution paths and breaks `_internal/` lookup.
 - In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `main.py` forces UTF-8 via `reconfigure()` to prevent crashes on unicode characters in logs/metadata.
+- ffprobe is NOT bundled as a Tauri resource (only ffmpeg is). In packaged mode, ffprobe falls back to PATH lookup which may fail. Needs to be added to `frontend/src-tauri/resources/` alongside ffmpeg.
+- Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
 
 ## Phased Build Plan
 

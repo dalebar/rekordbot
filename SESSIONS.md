@@ -752,3 +752,45 @@ Ran the .dmg through manual acceptance testing. App installs, launches, connects
 - Merge `feature/phase-6b-dmg-packaging` → `develop` → `main` with `--no-ff` and phase tag
 - Branch `feature/phase-6c-dogfooding` from `develop`
 - Begin Phase 6c focusing on ingestion/organisation/export workflow bugs
+
+---
+
+## Session 18 — 2026-03-17
+
+### What was worked on
+Phase 6c — first round of bug fixes from dogfooding. Ghost tracks, duplicate detection, track deletion, packaged-mode logging, and ffmpeg path resolution.
+
+### Summary
+Fixed the three bugs triaged in Session 17, plus two packaged-mode infrastructure issues discovered during debugging.
+
+**Bug fixes:**
+- **Orphaned track cleanup (Bug 3):** Duplicate detection in `converter.py` now checks whether the matched track's output file still exists on disk. If missing, deletes the orphaned Track record and related CrateTrack/SetTrack rows, then allows ingestion to continue. 3 new tests (TDD).
+- **Track deletion (Bug 2):** Added `DELETE /api/tracks` endpoint in `tagging.py` accepting `{track_ids, delete_files}`. Explicitly deletes CrateTrack/SetTrack associations before Track records (SQLite FK cascades not enabled). Optional file deletion from disk with graceful handling of already-missing files. 6 new tests.
+- **Delete UI:** "Delete Selected" button in TrackTable with confirmation dialog, "also delete files" checkbox, toast notification on completion.
+- **DELETE body parsing:** FastAPI doesn't parse JSON body for DELETE by default — added `Body(...)` annotation with `# noqa: B008` for Ruff compatibility.
+- **DELETE Content-Type:** Frontend `request()` function wasn't setting `Content-Type: application/json` for DELETE method — added to the method list.
+
+**Infrastructure fixes:**
+- **File logging:** Added `RotatingFileHandler` (5MB, 3 backups) to `~/Library/Application Support/rekordbot/rekordbot.log` when `--parent-pid` is present. Diagnostic message logged immediately after handler setup.
+- **Bundled ffmpeg path:** In packaged mode, `main.py` resolves `Contents/Resources/ffmpeg` relative to the sidecar executable and sets `REKORDBOT_FFMPEG_PATH` via `os.environ.setdefault()` before Settings instantiation.
+- **`build_ffmpeg_command()` parameterised:** Now accepts `ffmpeg_path` parameter instead of hardcoding `"ffmpeg"`. `convert_file()` passes `settings.ffmpeg_path`.
+
+**Test count:** 1154 → 1163 (+9 tests)
+
+### Bugs encountered during development
+1. **SQLite rowid reuse** — Test assertions checking orphan deletion by ID failed because SQLite reused the deleted row's primary key for the new track. Fixed by asserting on hash uniqueness and file_path instead of ID.
+2. **DetachedInstanceError in test** — CrateTrack/SetTrack test accessed SQLAlchemy objects after `db.close()`. Fixed by capturing IDs into local variables before closing the session.
+
+### Key decisions made
+1. Explicit CrateTrack/SetTrack deletion rather than relying on FK cascades — SQLite doesn't enforce `ON DELETE CASCADE` without `PRAGMA foreign_keys = ON`, which isn't set in the app's engine configuration.
+2. `Body(...)` with `# noqa: B008` for DELETE endpoint — standard FastAPI pattern, Ruff's B008 rule is a false positive for dependency injection defaults.
+3. ffmpeg path resolved via `sys.executable` relative path, not PATH manipulation — more reliable, doesn't affect other subprocesses.
+
+### Known remaining issues
+- ffprobe is NOT bundled in `frontend/src-tauri/resources/` (only ffmpeg). In packaged mode, ffprobe will fail PATH lookup. Needs to be copied alongside ffmpeg before next .dmg build.
+- Bug 1 (organisation not applied after ingestion) not yet investigated.
+
+### What's next
+- Bundle ffprobe in Tauri resources
+- Rebuild .dmg and verify all fixes with real library
+- Investigate Bug 1 (organisation pipeline in packaged mode)
