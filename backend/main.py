@@ -1,12 +1,14 @@
 """FastAPI application entry point for rekordbot."""
 
 import logging
+import logging.handlers
 import os
 import shutil
 import signal
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -48,11 +50,26 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-    datefmt="%H:%M:%S",
-)
+_log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+_log_format = "%(asctime)s %(levelname)-8s %(name)s — %(message)s"
+_log_datefmt = "%H:%M:%S"
+
+logging.basicConfig(level=_log_level, format=_log_format, datefmt=_log_datefmt)
+
+# In packaged mode, also log to a rotating file for debugging
+if "--parent-pid" in sys.argv:
+    _log_dir = Path.home() / "Library" / "Application Support" / "rekordbot"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _file_handler = logging.handlers.RotatingFileHandler(
+        _log_dir / "rekordbot.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    _file_handler.setLevel(_log_level)
+    _file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
+    logging.getLogger().addHandler(_file_handler)
+
 logger = logging.getLogger(__name__)
 
 
