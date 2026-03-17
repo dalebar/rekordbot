@@ -24,9 +24,21 @@ from backend.services.watchdog import parse_parent_pid, start_watchdog
 _config = load_config()
 apply_config_to_env(_config)
 
-# In packaged mode (--parent-pid present), use app data directory for DB.
-if "--parent-pid" in sys.argv and "REKORDBOT_DB_URL" not in os.environ:
-    os.environ["REKORDBOT_DB_URL"] = get_db_path()
+# In packaged mode (--parent-pid present), configure paths for .app bundle.
+if "--parent-pid" in sys.argv:
+    if "REKORDBOT_DB_URL" not in os.environ:
+        os.environ["REKORDBOT_DB_URL"] = get_db_path()
+
+    # Resolve bundled ffmpeg/ffprobe in .app bundle.
+    # Sidecar is at Contents/MacOS/sidecar/rekordbot-server
+    # Resources are at Contents/Resources/
+    _resources_dir = Path(sys.executable).parent.parent.parent / "Resources"
+    _bundled_ffmpeg = _resources_dir / "ffmpeg"
+    if _bundled_ffmpeg.exists():
+        os.environ.setdefault("REKORDBOT_FFMPEG_PATH", str(_bundled_ffmpeg))
+    _bundled_ffprobe = _resources_dir / "ffprobe"
+    if _bundled_ffprobe.exists():
+        os.environ.setdefault("REKORDBOT_FFPROBE_PATH", str(_bundled_ffprobe))
 
 from backend.config import settings  # noqa: E402
 from backend.exceptions import RekordBotError  # noqa: E402
