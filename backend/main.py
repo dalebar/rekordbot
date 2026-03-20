@@ -95,7 +95,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
-        logging.getLogger().addHandler(file_handler)
+        root_logger = logging.getLogger()
+        root_logger.addHandler(file_handler)
+
+        # Remove StreamHandlers to prevent stdout pipe deadlock.
+        # In packaged mode, stdout is piped to Tauri and the pipe buffer
+        # fills after ~64KB of log output, blocking the worker thread.
+        for handler in root_logger.handlers[:]:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler
+            ):
+                root_logger.removeHandler(handler)
+
         logger.info("File logging active: %s", _LOG_FILE_PATH)
 
     logger.info("rekordbot backend started on port %d", settings.port)
@@ -222,6 +233,7 @@ if __name__ == "__main__":
             port=settings.port,
             reload=True,
             log_config=None,
+            loop="asyncio",
         )
     else:
         uvicorn.run(
@@ -229,4 +241,5 @@ if __name__ == "__main__":
             host="127.0.0.1",
             port=settings.port,
             log_config=None,
+            loop="asyncio",
         )
