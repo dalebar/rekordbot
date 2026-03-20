@@ -7,9 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from backend.config import Settings
+from backend.models.database import SessionLocal
 from backend.services.converter import TrackResult, convert_file
 
 logger = logging.getLogger(__name__)
@@ -90,7 +89,7 @@ class ProcessingQueue:
             event_data["error"] = error
         await self._event_queue.put({"event": "file_progress", "data": event_data})
 
-    async def _process_one(self, path: Path, db_session: Session) -> TrackResult:
+    async def _process_one(self, path: Path) -> TrackResult:
         """Process a single file with semaphore-controlled concurrency."""
         async with self._semaphore:
             if self._cancel_event.is_set():
@@ -103,7 +102,11 @@ class ProcessingQueue:
 
             await self._emit_event(str(path), "processing", message=f"Processing {path.name}...")
 
-            result = await convert_file(path, db_session, self.settings)
+            db_session = SessionLocal()
+            try:
+                result = await convert_file(path, db_session, self.settings)
+            finally:
+                db_session.close()
 
             # Update progress
             if result.duplicate:
@@ -135,16 +138,11 @@ class ProcessingQueue:
 
             return result
 
-    async def process_batch(
-        self,
-        paths: list[Path],
-        db_session: Session,
-    ) -> BatchResult:
+    async def process_batch(self, paths: list[Path]) -> BatchResult:
         """Process a batch of files concurrently.
 
         Args:
             paths: List of audio file paths to process.
-            db_session: SQLAlchemy session for database operations.
 
         Returns:
             BatchResult with summary and per-file results.
@@ -158,7 +156,7 @@ class ProcessingQueue:
             await self._emit_event(str(path), "queued", message=f"Queued: {path.name}")
 
         # Process all files concurrently (bounded by semaphore)
-        tasks = [self._process_one(path, db_session) for path in paths]
+        tasks = [self._process_one(path) for path in paths]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Build batch result
