@@ -176,7 +176,7 @@ function App() {
         ) : (
           <main className="flex flex-1 flex-col overflow-hidden p-6">
             {/* Drop zone and import controls */}
-            <div className="mb-4 flex items-start gap-4">
+            <div className="mb-4 flex shrink-0 items-start gap-4">
               <DropZone onBatchStarted={handleBatchStarted} />
               <ImportControls
                 onRefresh={() => {
@@ -210,10 +210,9 @@ function App() {
             )}
 
             {/* Track table */}
-            <TrackTable
-              refreshTrigger={refreshTrigger}
-              crateId={selectedCrateId}
-            />
+            <div className="min-h-0 flex-1">
+              <TrackTable refreshTrigger={refreshTrigger} crateId={selectedCrateId} />
+            </div>
           </main>
         )}
       </div>

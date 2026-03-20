@@ -119,7 +119,8 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
         );
       }
       if (filter === "conflicts") return t.has_bpm_conflict || t.has_key_conflict;
-      if (filter === "ai_tagged") return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
+      if (filter === "ai_tagged")
+        return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
       if (filter === "not_ai_tagged") return t.ai_status === "untagged";
 
       // Organisation filters
@@ -317,42 +318,50 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
   return (
     <div className="flex flex-1 flex-col gap-3">
       {/* Analysis toolbar */}
-      <AnalysisControls
-        selectedTrackIds={[...selectedIds]}
-        onRefresh={loadTracks}
-        filter={filter}
-        onFilterChange={(f) => {
-          setFilter(f);
-          if (f !== "all") setOrganiseFilter("all");
-        }}
-      />
+      <div className="shrink-0">
+        <AnalysisControls
+          selectedTrackIds={[...selectedIds]}
+          onRefresh={loadTracks}
+          filter={filter}
+          onFilterChange={(f) => {
+            setFilter(f);
+            if (f !== "all") setOrganiseFilter("all");
+          }}
+        />
+      </div>
 
       {/* Organisation toolbar */}
-      <OrganiseControls
-        selectedTrackIds={[...selectedIds]}
-        onRefresh={loadTracks}
-        filter={organiseFilter}
-        onFilterChange={(f) => {
-          setOrganiseFilter(f);
-          if (f !== "all") setFilter("all");
-        }}
-        onProposalReady={setProposal}
-      />
+      <div className="shrink-0">
+        <OrganiseControls
+          selectedTrackIds={[...selectedIds]}
+          onRefresh={loadTracks}
+          filter={organiseFilter}
+          onFilterChange={(f) => {
+            setOrganiseFilter(f);
+            if (f !== "all") setFilter("all");
+          }}
+          onProposalReady={setProposal}
+        />
+      </div>
 
       {/* Export toolbar */}
-      <ExportControls trackCount={total} onRefresh={loadTracks} />
+      <div className="shrink-0">
+        <ExportControls trackCount={total} onRefresh={loadTracks} />
+      </div>
 
       {/* Review queue (shown when proposal has items needing review) */}
       {proposal && (
-        <ReviewQueue
-          proposal={proposal}
-          onClose={() => setProposal(null)}
-          onRefresh={loadTracks}
-        />
+        <div className="max-h-48 shrink-0 overflow-auto">
+          <ReviewQueue
+            proposal={proposal}
+            onClose={() => setProposal(null)}
+            onRefresh={loadTracks}
+          />
+        </div>
       )}
 
       {/* Track count and actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">
             {filteredTracks.length} of {total} tracks

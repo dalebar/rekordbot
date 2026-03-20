@@ -83,21 +83,21 @@ export default function DropZone({ onBatchStarted }: DropZoneProps) {
   }, [startIngest]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex items-center gap-3">
       <div
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 transition-colors ${
+        className={`flex items-center gap-2 rounded-lg border-2 border-dashed px-6 py-4 transition-colors ${
           isDragging
             ? "border-emerald-400 bg-emerald-400/10"
             : "border-gray-700 hover:border-gray-600"
         }`}
       >
-        <p className="text-lg text-gray-400">
+        <p className="text-sm text-gray-400">
           {isDragging ? "Drop files here" : "Drag audio files or folders here"}
         </p>
-        <p className="mt-2 text-sm text-gray-600">WAV, FLAC, AIFF, MP3, M4A</p>
+        <p className="text-xs text-gray-600">WAV, FLAC, AIFF, MP3, M4A</p>
       </div>
 
       <button
