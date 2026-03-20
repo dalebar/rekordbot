@@ -26,6 +26,14 @@ apply_config_to_env(_config)
 
 # In packaged mode (--parent-pid present), configure paths for .app bundle.
 if "--parent-pid" in sys.argv:
+    # Force UTF-8 as the default encoding in packaged mode.
+    # PyInstaller with no terminal defaults to ASCII, which breaks
+    # httpx/httpcore when request bodies contain non-ASCII characters.
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.environ.setdefault("LANG", "en_US.UTF-8")
+    os.environ.setdefault("LC_ALL", "en_US.UTF-8")
+
     if "REKORDBOT_DB_URL" not in os.environ:
         os.environ["REKORDBOT_DB_URL"] = get_db_path()
 
