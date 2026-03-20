@@ -75,6 +75,7 @@ async def ingest(request: IngestRequest) -> IngestResponse:
     Accepts file and directory paths, expands directories, filters to
     supported audio formats, and dispatches to the processing queue.
     """
+    logger.info("Ingest request received: %d paths", len(request.paths))
     global _queue
 
     if _queue is not None and _queue.is_processing:

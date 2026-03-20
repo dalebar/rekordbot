@@ -144,9 +144,6 @@ def _build_log_config() -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — run migrations and initialise on startup."""
-    if _is_packaged:
-        logger.info("File logging active: %s", _LOG_FILE_PATH)
-
     run_migrations(engine)
     logger.info("rekordbot backend started on port %d", settings.port)
 
@@ -157,6 +154,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     parent_pid = parse_parent_pid()
     if parent_pid is not None:
         start_watchdog(parent_pid)
+
+    # Belt-and-suspenders: ensure file handler is on root logger after all startup
+    if _is_packaged:
+        root_logger = logging.getLogger()
+        has_file_handler = any(
+            isinstance(h, logging.handlers.RotatingFileHandler) for h in root_logger.handlers
+        )
+        if not has_file_handler:
+            logger.warning("File handler was stripped — re-attaching")
+            file_handler = logging.handlers.RotatingFileHandler(
+                str(_LOG_FILE_PATH),
+                maxBytes=5 * 1024 * 1024,
+                backupCount=3,
+                encoding="utf-8",
+            )
+            file_handler.setLevel(logging.INFO)
+            file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
+            root_logger.addHandler(file_handler)
+        logger.info("File logging active: %s", _LOG_FILE_PATH)
 
     yield
 

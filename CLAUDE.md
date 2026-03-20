@@ -398,7 +398,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
 **Tests:** 1163 passing across all phases
-**Next step:** Phase 6c Part 2 — fix layout, logging, AI tagging, then test export
+**Next step:** Phase 6c Part 2 continued — rebuild .dmg, test export, minor UX fixes
 
 ### Phase Summary
 
@@ -431,11 +431,9 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `main.py` forces UTF-8 via `reconfigure()` to prevent crashes on unicode characters in logs/metadata.
 - ffmpeg and ffprobe are both bundled as Tauri resources in `frontend/src-tauri/resources/`. Both need `xattr -c` and `chmod 755` on macOS Sequoia before building. Tauri places them in `Contents/Resources/resources/` (nested subdirectory).
 - Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
-- uvicorn's `dictConfig()` strips root logger handlers added before startup — file handler must be attached in the lifespan handler, not at module level.
+- File logging in packaged mode uses uvicorn's `log_config` parameter (dict-config) to install the RotatingFileHandler, plus a belt-and-suspenders check at the end of the lifespan handler that re-attaches a file handler if uvicorn stripped it. Both layers are needed — `log_config` handles initial setup, lifespan re-attachment handles any post-`dictConfig()` stripping.
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
-- The main content layout (App.tsx) has flex sizing issues — drop zone + toolbars + processing queue can consume all viewport space, pushing TrackTable off screen. Needs fundamental rework, not incremental patches.
-- AI tagging in packaged mode silently fails — no toast error shown. Root cause unknown; blocked by logging not capturing post-startup output.
-- File logging: attaching RotatingFileHandler in lifespan handler still doesn't capture post-startup logs. uvicorn may reconfigure logging after lifespan runs. Needs uvicorn log_config parameter override approach.
+- AI tagging button shows "API key not configured" hint when validation fails. The `validate-key` endpoint logs whether the key reached the backend. If AI tagging still fails in packaged mode after confirming the key is present, investigate the ClaudeClient instantiation path.
 
 ## Phased Build Plan
 
