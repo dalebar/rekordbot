@@ -350,7 +350,7 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
       <div className="flex flex-1 overflow-hidden">
         {/* Table */}
         <div className="flex-1 overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full select-none text-left text-xs">
             <thead>
               <tr
                 className="border-b border-gray-800 text-gray-500"
