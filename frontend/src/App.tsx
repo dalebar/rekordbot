@@ -200,7 +200,7 @@ function App() {
 
             {/* Processing queue (shown when a batch is active) */}
             {batch && batch.total_files > 0 && (
-              <div className="mb-4">
+              <div className="mb-4 shrink-0">
                 <ProcessingQueue
                   batchId={batch.batch_id}
                   totalFiles={batch.total_files}

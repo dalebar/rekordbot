@@ -18,6 +18,7 @@ export default function ProcessingQueue({ batchId, totalFiles, onComplete }: Pro
   const [files, setFiles] = useState<Map<string, FileProgressEvent>>(new Map());
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const es = connectProgress(
@@ -26,6 +27,7 @@ export default function ProcessingQueue({ batchId, totalFiles, onComplete }: Pro
       },
       (data) => {
         setSummary(data);
+        setCollapsed(true);
         onComplete();
       },
     );
@@ -58,41 +60,55 @@ export default function ProcessingQueue({ batchId, totalFiles, onComplete }: Pro
             </p>
           )}
         </div>
-        {!summary && (
-          <button
-            onClick={handleCancel}
-            disabled={cancelling}
-            className="rounded bg-red-900/50 px-3 py-1 text-xs text-red-300 transition-colors hover:bg-red-900/80 disabled:opacity-50"
-          >
-            {cancelling ? "Cancelling..." : "Cancel"}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {summary && (
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              className="text-xs text-gray-500 hover:text-gray-300"
+            >
+              {collapsed ? "Show" : "Hide"}
+            </button>
+          )}
+          {!summary && (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="rounded bg-red-900/50 px-3 py-1 text-xs text-red-300 transition-colors hover:bg-red-900/80 disabled:opacity-50"
+            >
+              {cancelling ? "Cancelling..." : "Cancel"}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
-        <div
-          className="h-full rounded-full bg-emerald-500 transition-all"
-          style={{
-            width: `${totalFiles > 0 ? (completedCount / totalFiles) * 100 : 0}%`,
-          }}
-        />
-      </div>
-
-      {/* File list */}
-      <div className="max-h-64 overflow-y-auto">
-        {fileList.map((file) => (
-          <div
-            key={file.file_path}
-            className="flex items-center justify-between border-b border-gray-800/50 py-1.5 text-xs"
-          >
-            <span className="truncate text-gray-400" title={file.file_path}>
-              {file.file_path.split("/").pop()}
-            </span>
-            <StatusBadge status={file.status} />
+      {!collapsed && (
+        <>
+          {/* Progress bar */}
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{
+                width: `${totalFiles > 0 ? (completedCount / totalFiles) * 100 : 0}%`,
+              }}
+            />
           </div>
-        ))}
-      </div>
+
+          {/* File list */}
+          <div className="max-h-48 overflow-y-auto">
+            {fileList.map((file) => (
+              <div
+                key={file.file_path}
+                className="flex items-center justify-between border-b border-gray-800/50 py-1.5 text-xs"
+              >
+                <span className="truncate text-gray-400" title={file.file_path}>
+                  {file.file_path.split("/").pop()}
+                </span>
+                <StatusBadge status={file.status} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
