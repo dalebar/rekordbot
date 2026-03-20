@@ -825,6 +825,57 @@ Fixed remaining packaged-mode infrastructure issues and several track table UX p
 3. Track limit increased to 5000 as a pragmatic fix — full pagination is a Phase 6e concern.
 
 ### What's next
-- Bundle ffprobe in Tauri resources
+- ~~Bundle ffprobe in Tauri resources~~ ✅ Done
 - Rebuild .dmg and verify all fixes with real library
 - Investigate Bug 1 (organisation pipeline in packaged mode)
+
+---
+
+## Session 20 — 2026-03-20 (continued)
+
+### What was worked on
+Phase 6c Part 1 — full end-to-end dogfooding with 211-track real library.
+
+### Summary
+Completed a full dogfooding run: ingest → analyse → organise with a real 211-track library downloaded via slsk-batchdl. Confirmed the core pipeline works end-to-end in packaged mode. Also fixed processing queue layout overflow.
+
+**What works in packaged mode (.dmg):**
+- File ingestion: 211/211 succeeded (FLAC → AIFF conversion, MP3 copy)
+- Tag reading: mutagen reads existing ID3/FLAC tags correctly — Title, Artist, Album, Genre populated
+- BPM/Key analysis: librosa analysis completes (slow — ~15-20 min for 211 tracks at 1 concurrent)
+- Organisation propose: 203 auto-approved, 8 need review (based on metadata quality)
+- Organisation approve: files moved into Artist/Album folder structure correctly
+- Review queue: Accept/Skip/Custom path options work
+- Track selection: click, Cmd+click, Shift+click, Select All button all work
+- Track deletion: Delete Selected with confirmation dialog works
+- Processing queue: auto-collapses on completion with Show/Hide toggle
+- Data persistence: tracks survive app quit and relaunch
+
+**Fixes applied during dogfooding:**
+- **Processing queue overflow:** Queue showing 211 file results pushed TrackTable off screen. Fixed with max-height constraint, auto-collapse on batch completion, and Show/Hide toggle button.
+- **CLAUDE.md updated:** ffprobe now bundled, added known issues for uvicorn handler stripping and FastAPI DELETE body parsing.
+
+**Bugs discovered (to fix in Part 2):**
+1. **AI Tagging silently fails** — clicking "AI Tag All Untagged" or "AI Tag Selected" does nothing. No toast error visible. API key is configured in Settings. Needs log investigation.
+2. **Layout breaks at normal window sizes** — track table invisible without maximising/full-screen. Drop zone + toolbars + processing queue consume all viewport space. Fundamental flex layout issue.
+3. **Horizontal scroll reveals broken layout** — white space and split colour scheme when scrolling right.
+4. **Analysis state lost on Settings navigation** — opening Settings panel while analysis is running disconnects SSE stream. On return, analysis appears stuck. Backend may still be running but frontend lost connection.
+5. **Analysis restart blocked** — after Settings navigation interruption, "Analyse All Unanalysed" does nothing (backend thinks previous batch is still running).
+6. **Scrolling breaks on relaunch** — track table not scrollable after app restart with existing data.
+7. **File logging still not capturing post-startup logs** — the lifespan handler approach still doesn't work. uvicorn may be reconfiguring logging AFTER the lifespan handler runs. Need a different approach (e.g. uvicorn log_config parameter override).
+8. **Review queue text invisible** — dark text on dark background in the review queue panel.
+9. **Shift+click still selects text** — preventDefault in handleRowClick doesn't fully prevent browser text selection in WebKit.
+10. **Bug 1 resolved** — "Organisation not applied after ingestion" was not a bug. Organisation needs metadata (from analysis/tagging) to make sensible proposals. Freshly ingested tracks with no metadata all go to "needs review" with 0% confidence, which is correct behaviour.
+
+### Key decisions made
+1. Bug 1 is not a bug — organisation correctly requires metadata before proposing folder structure.
+2. Layout issues are the highest priority for Part 2 — the app is barely usable at normal window sizes.
+3. AI tagging investigation needs working logs first — the logging issue blocks diagnosis.
+4. Analysis performance (~4-5s per track) is acceptable for Phase 6c; optimisation deferred to 6d.
+
+### What's next — Phase 6c Part 2 priorities
+1. **Fix logging** — try uvicorn log_config override instead of root logger handler attachment
+2. **Fix layout** — fundamental rework of App.tsx flex structure so track table is always visible
+3. **Investigate AI tagging** — check logs (once working) or code to find why it silently fails
+4. **Export XML** — test Rekordbox XML export with organised tracks
+5. **Minor UX** — review queue text visibility, Shift+click text selection, deselect behaviour

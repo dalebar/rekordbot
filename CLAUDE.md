@@ -398,7 +398,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
 **Tests:** 1163 passing across all phases
-**Next step:** Rebuild .dmg and verify fixes with real library
+**Next step:** Phase 6c Part 2 — fix layout, logging, AI tagging, then test export
 
 ### Phase Summary
 
@@ -433,6 +433,9 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
 - uvicorn's `dictConfig()` strips root logger handlers added before startup — file handler must be attached in the lifespan handler, not at module level.
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
+- The main content layout (App.tsx) has flex sizing issues — drop zone + toolbars + processing queue can consume all viewport space, pushing TrackTable off screen. Needs fundamental rework, not incremental patches.
+- AI tagging in packaged mode silently fails — no toast error shown. Root cause unknown; blocked by logging not capturing post-startup output.
+- File logging: attaching RotatingFileHandler in lifespan handler still doesn't capture post-startup logs. uvicorn may reconfigure logging after lifespan runs. Needs uvicorn log_config parameter override approach.
 
 ## Phased Build Plan
 
