@@ -398,7 +398,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
 **Tests:** 1163 passing across all phases
-**Next step:** Phase 6c Part 2 continued — rebuild .dmg, test export, minor UX fixes
+**Next step:** Phase 6c Part 3 — AI tagging end-to-end test (blocked on Anthropic billing), export test, minor UX fixes
 
 ### Phase Summary
 
@@ -428,12 +428,13 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
 - ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
 - PyInstaller `--onedir` sidecar must live in `Contents/MacOS/sidecar/` (not directly in `Contents/MacOS/`) to prevent PyInstaller's bootloader from detecting `.app` bundle mode, which changes library resolution paths and breaks `_internal/` lookup.
-- In bundled mode, Python defaults to ASCII encoding (no terminal/locale). Two layers of fix: (1) `PYTHONUTF8=1`, `LANG`, `LC_ALL` env vars set early in the packaged-mode block to force UTF-8 process-wide — fixes httpx/httpcore `LocalProtocolError` when Anthropic SDK sends non-ASCII track metadata; (2) `sys.stdout/stderr.reconfigure(encoding="utf-8")` for log output.
+- In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `sys.stdout/stderr.reconfigure(encoding="utf-8")` in main.py prevents crashes on unicode in logs. `PYTHONUTF8=1`, `LANG=en_US.UTF-8`, `LC_ALL=en_US.UTF-8` set in Rust sidecar spawn as belt-and-suspenders for library encoding.
 - ffmpeg and ffprobe are both bundled as Tauri resources in `frontend/src-tauri/resources/`. Both need `xattr -c` and `chmod 755` on macOS Sequoia before building. Tauri places them in `Contents/Resources/resources/` (nested subdirectory).
 - Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
-- File logging in packaged mode: `log_config=None` passed to `uvicorn.run()` to prevent uvicorn from calling `dictConfig()`. Alembic's `env.py` `fileConfig()` call was also removed (it nuked root logger handlers and set level to WARNING). File handler is attached in lifespan after `run_migrations()`.
+- File logging in packaged mode: `log_config=None` passed to `uvicorn.run()` to prevent uvicorn from calling `dictConfig()`. Alembic's `env.py` had a `fileConfig()` call that read `alembic.ini`'s `[loggers]` section, replacing root logger handlers and setting level to WARNING — this was the root cause of silent post-startup logs. Removed in Phase 6c. File handler is attached in lifespan AFTER `run_migrations()` to survive Alembic's logger setup.
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
 - AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
+- Settings panel may save error messages as config values — observed when API key validation failed and the error string ended up as the `anthropic_api_key` in config.json. Root cause not yet investigated. Manual correction: re-enter the real key in Settings and save.
 
 ## Phased Build Plan
 

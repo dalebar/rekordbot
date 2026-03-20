@@ -909,19 +909,71 @@ Addressed Part 2 priorities #1–3 from Session 20. All three were code-only fix
 - Fix (backend): `validate_api_key` endpoint now distinguishes auth failures (`AuthenticationError` / "Invalid" in error) from transient API errors. Auth failures return `valid=false`; transient errors return `valid=true` with an error message (assume key is valid if not explicitly rejected).
 - Fix (frontend): validation effect now only sets `hasApiKey=false` on genuine auth rejection. Transient errors and unreachable backend default to `hasApiKey=true`. Amber "API key not configured" hint only shows when no key is set (`apiKeyMissing` state), not on transient failures. Added `console.warn` in catch block.
 
-**4. ASCII encoding crash in Anthropic SDK fixed (main.py):**
-- AI tagging in packaged mode failed with `httpcore.LocalProtocolError: Illegal header value` — `'ascii' codec can't encode character '\u2013'` (en dash in track titles).
-- Root cause: PyInstaller with no terminal/locale defaults to ASCII encoding process-wide. The Anthropic SDK (via httpx/httpcore) hits this when constructing HTTP requests containing non-ASCII track metadata.
-- Fix: set `PYTHONUTF8=1`, `PYTHONIOENCODING=utf-8`, `LANG=en_US.UTF-8`, `LC_ALL=en_US.UTF-8` via `os.environ.setdefault()` early in the packaged-mode block, before any library imports. The existing `sys.stdout/stderr.reconfigure()` only covered log output, not the encoding used by HTTP libraries.
+**4. AI tagging encoding error investigated (turned out to be corrupted config — see Session 22):**
+- AI tagging in packaged mode failed with `httpcore.LocalProtocolError: Illegal header value` — appeared to be `'ascii' codec can't encode character '\u2013'`.
+- Initially appeared to be a PyInstaller ASCII encoding issue. Added `PYTHONUTF8=1`/`LANG`/`LC_ALL` env vars in main.py and later in Rust sidecar spawn.
+- **Actual root cause discovered in Session 22:** the `anthropic_api_key` in config.json contained a previous error message string, not a real API key. The "encoding error" was the literal text of the error message being sent as the `X-Api-Key` header.
 
 ### Key decisions made
 1. `log_config=None` to uvicorn — bypass `dictConfig()` entirely rather than fighting it. Simpler than building a dict config that survives uvicorn's internal handling.
 2. Alembic `fileConfig()` removed — app logging is already configured; letting Alembic reconfigure it was the real culprit for silent post-startup logs.
 3. DropZone made compact inline rather than hero-sized — it's a secondary action area, not the primary focus.
 4. AI tagging validation: transient API errors should not disable the button. Only genuine auth rejection (invalid/missing key) should prevent usage.
-5. Process-wide UTF-8 via env vars rather than patching individual callsites — `PYTHONUTF8=1` (PEP 540) is the canonical solution for PyInstaller bundles.
+5. `PYTHONUTF8=1` / `LANG` / `LC_ALL` set in Rust sidecar spawn as belt-and-suspenders for encoding in PyInstaller bundles, even though the immediate issue turned out to be corrupted config data (see Session 22).
 
 ### What's next
 - Rebuild .dmg and verify all fixes with real library
 - Test Rekordbox XML export with organised tracks
 - Minor UX: review queue text visibility, Shift+click text selection
+
+---
+
+## Session 22 — 2026-03-20 (continued)
+
+### What was worked on
+Phase 6c Part 2 continued — packaged-mode testing of Session 21 fixes, debugging logging and AI tagging.
+
+### Summary
+Rebuilt .dmg and tested all three fixes from Session 21. Layout fix worked immediately. Logging and AI tagging required multiple iterations to resolve.
+
+**Logging — iterative debugging to find root cause:**
+- Session 21's `_build_log_config()` approach: file handler installed, startup logs captured, but post-startup route handler logs missing. Multiple iterations tried:
+  1. Added `"backend"` logger with `propagate: False` to dictConfig — no improvement.
+  2. Belt-and-suspenders handler re-attachment in lifespan — handler confirmed present, still no post-startup logs.
+  3. Bypassed uvicorn entirely with `log_config=None` — same result.
+- **Actual root cause found:** Alembic's `env.py` calls `fileConfig(config.config_file_name)` which reads `alembic.ini`'s `[loggers]/[handlers]/[formatters]` sections. This replaces root logger handlers (removing our RotatingFileHandler) and sets root level to WARNING. Everything after `run_migrations()` went silent.
+- **Final fix:** Removed `fileConfig()` call from `env.py`. Kept `log_config=None` for uvicorn. File handler attached in lifespan AFTER `run_migrations()`. Full post-startup logging confirmed working: startup, access logs, ingest pipeline, converter decisions, batch completion, AI tagging validation.
+
+**AI tagging — root cause was corrupted config, not encoding:**
+- Logs revealed: `httpcore.LocalProtocolError: Illegal header value b" API error: 'ascii' codec can't encode character '\u2013' in position 138"` — looked like an encoding issue.
+- Attempted fixes: `PYTHONUTF8=1`/`LANG`/`LC_ALL` as env vars in main.py (no effect — too late), then in Rust sidecar spawn (no effect — the error was not actually an encoding problem).
+- **Actual root cause:** The `anthropic_api_key` value in `config.json` was the literal error message string `" API error: 'ascii' codec can't encode character '\u2013' in position 138: ordinal not in range(128)"` — a previous validation error had been saved as the key value. This garbage string was being sent as the `X-Api-Key` header, which Anthropic rejected, and httpcore reported as an illegal header value.
+- After clearing the corrupted key and entering a fresh one, the Anthropic API was reached successfully (proper HTTP 400 response about credit balance, not a connection error).
+- AI tagging is blocked only by Anthropic account billing — the `400 Bad Request` / "credit balance too low" error persists despite $5 balance showing in the Console. Likely a propagation delay or spending limit issue on Anthropic's side.
+
+**Layout — confirmed working:**
+- Track table visible and scrollable at normal window size (~1280x800). Drop zone compact inline. All toolbars visible with `shrink-0`.
+
+### Bugs encountered during development
+1. **Alembic `fileConfig()` nukes logging** — `env.py`'s `fileConfig(alembic.ini)` replaces root logger handlers and sets level to WARNING. Removing the call is safe; Alembic loggers inherit from the app's logging config.
+2. **Corrupted API key in config.json** — An error message string was saved as the `anthropic_api_key` value. The Settings save pathway needs investigation — how did a validation error end up persisted as a config value? Low priority since it's a one-time occurrence and manually correctable.
+
+### Key decisions made
+1. `PYTHONUTF8=1` / `LANG` / `LC_ALL` env vars kept in Rust sidecar spawn despite not being the fix for this specific issue — they're still good practice for PyInstaller bundles on macOS.
+2. The "encoding error" in AI tagging was a red herring — always check the actual config/data before assuming an encoding issue.
+3. AI tagging end-to-end test deferred to Part 3 — blocked by Anthropic billing, not by app code.
+
+### Remaining Session 20 bugs not yet addressed
+- Bug 3: Horizontal scroll reveals broken layout (white space, split colour)
+- Bug 4: Analysis state lost on Settings navigation (SSE disconnect)
+- Bug 5: Analysis restart blocked after Settings interruption
+- Bug 6: Scrolling breaks on relaunch
+- Bug 8: Review queue text invisible (dark on dark)
+- Bug 9: Shift+click still selects text in WebKit
+
+### What's next — Phase 6c Part 3 priorities
+1. **AI tagging end-to-end test** — once Anthropic billing resolves, test full tagging pipeline in packaged mode
+2. **Export XML** — test Rekordbox XML export with organised tracks
+3. **Investigate Settings save bug** — how did an error message get saved as the API key?
+4. **Minor UX bugs** — review queue text visibility, horizontal scroll layout, analysis SSE interruption
+5. **Full pipeline test with real library** — ingest → analyse → AI tag → organise → export
