@@ -397,8 +397,8 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
-**Tests:** 1163 passing across all phases
-**Next step:** Phase 6c Part 3 — AI tagging end-to-end test (blocked on Anthropic billing), export test, minor UX fixes
+**Tests:** 1161 passing across all phases
+**Next step:** Phase 6c Part 4 — analysis, organisation, export pipeline test with 668 real tracks
 
 ### Phase Summary
 
@@ -415,7 +415,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
-| 6c — UI Review & Bug Fixing | 1163 | (dogfooding — no feature brief) |
+| 6c — UI Review & Bug Fixing | 1161 | (dogfooding — no feature brief) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -435,6 +435,11 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
 - AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
 - Settings panel may save error messages as config values — observed when API key validation failed and the error string ended up as the `anthropic_api_key` in config.json. Root cause not yet investigated. Manual correction: re-enter the real key in Settings and save.
+- Ingestion worker runs in a plain `threading.Thread` (not asyncio) because PyInstaller-bundled stdout is piped to Tauri, and after ~64KB the pipe buffer fills, blocking any thread that writes to stdout via Python's logging StreamHandler. The StreamHandler is removed from the root logger in packaged mode. The worker thread communicates SSE events to the asyncio event loop via `loop.call_soon_threadsafe`. This architecture was validated with 668-file batch ingestion.
+- `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore in Phase 6d if concurrent conversion is re-enabled.
+- `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. Re-enabling requires solving the stdout pipe buffer issue first (Phase 6d).
+- uvloop is bundled by PyInstaller (transitive uvicorn dependency) and is explicitly bypassed via `loop="asyncio"` in `uvicorn.run()`. uvloop's libuv event loop had GIL interaction issues with worker threads on macOS.
+- Settings API key validation: structural guard rejects values that don't start with `sk-` or are under 20 chars. Error messages from the validate endpoint are sanitised (no raw Python exceptions). Credit/billing errors return `valid=True` since the key itself is valid.
 
 ## Phased Build Plan
 

@@ -977,3 +977,66 @@ Rebuilt .dmg and tested all three fixes from Session 21. Layout fix worked immed
 3. **Investigate Settings save bug** — how did an error message get saved as the API key?
 4. **Minor UX bugs** — review queue text visibility, horizontal scroll layout, analysis SSE interruption
 5. **Full pipeline test with real library** — ingest → analyse → AI tag → organise → export
+
+---
+
+## Session 23 — 2026-03-20
+
+### What was worked on
+Phase 6c Part 3 — Settings save bug fix, ingestion hang debugging and resolution, first real-data batch import.
+
+### Summary
+
+**Settings save bug (Task 1):**
+- Added structural API key validation guard in `update_settings` — rejects values that don't start with `sk-`, are under 20 chars, or contain whitespace. Garbage values silently dropped, other settings still save.
+- Sanitised error messages in `validate_key` endpoint — auth errors return "Invalid API key", credit/billing errors return `valid=True` with descriptive message, everything else returns generic safe message (no raw Python exceptions).
+- 16 new tests in `test_settings_routes.py` covering GET/PUT/validate/status endpoints.
+
+**Ingestion hang (Task 2 — major debugging session):**
+Root cause: Python's `logging.StreamHandler` writes to stdout, which in PyInstaller-bundled mode is piped to Tauri. After ~64KB of log output (~45 tracks), the macOS pipe buffer fills. The worker thread blocks on `_io_FileIO_write` inside `_bufferedwriter_flush_unlocked`, hanging indefinitely because Tauri doesn't drain the sidecar's stdout pipe.
+
+Diagnosed via macOS `sample` tool, which showed the worker thread stuck in `_io_FileIO_write`.
+
+Fix: Remove `StreamHandler` instances from the root logger in packaged mode after adding the `RotatingFileHandler`. All log output goes to the file handler only.
+
+Architectural changes made during investigation (all retained as improvements):
+1. **Session-per-task** — `ProcessingQueue` creates a new `SessionLocal()` per file instead of sharing one session across concurrent tasks. Prevents SQLAlchemy session corruption.
+2. **SQLite busy timeout** — `connect_args={"timeout": 30}` added to the engine. Prevents immediate `SQLITE_BUSY` failures on concurrent writes.
+3. **Worker pool** — Replaced `asyncio.gather` over all paths (created N coroutines) with a bounded worker pool that pulls from a `queue.Queue`. Only `max_concurrent_conversions` workers exist at any time.
+4. **Plain thread worker** — Worker runs in a `threading.Thread`, not an asyncio task. SSE events pushed to the asyncio event queue via `loop.call_soon_threadsafe`. Eliminates all asyncio involvement in the processing path.
+5. **Synchronous subprocess** — `subprocess.run` replaced `asyncio.create_subprocess_exec` for both ffprobe and ffmpeg. With 1 sequential worker, async subprocess provided no benefit and added complexity.
+6. **Synchronous convert_file** — Changed from `async def` to plain `def`. All internal operations (inspect, hash, convert, DB commit) are synchronous.
+7. **uvloop bypass** — `loop="asyncio"` added to `uvicorn.run()` to force the standard asyncio event loop. uvloop (bundled by PyInstaller as a uvicorn dependency) had GIL interaction issues with worker threads on macOS.
+8. **max_concurrent_conversions=1** — Concurrent conversion disabled pending proper investigation in Phase 6d.
+
+**First real-data batch import:**
+668 tracks successfully imported from Larry Levan at Paradise Garage — House Masters list. 670 files total: 668 FLAC→AIFF conversions succeeded, 2 failed (likely .incomplete files or non-audio). Completed in ~2 minutes 41 seconds. Tracks visible in track table.
+
+### Bugs encountered and resolved
+1. **Stdout pipe deadlock** — Root cause of all ingestion hangs. Worker thread blocks on stdout write when Tauri's pipe buffer fills (~64KB). Fix: remove StreamHandler in packaged mode.
+2. **Corrupted API key in config.json** — Error message string saved as key value. Fix: structural validation guard rejects non-key strings.
+3. **Shared SQLAlchemy session** — Single session passed to concurrent tasks caused undefined behaviour. Fix: session-per-task in worker.
+4. **Coroutine explosion** — `asyncio.gather` with 670 tasks overwhelmed the event loop scheduler. Fix: bounded worker pool with `queue.Queue`.
+
+### Key decisions made
+1. Worker thread architecture (plain `threading.Thread` + `call_soon_threadsafe`) is the production pattern for ingestion. Simpler and more reliable than any asyncio-based approach.
+2. Synchronous `subprocess.run` for ffprobe/ffmpeg is correct for single-worker processing. Async subprocess adds complexity with no benefit at concurrency=1.
+3. Diagnostic converter logging demoted to DEBUG. Production log lines: Inspected, Decision, Running ffmpeg, Output written, Track created.
+4. Re-enabling concurrent conversion deferred to Phase 6d — requires solving the stdout pipe issue first.
+5. uvloop bypassed via `loop="asyncio"` — belt-and-suspenders alongside the StreamHandler removal.
+
+### Remaining Session 20 bugs not yet addressed
+- Bug 3: Horizontal scroll reveals broken layout (white space, split colour)
+- Bug 4: Analysis state lost on Settings navigation (SSE disconnect)
+- Bug 5: Analysis restart blocked after Settings interruption
+- Bug 6: Scrolling breaks on relaunch
+- Bug 8: Review queue text invisible (dark on dark)
+- Bug 9: Shift+click still selects text in WebKit
+
+### What's next — Phase 6c Part 4 priorities
+1. **Analysis** — Run BPM/key analysis on 668 imported tracks
+2. **AI tagging** — Test if Anthropic billing has cleared (API key validated successfully at end of Session 23)
+3. **Organisation** — Test organise pipeline with real tracks
+4. **Export XML** — Test Rekordbox XML export with real library
+5. **Full pipeline validation** — Verify the complete ingest → analyse → AI tag → organise → export loop
+6. **UI bugs** — Scrolling, horizontal layout, review queue text visibility
