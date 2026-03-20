@@ -377,9 +377,9 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
       </div>
 
       {/* Table + detail panel layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Table */}
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1 overflow-auto">
           <table className="w-full select-none text-left text-xs">
             <thead>
               <tr
