@@ -127,13 +127,16 @@ class TestProcessingQueue:
     @pytest.mark.asyncio
     async def test_cancellation(
         self,
-        queue_settings: Settings,
         mock_session_factory,
     ) -> None:
         """Cancellation prevents remaining files from processing."""
-        queue = ProcessingQueue(queue_settings)
-        queue_settings.max_concurrent_conversions = 1
-        queue._semaphore = __import__("asyncio").Semaphore(1)
+        # Use 1 worker so cancellation is deterministic
+        cancel_settings = Settings(
+            max_concurrent_conversions=1,
+            output_directory="/tmp/test-output",
+            db_url="sqlite://",
+        )
+        queue = ProcessingQueue(cancel_settings)
 
         paths = [Path(f"/test/{i}.wav") for i in range(5)]
 

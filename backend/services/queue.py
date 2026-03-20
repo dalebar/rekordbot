@@ -38,9 +38,11 @@ class BatchResult:
 class ProcessingQueue:
     """Manages concurrent file processing with SSE progress reporting.
 
+    Uses a bounded worker pool (not gather) to avoid coroutine explosion
+    when processing large batches.
+
     Attributes:
         settings: Application settings.
-        _semaphore: Limits concurrent ffmpeg processes.
         _cancel_event: Set to request cancellation.
         _progress: Current batch progress.
         _event_queue: SSE events are pushed here for consumption.
@@ -48,7 +50,6 @@ class ProcessingQueue:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._semaphore = asyncio.Semaphore(settings.max_concurrent_conversions)
         self._cancel_event = asyncio.Event()
         self._progress = BatchProgress()
         self._event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -89,57 +90,12 @@ class ProcessingQueue:
             event_data["error"] = error
         await self._event_queue.put({"event": "file_progress", "data": event_data})
 
-    async def _process_one(self, path: Path) -> TrackResult:
-        """Process a single file with semaphore-controlled concurrency."""
-        async with self._semaphore:
-            if self._cancel_event.is_set():
-                return TrackResult(
-                    success=False,
-                    file_path=str(path),
-                    error="Cancelled",
-                    action="cancelled",
-                )
-
-            await self._emit_event(str(path), "processing", message=f"Processing {path.name}...")
-
-            db_session = SessionLocal()
-            try:
-                result = await convert_file(path, db_session, self.settings)
-            finally:
-                db_session.close()
-
-            # Update progress
-            if result.duplicate:
-                self._progress.duplicates += 1
-                self._progress.completed += 1
-                await self._emit_event(
-                    str(path),
-                    "skipped",
-                    action="skip_duplicate",
-                    message=f"Duplicate: {path.name}",
-                )
-            elif result.success:
-                self._progress.completed += 1
-                await self._emit_event(
-                    str(path),
-                    "complete",
-                    action=result.action,
-                    message=f"Complete: {path.name}",
-                )
-            else:
-                self._progress.failed += 1
-                self._progress.completed += 1
-                await self._emit_event(
-                    str(path),
-                    "failed",
-                    message=f"Failed: {path.name}",
-                    error=result.error,
-                )
-
-            return result
-
     async def process_batch(self, paths: list[Path]) -> BatchResult:
-        """Process a batch of files concurrently.
+        """Process a batch of files using a bounded worker pool.
+
+        Spawns exactly max_concurrent_conversions workers that pull from an
+        asyncio.Queue, avoiding the coroutine explosion that gather causes
+        with large batches.
 
         Args:
             paths: List of audio file paths to process.
@@ -151,28 +107,101 @@ class ProcessingQueue:
         self._cancel_event.clear()
         self._progress = BatchProgress(total=len(paths))
 
-        # Emit queued events for all files
+        # Populate work queue (no SSE events — workers emit processing/complete/failed)
+        work_queue: asyncio.Queue[Path | None] = asyncio.Queue()
         for path in paths:
-            await self._emit_event(str(path), "queued", message=f"Queued: {path.name}")
+            await work_queue.put(path)
 
-        # Process all files concurrently (bounded by semaphore)
-        tasks = [self._process_one(path) for path in paths]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Add sentinel values to signal workers to stop
+        num_workers = self.settings.max_concurrent_conversions
+        for _ in range(num_workers):
+            await work_queue.put(None)
+
+        results: list[TrackResult] = []
+        results_lock = asyncio.Lock()
+
+        async def worker() -> None:
+            while True:
+                path = await work_queue.get()
+                if path is None:
+                    break
+
+                if self._cancel_event.is_set():
+                    async with results_lock:
+                        results.append(
+                            TrackResult(
+                                success=False,
+                                file_path=str(path),
+                                error="Cancelled",
+                                action="cancelled",
+                            )
+                        )
+                    work_queue.task_done()
+                    continue
+
+                logger.debug("Worker processing: %s", path.name)
+                await self._emit_event(
+                    str(path), "processing", message=f"Processing {path.name}..."
+                )
+
+                db_session = SessionLocal()
+                try:
+                    result = await convert_file(path, db_session, self.settings)
+                except Exception as e:
+                    logger.exception("Unexpected error processing %s", path.name)
+                    result = TrackResult(success=False, file_path=str(path), error=str(e))
+                finally:
+                    db_session.close()
+
+                # Update progress and emit events
+                if result.duplicate:
+                    self._progress.duplicates += 1
+                    self._progress.completed += 1
+                    await self._emit_event(
+                        str(path),
+                        "skipped",
+                        action="skip_duplicate",
+                        message=f"Duplicate: {path.name}",
+                    )
+                elif result.success:
+                    self._progress.completed += 1
+                    await self._emit_event(
+                        str(path),
+                        "complete",
+                        action=result.action,
+                        message=f"Complete: {path.name}",
+                    )
+                else:
+                    self._progress.failed += 1
+                    self._progress.completed += 1
+                    await self._emit_event(
+                        str(path),
+                        "failed",
+                        message=f"Failed: {path.name}",
+                        error=result.error,
+                    )
+
+                async with results_lock:
+                    results.append(result)
+
+                work_queue.task_done()
+
+        # Start exactly max_concurrent_conversions workers
+        workers = [asyncio.create_task(worker()) for _ in range(num_workers)]
+
+        # Wait for all workers to finish
+        await asyncio.gather(*workers)
 
         # Build batch result
         batch_result = BatchResult(total=len(paths))
         for result in results:
-            if isinstance(result, Exception):
-                logger.exception("Unexpected error in batch processing: %s", result)
+            batch_result.results.append(result)
+            if result.duplicate:
+                batch_result.duplicates += 1
+            elif result.success:
+                batch_result.succeeded += 1
+            else:
                 batch_result.failed += 1
-            elif isinstance(result, TrackResult):
-                batch_result.results.append(result)
-                if result.duplicate:
-                    batch_result.duplicates += 1
-                elif result.success:
-                    batch_result.succeeded += 1
-                else:
-                    batch_result.failed += 1
 
         # Emit batch complete event
         await self._event_queue.put(

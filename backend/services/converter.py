@@ -164,7 +164,9 @@ async def convert_file(
         logger.info("Decision for %s: %s — %s", path.name, action.action, action.reason)
 
         # Step 3: Hash source file for duplicate detection
-        file_hash = await asyncio.to_thread(compute_file_hash, path)
+        logger.info("Hashing source file %s (%d bytes)...", path.name, path.stat().st_size)
+        file_hash = compute_file_hash(path)
+        logger.info("Hash complete for %s: %s", path.name, file_hash[:12])
 
         # Step 4: Check for duplicates
         existing = db_session.query(Track).filter_by(file_hash=file_hash).first()
@@ -191,21 +193,23 @@ async def convert_file(
                 db_session.commit()
 
         # Step 5: Generate output path
+        logger.info("Generating output path for %s", path.name)
         output_dir = Path(settings.output_directory).expanduser()
         output_path = generate_output_path(path, output_dir, action.output_format)
 
         # Step 6: Execute conversion or copy
+        logger.info("Starting %s for %s", action.action, path.name)
         if action.action in ("convert_to_aiff", "convert_to_mp3"):
             cmd = build_ffmpeg_command(path, output_path, action, file_info, settings.ffmpeg_path)
             await _run_ffmpeg(cmd)
         else:
             # copy_as_is
-            await asyncio.to_thread(shutil.copy2, str(path), str(output_path))
+            shutil.copy2(str(path), str(output_path))
 
         logger.info("Output written to %s", output_path)
 
         # Step 7: Get output file size
-        output_size = await asyncio.to_thread(lambda: output_path.stat().st_size)
+        output_size = output_path.stat().st_size
 
         # Step 8: Create Track record
         track = Track(
