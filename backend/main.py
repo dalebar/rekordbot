@@ -9,6 +9,7 @@ import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -68,33 +69,83 @@ _log_datefmt = "%H:%M:%S"
 
 logging.basicConfig(level=_log_level, format=_log_format, datefmt=_log_datefmt)
 
-# Create file handler at module level (attached in lifespan after uvicorn's logger init)
-_file_handler: logging.Handler | None = None
-if "--parent-pid" in sys.argv:
-    _log_dir = Path.home() / "Library" / "Application Support" / "rekordbot"
-    _log_dir.mkdir(parents=True, exist_ok=True)
-    _file_handler = logging.handlers.RotatingFileHandler(
-        _log_dir / "rekordbot.log",
-        maxBytes=5 * 1024 * 1024,
-        backupCount=3,
-        encoding="utf-8",
-    )
-    _file_handler.setLevel(logging.INFO)
-    _file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
-
 logger = logging.getLogger(__name__)
+
+# Log file path for packaged mode (used by _build_log_config and lifespan)
+_LOG_FILE_PATH = Path.home() / "Library" / "Application Support" / "rekordbot" / "rekordbot.log"
+_is_packaged = "--parent-pid" in sys.argv
+
+
+def _build_log_config() -> dict[str, Any]:
+    """Build a logging dict-config for uvicorn.
+
+    In packaged mode (--parent-pid), includes a RotatingFileHandler alongside
+    the console handler. This is passed to uvicorn.run(log_config=...) so that
+    uvicorn's own dictConfig() call installs our handlers instead of stripping
+    them.
+    """
+    handlers: dict[str, Any] = {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+            "stream": "ext://sys.stdout",
+        },
+    }
+    handler_names = ["console"]
+
+    if _is_packaged:
+        _LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        handlers["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "default",
+            "filename": str(_LOG_FILE_PATH),
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "encoding": "utf-8",
+        }
+        handler_names.append("file")
+
+    level_name = settings.log_level.upper()
+
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": _log_format,
+                "datefmt": _log_datefmt,
+            },
+        },
+        "handlers": handlers,
+        "loggers": {
+            "uvicorn": {
+                "handlers": handler_names,
+                "level": level_name,
+                "propagate": False,
+            },
+            "uvicorn.error": {
+                "handlers": handler_names,
+                "level": level_name,
+                "propagate": False,
+            },
+            "uvicorn.access": {
+                "handlers": handler_names,
+                "level": level_name,
+                "propagate": False,
+            },
+        },
+        "root": {
+            "handlers": handler_names,
+            "level": level_name,
+        },
+    }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — run migrations and initialise on startup."""
-    # Attach file handler AFTER uvicorn's logging setup to avoid being stripped
-    if _file_handler is not None:
-        logging.getLogger().addHandler(_file_handler)
-        logger.info(
-            "File logging initialised: %s",
-            Path.home() / "Library" / "Application Support" / "rekordbot" / "rekordbot.log",
-        )
+    if _is_packaged:
+        logger.info("File logging active: %s", _LOG_FILE_PATH)
 
     run_migrations(engine)
     logger.info("rekordbot backend started on port %d", settings.port)
@@ -214,16 +265,20 @@ if __name__ == "__main__":
     # When running from PyInstaller, pass the app object directly since
     # the module can't be imported by name. Use the import string only
     # when --reload is requested (reload requires an import string).
+    _log_config = _build_log_config()
+
     if "--reload" in sys.argv:
         uvicorn.run(
             "backend.main:app",
             host="127.0.0.1",
             port=settings.port,
             reload=True,
+            log_config=_log_config,
         )
     else:
         uvicorn.run(
             app,
             host="127.0.0.1",
             port=settings.port,
+            log_config=_log_config,
         )
