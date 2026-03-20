@@ -133,6 +133,11 @@ def _build_log_config() -> dict[str, Any]:
                 "level": level_name,
                 "propagate": False,
             },
+            "backend": {
+                "handlers": handler_names,
+                "level": level_name,
+                "propagate": False,
+            },
         },
         "root": {
             "handlers": handler_names,
