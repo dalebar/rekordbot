@@ -233,7 +233,7 @@ class TestDuplicateDetectionOrphanHandling:
         db_session.commit()
 
         settings = Settings(output_directory=str(tmp_path / "new_output"), db_url="sqlite://")
-        result = await convert_file(fixture, db_session, settings)
+        result = convert_file(fixture, db_session, settings)
 
         assert result.success is False
         assert result.duplicate is True
@@ -258,7 +258,7 @@ class TestDuplicateDetectionOrphanHandling:
         db_session.commit()
 
         settings = Settings(output_directory=str(tmp_path / "output"), db_url="sqlite://")
-        result = await convert_file(fixture, db_session, settings)
+        result = convert_file(fixture, db_session, settings)
 
         # Processing should continue and succeed
         assert result.success is True
@@ -305,7 +305,7 @@ class TestDuplicateDetectionOrphanHandling:
         db_session.commit()
 
         settings = Settings(output_directory=str(tmp_path / "output"), db_url="sqlite://")
-        result = await convert_file(fixture, db_session, settings)
+        result = convert_file(fixture, db_session, settings)
 
         # Processing should succeed
         assert result.success is True

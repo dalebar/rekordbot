@@ -1,9 +1,9 @@
 """Converter service — orchestrates inspection, decision, ffmpeg execution, and DB storage."""
 
-import asyncio
 import hashlib
 import logging
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -108,8 +108,8 @@ def compute_file_hash(path: Path) -> str:
     return sha256.hexdigest()
 
 
-async def _run_ffmpeg(cmd: list[str]) -> None:
-    """Run an ffmpeg command as an async subprocess.
+def _run_ffmpeg_sync(cmd: list[str]) -> None:
+    """Run an ffmpeg command as a synchronous subprocess.
 
     Args:
         cmd: The ffmpeg command arguments.
@@ -118,19 +118,14 @@ async def _run_ffmpeg(cmd: list[str]) -> None:
         ConversionError: If ffmpeg exits with a non-zero code.
     """
     logger.info("Running ffmpeg: %s", " ".join(cmd))
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await process.communicate()
+    result = subprocess.run(cmd, capture_output=True, timeout=300)
 
-    if process.returncode != 0:
-        error_msg = stderr.decode().strip() if stderr else "Unknown ffmpeg error"
-        raise ConversionError(f"ffmpeg failed (exit {process.returncode}): {error_msg}")
+    if result.returncode != 0:
+        error_msg = result.stderr.decode().strip() if result.stderr else "Unknown ffmpeg error"
+        raise ConversionError(f"ffmpeg failed (exit {result.returncode}): {error_msg}")
 
 
-async def convert_file(
+def convert_file(
     path: Path,
     db_session: Session,
     settings: Settings,
@@ -149,7 +144,7 @@ async def convert_file(
     """
     try:
         # Step 1: Inspect
-        file_info = await inspect_file(path)
+        file_info = inspect_file(path)
         logger.info(
             "Inspected %s: %s/%s, %d kbps, %s",
             path.name,
@@ -201,7 +196,7 @@ async def convert_file(
         logger.info("Starting %s for %s", action.action, path.name)
         if action.action in ("convert_to_aiff", "convert_to_mp3"):
             cmd = build_ffmpeg_command(path, output_path, action, file_info, settings.ffmpeg_path)
-            await _run_ffmpeg(cmd)
+            _run_ffmpeg_sync(cmd)
         else:
             # copy_as_is
             shutil.copy2(str(path), str(output_path))

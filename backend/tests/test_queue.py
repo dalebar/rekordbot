@@ -1,7 +1,7 @@
 """Tests for processing queue — concurrency, error handling, cancellation."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -59,7 +59,6 @@ class TestProcessingQueue:
         with (
             patch(
                 "backend.services.queue.convert_file",
-                new_callable=AsyncMock,
                 side_effect=[
                     _success_result("/test/a.wav"),
                     _success_result("/test/b.flac"),
@@ -86,7 +85,6 @@ class TestProcessingQueue:
         with (
             patch(
                 "backend.services.queue.convert_file",
-                new_callable=AsyncMock,
                 side_effect=[
                     _success_result("/test/a.wav"),
                     _failure_result("/test/b.flac"),
@@ -111,7 +109,6 @@ class TestProcessingQueue:
         with (
             patch(
                 "backend.services.queue.convert_file",
-                new_callable=AsyncMock,
                 side_effect=[
                     _success_result("/test/a.wav"),
                     _duplicate_result("/test/b.wav"),
@@ -142,7 +139,7 @@ class TestProcessingQueue:
 
         call_count = 0
 
-        async def mock_convert(*args, **kwargs):
+        def mock_convert(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count >= 2:
@@ -172,7 +169,6 @@ class TestProcessingQueue:
         with (
             patch(
                 "backend.services.queue.convert_file",
-                new_callable=AsyncMock,
                 return_value=_success_result("/test/a.wav"),
             ),
             patch("backend.services.queue.SessionLocal", mock_session_factory),
@@ -204,7 +200,6 @@ class TestProcessingQueue:
         with (
             patch(
                 "backend.services.queue.convert_file",
-                new_callable=AsyncMock,
                 return_value=_success_result("/test/a.wav"),
             ),
             patch("backend.services.queue.SessionLocal", mock_session_factory),

@@ -1,8 +1,8 @@
 """Format inspector — wraps ffprobe to determine true audio format and codec."""
 
-import asyncio
 import json
 import logging
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -135,7 +135,7 @@ def parse_ffprobe_output(json_output: dict, path: Path) -> FileInfo:
     )
 
 
-async def inspect_file(path: Path) -> FileInfo:
+def inspect_file(path: Path) -> FileInfo:
     """Run ffprobe on a file and return parsed FileInfo.
 
     Args:
@@ -159,19 +159,14 @@ async def inspect_file(path: Path) -> FileInfo:
     ]
     logger.debug("Running ffprobe: %s", " ".join(cmd))
 
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
+    result = subprocess.run(cmd, capture_output=True, timeout=60)
 
-    if process.returncode != 0:
-        error_msg = stderr.decode().strip() if stderr else "Unknown error"
+    if result.returncode != 0:
+        error_msg = result.stderr.decode().strip() if result.stderr else "Unknown error"
         raise ValueError(f"ffprobe failed for {path}: {error_msg}")
 
     try:
-        json_output = json.loads(stdout.decode())
+        json_output = json.loads(result.stdout.decode())
     except json.JSONDecodeError as e:
         raise ValueError(f"ffprobe returned invalid JSON for {path}: {e}") from e
 

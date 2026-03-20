@@ -121,6 +121,7 @@ class ProcessingQueue:
         results_lock = asyncio.Lock()
 
         async def worker() -> None:
+            loop = asyncio.get_event_loop()
             while True:
                 path = await work_queue.get()
                 if path is None:
@@ -146,7 +147,10 @@ class ProcessingQueue:
 
                 db_session = SessionLocal()
                 try:
-                    result = await convert_file(path, db_session, self.settings)
+                    # Run synchronous converter in thread pool to avoid blocking event loop
+                    result = await loop.run_in_executor(
+                        None, convert_file, path, db_session, self.settings
+                    )
                 except Exception as e:
                     logger.exception("Unexpected error processing %s", path.name)
                     result = TrackResult(success=False, file_path=str(path), error=str(e))
