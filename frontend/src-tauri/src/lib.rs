@@ -68,6 +68,9 @@ pub fn run() {
                 info!("Spawning sidecar from: {:?}", sidecar_bin);
                 let child = std::process::Command::new(&sidecar_bin)
                     .args(["--parent-pid", &parent_pid])
+                    .env("PYTHONUTF8", "1")
+                    .env("LANG", "en_US.UTF-8")
+                    .env("LC_ALL", "en_US.UTF-8")
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
