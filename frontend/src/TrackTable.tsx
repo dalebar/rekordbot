@@ -82,7 +82,7 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
   const loadTracks = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getTracks(500, 0);
+      const data = await getTracks(5000, 0);
       setTracks(data.tracks);
       setTotal(data.total);
 

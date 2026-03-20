@@ -483,7 +483,7 @@ async def bpm_multiply(track_id: int, request: BPMMultiplyRequest) -> TrackDetai
 
 @router.get("/tracks", response_model=EnhancedTrackListResponse)
 async def list_tracks(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ) -> EnhancedTrackListResponse:
     """List all tracks with analysis metadata, sortable/filterable."""
