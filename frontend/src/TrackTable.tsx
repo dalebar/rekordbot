@@ -255,6 +255,28 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
     setDetailTrack(updated);
   }, []);
 
+  const handleSelectAll = useCallback(() => {
+    const allIds = new Set(sortedTracks.map((t) => t.id));
+    if (selectedIds.size === sortedTracks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(allIds);
+    }
+  }, [sortedTracks, selectedIds.size]);
+
+  // Intercept Cmd+A to select all visible tracks
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault();
+        const allIds = new Set(sortedTracks.map((t) => t.id));
+        setSelectedIds(allIds);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sortedTracks]);
+
   const handleDeleteSelected = useCallback(async () => {
     if (selectedIds.size === 0) return;
     setDeleting(true);
@@ -332,6 +354,14 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
             {filteredTracks.length} of {total} tracks
             {selectedIds.size > 0 && ` (${selectedIds.size} selected)`}
           </span>
+          {sortedTracks.length > 0 && (
+            <button
+              onClick={handleSelectAll}
+              className="rounded px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300"
+            >
+              {selectedIds.size === sortedTracks.length ? "Deselect All" : "Select All"}
+            </button>
+          )}
           {selectedIds.size > 0 && (
             <button
               onClick={() => setShowDeleteConfirm(true)}
