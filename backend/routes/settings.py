@@ -1,6 +1,7 @@
 """Settings API routes — configuration management and first-run status."""
 
 import logging
+import re
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -116,6 +117,13 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
     if "anthropic_api_key" in update_data and is_key_masked(update_data["anthropic_api_key"]):
         update_data.pop("anthropic_api_key")
 
+    # Structural guard: reject values that don't look like a plausible API key
+    if "anthropic_api_key" in update_data:
+        key_val = update_data["anthropic_api_key"]
+        if not _is_plausible_api_key(key_val):
+            logger.warning("Rejected invalid API key value (failed structural check)")
+            update_data.pop("anthropic_api_key")
+
     # Merge updates into current config
     for key, value in update_data.items():
         if key in CONFIGURABLE_FIELDS:
@@ -148,10 +156,15 @@ async def validate_key(body: ValidateKeyRequest) -> ValidateKeyResponse:
         )
         return ValidateKeyResponse(valid=True)
     except Exception as e:
-        error_msg = str(e)
-        if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
+        error_msg = str(e).lower()
+        if "authentication" in error_msg or "invalid" in error_msg or "api key" in error_msg:
             return ValidateKeyResponse(valid=False, error="Invalid API key.")
-        return ValidateKeyResponse(valid=False, error=f"API error: {error_msg}")
+        if "credit" in error_msg or "balance" in error_msg:
+            return ValidateKeyResponse(
+                valid=True,
+                error="API key is valid but account has insufficient credits.",
+            )
+        return ValidateKeyResponse(valid=False, error="Could not validate key. Try again later.")
 
 
 @router.post("/validate-directory")
@@ -208,6 +221,17 @@ def _check_ffmpeg() -> bool:
     import shutil
 
     return shutil.which(settings.ffmpeg_path) is not None
+
+
+_API_KEY_PATTERN = re.compile(r"^sk-\S{17,}$")
+
+
+def _is_plausible_api_key(value: str) -> bool:
+    """Check that a value looks structurally like an Anthropic API key.
+
+    Must start with 'sk-', be at least 20 chars, and contain no spaces or newlines.
+    """
+    return bool(_API_KEY_PATTERN.match(value)) and len(value) >= 20
 
 
 # Re-export settings singleton for convenience (used by status endpoint)

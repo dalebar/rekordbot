@@ -112,6 +112,91 @@ class TestPutSettings:
             # The masked key should not have replaced the real key in config
             # (load_config is mocked, so we just verify no crash)
 
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_api_key(
+        self, settings_client: AsyncClient, tmp_path: Path
+    ) -> None:
+        """PUT with garbage anthropic_api_key should save other fields but not the key."""
+        config_dir = tmp_path / "rekordbot"
+        config_dir.mkdir()
+        saved_config: dict = {}
+
+        def capture_save(config: dict) -> None:
+            saved_config.update(config)
+
+        with (
+            patch(
+                "backend.services.config_manager._get_app_data_dir",
+                return_value=config_dir,
+            ),
+            patch("backend.routes.settings.load_config", return_value={}),
+            patch("backend.routes.settings.save_config", side_effect=capture_save),
+        ):
+            resp = await settings_client.put(
+                "/api/settings",
+                json={"anthropic_api_key": "some garbage string", "bpm_range_min": 65},
+            )
+            assert resp.status_code == 200
+            assert "anthropic_api_key" not in saved_config
+            assert saved_config.get("bpm_range_min") == 65
+
+    @pytest.mark.asyncio
+    async def test_rejects_error_message_as_key(
+        self, settings_client: AsyncClient, tmp_path: Path
+    ) -> None:
+        """PUT with an error message string as key should not persist it."""
+        config_dir = tmp_path / "rekordbot"
+        config_dir.mkdir()
+        saved_config: dict = {}
+
+        def capture_save(config: dict) -> None:
+            saved_config.update(config)
+
+        with (
+            patch(
+                "backend.services.config_manager._get_app_data_dir",
+                return_value=config_dir,
+            ),
+            patch("backend.routes.settings.load_config", return_value={}),
+            patch("backend.routes.settings.save_config", side_effect=capture_save),
+        ):
+            resp = await settings_client.put(
+                "/api/settings",
+                json={
+                    "anthropic_api_key": "API error: 'ascii' codec can't encode character",
+                },
+            )
+            assert resp.status_code == 200
+            assert "anthropic_api_key" not in saved_config
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_api_key(
+        self, settings_client: AsyncClient, tmp_path: Path
+    ) -> None:
+        """PUT with a structurally valid API key should persist it."""
+        config_dir = tmp_path / "rekordbot"
+        config_dir.mkdir()
+        saved_config: dict = {}
+
+        def capture_save(config: dict) -> None:
+            saved_config.update(config)
+
+        valid_key = "sk-ant-api03-validkey1234567890"
+        with (
+            patch(
+                "backend.services.config_manager._get_app_data_dir",
+                return_value=config_dir,
+            ),
+            patch("backend.routes.settings.load_config", return_value={}),
+            patch("backend.routes.settings.save_config", side_effect=capture_save),
+        ):
+            resp = await settings_client.put(
+                "/api/settings",
+                json={"anthropic_api_key": valid_key},
+            )
+            assert resp.status_code == 200
+            assert saved_config.get("anthropic_api_key") == valid_key
+
 
 class TestValidateKey:
     """Tests for POST /api/settings/validate-key."""
@@ -135,6 +220,28 @@ class TestValidateKey:
         assert resp.status_code == 200
         data = resp.json()
         assert data["valid"] is False
+
+    @pytest.mark.asyncio
+    async def test_does_not_leak_exception_text(self, settings_client: AsyncClient) -> None:
+        """Generic exceptions should return a safe message, not raw traceback text."""
+        from unittest.mock import MagicMock
+
+        mock_anthropic = MagicMock()
+        mock_client_instance = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client_instance
+        mock_client_instance.messages.create.side_effect = RuntimeError(
+            "Connection refused to api.anthropic.com:443"
+        )
+
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            resp = await settings_client.post(
+                "/api/settings/validate-key",
+                json={"key": "sk-ant-api03-test1234567890"},
+            )
+            data = resp.json()
+            assert data["valid"] is False
+            assert "Connection refused" not in data["error"]
+            assert data["error"] == "Could not validate key. Try again later."
 
 
 class TestValidateDirectory:
