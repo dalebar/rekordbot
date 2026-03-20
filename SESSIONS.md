@@ -909,11 +909,17 @@ Addressed Part 2 priorities #1–3 from Session 20. All three were code-only fix
 - Fix (backend): `validate_api_key` endpoint now distinguishes auth failures (`AuthenticationError` / "Invalid" in error) from transient API errors. Auth failures return `valid=false`; transient errors return `valid=true` with an error message (assume key is valid if not explicitly rejected).
 - Fix (frontend): validation effect now only sets `hasApiKey=false` on genuine auth rejection. Transient errors and unreachable backend default to `hasApiKey=true`. Amber "API key not configured" hint only shows when no key is set (`apiKeyMissing` state), not on transient failures. Added `console.warn` in catch block.
 
+**4. ASCII encoding crash in Anthropic SDK fixed (main.py):**
+- AI tagging in packaged mode failed with `httpcore.LocalProtocolError: Illegal header value` — `'ascii' codec can't encode character '\u2013'` (en dash in track titles).
+- Root cause: PyInstaller with no terminal/locale defaults to ASCII encoding process-wide. The Anthropic SDK (via httpx/httpcore) hits this when constructing HTTP requests containing non-ASCII track metadata.
+- Fix: set `PYTHONUTF8=1`, `PYTHONIOENCODING=utf-8`, `LANG=en_US.UTF-8`, `LC_ALL=en_US.UTF-8` via `os.environ.setdefault()` early in the packaged-mode block, before any library imports. The existing `sys.stdout/stderr.reconfigure()` only covered log output, not the encoding used by HTTP libraries.
+
 ### Key decisions made
 1. `log_config=None` to uvicorn — bypass `dictConfig()` entirely rather than fighting it. Simpler than building a dict config that survives uvicorn's internal handling.
 2. Alembic `fileConfig()` removed — app logging is already configured; letting Alembic reconfigure it was the real culprit for silent post-startup logs.
 3. DropZone made compact inline rather than hero-sized — it's a secondary action area, not the primary focus.
 4. AI tagging validation: transient API errors should not disable the button. Only genuine auth rejection (invalid/missing key) should prevent usage.
+5. Process-wide UTF-8 via env vars rather than patching individual callsites — `PYTHONUTF8=1` (PEP 540) is the canonical solution for PyInstaller bundles.
 
 ### What's next
 - Rebuild .dmg and verify all fixes with real library
