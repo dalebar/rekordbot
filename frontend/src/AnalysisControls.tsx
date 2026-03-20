@@ -80,7 +80,10 @@ export default function AnalysisControls({
   useEffect(() => {
     postValidateApiKey()
       .then((result) => setHasApiKey(result.valid))
-      .catch(() => setHasApiKey(false));
+      .catch((err) => {
+        console.warn("API key validation failed:", err);
+        setHasApiKey(false);
+      });
   }, []);
 
   const handleAiTag = useCallback(async () => {
@@ -198,6 +201,11 @@ export default function AnalysisControls({
           </button>
         )}
 
+        {/* API key missing hint */}
+        {!hasApiKey && !aiTagging && (
+          <span className="text-xs text-amber-400">API key not configured — set in Settings</span>
+        )}
+
         {/* Write Tags button */}
         <button
           onClick={handleWriteTags}
@@ -273,10 +281,7 @@ export default function AnalysisControls({
             {aiComplete.token_usage.output_tokens.toLocaleString()} out
           </span>
           <span>Cost: ${aiComplete.token_usage.estimated_cost_usd.toFixed(4)}</span>
-          <button
-            onClick={() => setAiComplete(null)}
-            className="text-gray-600 hover:text-gray-400"
-          >
+          <button onClick={() => setAiComplete(null)} className="text-gray-600 hover:text-gray-400">
             Dismiss
           </button>
         </div>

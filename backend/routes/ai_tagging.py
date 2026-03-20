@@ -215,6 +215,7 @@ async def ai_tag_status() -> AiTagStatusResponse:
 @router.post("/tracks/ai-tag/validate-key", response_model=ValidateKeyResponse)
 async def validate_api_key() -> ValidateKeyResponse:
     """Validate the configured Anthropic API key."""
+    logger.info("Validating API key, key present: %s", bool(settings.anthropic_api_key))
     if not settings.anthropic_api_key:
         return ValidateKeyResponse(
             valid=False,
