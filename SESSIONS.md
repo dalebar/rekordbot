@@ -794,3 +794,37 @@ Fixed the three bugs triaged in Session 17, plus two packaged-mode infrastructur
 - Bundle ffprobe in Tauri resources
 - Rebuild .dmg and verify all fixes with real library
 - Investigate Bug 1 (organisation pipeline in packaged mode)
+
+---
+
+## Session 19 — 2026-03-20
+
+### What was worked on
+Phase 6c — continued dogfooding fixes: packaged-mode logging, ffmpeg path resolution, and track table UX improvements.
+
+### Summary
+Fixed remaining packaged-mode infrastructure issues and several track table UX problems discovered during real-world testing with a large library.
+
+**Packaged-mode fixes:**
+- **Tauri resource path:** Fixed bundled ffmpeg path to use `Contents/Resources/resources/` (Tauri nests the `resources/` directory, not flattening it into `Contents/Resources/`).
+- **File logging surviving uvicorn:** uvicorn's `dictConfig()` was stripping the root logger's file handler. Split handler creation (module level) from attachment (lifespan handler, after uvicorn init). Two iterations needed — first moved everything into lifespan, then split create/attach for cleaner separation.
+
+**Track table UX fixes:**
+- **Shift+click text selection:** Added `select-none` to table, but this broke row clicks in Tauri's WebKit webview. Reverted and used `e.preventDefault()` in `handleRowClick` when Shift is held instead.
+- **Select All / Deselect All:** Button in the actions bar toggles between selecting and deselecting all visible tracks. Cmd+A keyboard shortcut intercepted to select all.
+- **Vertical scrolling:** Table now scrolls within its viewport container (`min-h-0` on flex parent, `overflow-auto` on table wrapper).
+- **Track limit:** Increased from 500 to 5000 (both frontend fetch and backend API validation) to support large libraries. Proper pagination deferred to Phase 6e.
+
+### Bugs encountered during development
+1. **`select-none` breaks WebKit clicks** — Tailwind's `select-none` (CSS `user-select: none`) prevents click events from firing in Tauri's WebKit webview. Fixed by using `e.preventDefault()` on Shift+click only.
+2. **File handler stripped by uvicorn** — `uvicorn.run()` calls `logging.config.dictConfig()` which replaces all root logger handlers. Handler must be attached after uvicorn starts (in lifespan), not at module level.
+
+### Key decisions made
+1. `e.preventDefault()` on Shift+click rather than CSS `user-select: none` — WebKit compatibility.
+2. File handler created at module level but attached in lifespan — clean separation, survives uvicorn's logger reconfiguration.
+3. Track limit increased to 5000 as a pragmatic fix — full pagination is a Phase 6e concern.
+
+### What's next
+- Bundle ffprobe in Tauri resources
+- Rebuild .dmg and verify all fixes with real library
+- Investigate Bug 1 (organisation pipeline in packaged mode)
