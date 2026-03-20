@@ -1,16 +1,10 @@
 """Alembic migration environment — imports Base and DB URL from the app's config."""
 
-from logging.config import fileConfig
-
 from alembic import context  # type: ignore[import-not-found]
 from sqlalchemy import engine_from_config, pool
 
 # Alembic Config object — provides access to the .ini file values.
 config = context.config
-
-# Set up Python logging from the config file.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
 
 # Import all models so Base.metadata is fully populated.
 from backend.models import crate, preference_rule, set_plan, track  # noqa: E402, F401

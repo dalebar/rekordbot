@@ -78,9 +78,13 @@ _is_packaged = "--parent-pid" in sys.argv
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — run migrations and initialise on startup."""
-    # Attach file handler in packaged mode. uvicorn is started with
-    # log_config=None so it never calls dictConfig() — our basicConfig
-    # and this handler stay in place for the lifetime of the process.
+    run_migrations(engine)
+
+    # Attach file handler in packaged mode AFTER migrations. Alembic's
+    # env.py previously called fileConfig() which nuked root logger handlers;
+    # that call is now removed, but we still attach after migrations as a
+    # safeguard. uvicorn is started with log_config=None so it never calls
+    # dictConfig() either — our basicConfig and this handler stay put.
     if _is_packaged:
         _LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.handlers.RotatingFileHandler(
@@ -94,7 +98,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logging.getLogger().addHandler(file_handler)
         logger.info("File logging active: %s", _LOG_FILE_PATH)
 
-    run_migrations(engine)
     logger.info("rekordbot backend started on port %d", settings.port)
 
     # Startup health checks (non-blocking — log warnings only)
