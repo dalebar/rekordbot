@@ -890,13 +890,13 @@ Phase 6c Part 2 — fixed the three highest-priority bugs from Session 20: file 
 ### Summary
 Addressed Part 2 priorities #1–3 from Session 20. All three were code-only fixes (no tests, no build).
 
-**1. File logging fixed (main.py):**
-- Root cause confirmed: uvicorn's `dictConfig()` call strips any handlers attached to the root logger, whether at module level or in the lifespan handler.
-- Fix: built a `_build_log_config()` function returning a logging dict-config that includes both a console StreamHandler and (in packaged mode) a RotatingFileHandler. Passed via `log_config=` to `uvicorn.run()` so uvicorn's own `dictConfig()` installs our handlers rather than stripping them.
-- Removed the old module-level `_file_handler` creation block and the lifespan handler attachment code.
-- Kept `logging.basicConfig()` for pre-uvicorn logging (imports, config loading).
-- Dict config includes `uvicorn`, `uvicorn.error`, `uvicorn.access` loggers pointing to same handlers, with `disable_existing_loggers: False`.
-- **Follow-up fix:** `log_config` installs the handler during startup, but post-startup route handler logs were not appearing in the file. Added belt-and-suspenders re-attachment at end of lifespan handler: checks if `RotatingFileHandler` is still on root logger, re-creates and re-attaches if stripped. Also added `logger.info("Ingest request received: %d paths", ...)` in `routes/ingest.py` as a post-startup test point.
+**1. File logging fixed (main.py, alembic/env.py):**
+- Three iterations to find the real root cause:
+  1. `_build_log_config()` dict passed via `log_config=` to `uvicorn.run()` — startup logs appeared but post-startup route handler logs did not.
+  2. Added `"backend"` logger entry and belt-and-suspenders re-attachment in lifespan — handler was confirmed present but logs still missing.
+  3. **Root cause found:** Alembic's `env.py` calls `fileConfig(config.config_file_name)` which reads `alembic.ini`'s `[loggers]` section, replacing root logger handlers and setting level to WARNING. Everything after `run_migrations()` went silent.
+- Final fix: removed `fileConfig()` call from `env.py` (Alembic loggers inherit app config). Passed `log_config=None` to `uvicorn.run()` (skip `dictConfig()` entirely). Removed `_build_log_config()`. File handler attached in lifespan AFTER `run_migrations()`. `logging.basicConfig()` handles console logging for the whole process.
+- Added `logger.info("Ingest request received: %d paths", ...)` in `routes/ingest.py` as a post-startup test point.
 
 **2. Layout fixed (App.tsx, DropZone.tsx, TrackTable.tsx):**
 - **App.tsx:** Added `shrink-0` to drop zone/import controls wrapper div. Wrapped TrackTable in `<div className="min-h-0 flex-1">` so it fills remaining space.
@@ -904,19 +904,18 @@ Addressed Part 2 priorities #1–3 from Session 20. All three were code-only fix
 - **TrackTable.tsx:** Wrapped AnalysisControls, OrganiseControls, ExportControls each in `<div className="shrink-0">`. Added `shrink-0` to track count/actions bar. Wrapped ReviewQueue in `<div className="max-h-48 shrink-0 overflow-auto">` to cap its height.
 - Track table is now visible and scrollable at 800px window height with all toolbars showing.
 
-**3. AI tagging silent failure diagnosed and mitigated (AnalysisControls.tsx, ai_tagging.py):**
-- Root cause: when `postValidateApiKey()` fails (network, import error, missing key), the catch block silently sets `hasApiKey=false`, disabling the AI Tag button with only `disabled:opacity-50` — invisible in the dark UI.
-- Fix (frontend): added visible amber text "API key not configured — set in Settings" next to the AI Tag button when `!hasApiKey`. Added `console.warn("API key validation failed:", err)` in the catch block.
-- Fix (backend): added `logger.info("Validating API key, key present: %s", bool(settings.anthropic_api_key))` at the start of the `validate_api_key` endpoint for log diagnostics.
-- Full root cause (whether the key reaches the backend in packaged mode) can now be diagnosed via the log file once the logging fix is deployed.
+**3. AI tagging silent failure diagnosed and fixed (AnalysisControls.tsx, ai_tagging.py):**
+- Root cause: `postValidateApiKey()` makes a real `messages.create` call. If the Anthropic API returns a transient error (429 rate limit, 529 overload), the SDK raises `APIError`, the route returns `valid: false`, and the frontend disables the button — even with a valid key.
+- Fix (backend): `validate_api_key` endpoint now distinguishes auth failures (`AuthenticationError` / "Invalid" in error) from transient API errors. Auth failures return `valid=false`; transient errors return `valid=true` with an error message (assume key is valid if not explicitly rejected).
+- Fix (frontend): validation effect now only sets `hasApiKey=false` on genuine auth rejection. Transient errors and unreachable backend default to `hasApiKey=true`. Amber "API key not configured" hint only shows when no key is set (`apiKeyMissing` state), not on transient failures. Added `console.warn` in catch block.
 
 ### Key decisions made
-1. `log_config` dict passed to `uvicorn.run()` — only reliable way to survive uvicorn's `dictConfig()`. Lifespan handler approach abandoned after two failed iterations.
-2. DropZone made compact inline rather than hero-sized — it's a secondary action area, not the primary focus.
-3. AI tagging: visible explanation preferred over silent disabled state — users need to know *why* a button doesn't work.
+1. `log_config=None` to uvicorn — bypass `dictConfig()` entirely rather than fighting it. Simpler than building a dict config that survives uvicorn's internal handling.
+2. Alembic `fileConfig()` removed — app logging is already configured; letting Alembic reconfigure it was the real culprit for silent post-startup logs.
+3. DropZone made compact inline rather than hero-sized — it's a secondary action area, not the primary focus.
+4. AI tagging validation: transient API errors should not disable the button. Only genuine auth rejection (invalid/missing key) should prevent usage.
 
 ### What's next
-- Rebuild .dmg and verify all three fixes with real library
+- Rebuild .dmg and verify all fixes with real library
 - Test Rekordbox XML export with organised tracks
 - Minor UX: review queue text visibility, Shift+click text selection
-- If AI tagging still fails with key present, investigate ClaudeClient instantiation in packaged mode using new log output

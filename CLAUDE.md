@@ -431,9 +431,9 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `main.py` forces UTF-8 via `reconfigure()` to prevent crashes on unicode characters in logs/metadata.
 - ffmpeg and ffprobe are both bundled as Tauri resources in `frontend/src-tauri/resources/`. Both need `xattr -c` and `chmod 755` on macOS Sequoia before building. Tauri places them in `Contents/Resources/resources/` (nested subdirectory).
 - Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
-- File logging in packaged mode uses uvicorn's `log_config` parameter (dict-config) to install the RotatingFileHandler, plus a belt-and-suspenders check at the end of the lifespan handler that re-attaches a file handler if uvicorn stripped it. Both layers are needed — `log_config` handles initial setup, lifespan re-attachment handles any post-`dictConfig()` stripping.
+- File logging in packaged mode: `log_config=None` passed to `uvicorn.run()` to prevent uvicorn from calling `dictConfig()`. Alembic's `env.py` `fileConfig()` call was also removed (it nuked root logger handlers and set level to WARNING). File handler is attached in lifespan after `run_migrations()`.
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
-- AI tagging button shows "API key not configured" hint when validation fails. The `validate-key` endpoint logs whether the key reached the backend. If AI tagging still fails in packaged mode after confirming the key is present, investigate the ClaudeClient instantiation path.
+- AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
 
 ## Phased Build Plan
 
