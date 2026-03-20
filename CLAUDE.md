@@ -429,8 +429,10 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
 - PyInstaller `--onedir` sidecar must live in `Contents/MacOS/sidecar/` (not directly in `Contents/MacOS/`) to prevent PyInstaller's bootloader from detecting `.app` bundle mode, which changes library resolution paths and breaks `_internal/` lookup.
 - In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `main.py` forces UTF-8 via `reconfigure()` to prevent crashes on unicode characters in logs/metadata.
-- ffprobe is NOT bundled as a Tauri resource (only ffmpeg is). In packaged mode, ffprobe falls back to PATH lookup which may fail. Needs to be added to `frontend/src-tauri/resources/` alongside ffmpeg.
+- ffmpeg and ffprobe are both bundled as Tauri resources in `frontend/src-tauri/resources/`. Both need `xattr -c` and `chmod 755` on macOS Sequoia before building. Tauri places them in `Contents/Resources/resources/` (nested subdirectory).
 - Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
+- uvicorn's `dictConfig()` strips root logger handlers added before startup — file handler must be attached in the lifespan handler, not at module level.
+- FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
 
 ## Phased Build Plan
 
