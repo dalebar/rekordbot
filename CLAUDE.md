@@ -398,7 +398,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
 **Tests:** 1161 passing across all phases
-**Next step:** Phase 6c Part 4 — analysis, organisation, export pipeline test with 668 real tracks
+**Next step:** Phase 6c Part 5 — XML export test, deeper metadata review, UX bug fixes from Session 20
 
 ### Phase Summary
 
@@ -434,7 +434,6 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - File logging in packaged mode: `log_config=None` passed to `uvicorn.run()` to prevent uvicorn from calling `dictConfig()`. Alembic's `env.py` had a `fileConfig()` call that read `alembic.ini`'s `[loggers]` section, replacing root logger handlers and setting level to WARNING — this was the root cause of silent post-startup logs. Removed in Phase 6c. File handler is attached in lifespan AFTER `run_migrations()` to survive Alembic's logger setup.
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
 - AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
-- Settings panel may save error messages as config values — observed when API key validation failed and the error string ended up as the `anthropic_api_key` in config.json. Root cause not yet investigated. Manual correction: re-enter the real key in Settings and save.
 - Ingestion worker runs in a plain `threading.Thread` (not asyncio) because PyInstaller-bundled stdout is piped to Tauri, and after ~64KB the pipe buffer fills, blocking any thread that writes to stdout via Python's logging StreamHandler. The StreamHandler is removed from the root logger in packaged mode. The worker thread communicates SSE events to the asyncio event loop via `loop.call_soon_threadsafe`. This architecture was validated with 668-file batch ingestion.
 - `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore in Phase 6d if concurrent conversion is re-enabled.
 - `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. Re-enabling requires solving the stdout pipe buffer issue first (Phase 6d).

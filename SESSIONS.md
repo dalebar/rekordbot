@@ -1040,3 +1040,62 @@ Architectural changes made during investigation (all retained as improvements):
 4. **Export XML** — Test Rekordbox XML export with real library
 5. **Full pipeline validation** — Verify the complete ingest → analyse → AI tag → organise → export loop
 6. **UI bugs** — Scrolling, horizontal layout, review queue text visibility
+
+---
+
+## Session 24 — 2026-03-21
+
+### What was worked on
+Phase 6c Part 4 — full pipeline validation with real data in dev mode, live Rekordbox import for a real gig.
+
+### Summary
+
+**Dev mode setup:**
+- Switched from packaged mode to dev mode for faster iteration.
+- Dev mode creates a separate DB (`backend/rekordbot_dev.db`) from CWD — not the production DB at `~/Library/Application Support/rekordbot/rekordbot.db`. Pointed dev mode at the production DB via `REKORDBOT_DB_URL` env var to reuse the 668 previously ingested tracks.
+- The env var name is `REKORDBOT_DB_URL` (matching the Settings field `db_url`), not `REKORDBOT_DATABASE_URL`. Dev mode startup command: `REKORDBOT_DB_URL="sqlite:////Users/daleb/Library/Application Support/rekordbot/rekordbot.db" uv run uvicorn main:app --host 127.0.0.1 --port 8420 --reload`
+
+**Analysis (priority 1) — complete:**
+- BPM/key analysis ran successfully on all 668 tracks. ~10-15 seconds per track, ~2 hours total.
+- BPM and key values reasonable for the genre (disco/house/boogie — Paradise Garage collection).
+- No errors or crashes during the full run.
+
+**AI tagging (priority 2) — complete:**
+- Anthropic billing resolved — API key validated successfully, tagging pipeline functional.
+- AI tagging completed on all 668 tracks. Genre, artist, album, mood, energy populated from filename and audio analysis data.
+- Cost well within $5 credit budget.
+
+**Organisation (priority 3) — complete:**
+- Organisation pipeline ran on real data. Most tracks auto-approved; a handful needed review (auto-approved).
+- Organised output added directly to Rekordbox at `/Volumes/collection/music/playlists/Larry Levan`.
+
+**Rekordbox import — validated:**
+- 659 tracks visible in Rekordbox with full metadata: artist, title, album, genre, key, BPM, waveforms loaded.
+- Dale used the app to prepare additional folders for a live 8-hour set the following day — genuine real-world usage.
+- Direct folder import to Rekordbox (bypassing XML export) used for speed — pragmatic choice for gig prep.
+
+**Full pipeline milestone achieved:** ingest → analyse → AI tag → organise → add to Rekordbox. This is the core workflow rekordbot was built for, validated end-to-end with a real DJ library under real time pressure.
+
+### Key decisions made
+1. Dev mode pointed at production DB via `REKORDBOT_DB_URL` env var — avoids re-ingesting when switching between dev and packaged mode.
+2. Direct folder import to Rekordbox is a valid quick workflow alongside XML export (which preserves playlist/crate structure).
+
+### Bugs / friction noted
+- **Analysis speed** — ~10-15s per track is slow for large batches (librosa CPU-bound). Investigate in Phase 6d: concurrent analysis, caching, lighter-weight BPM detection.
+- **UI needs work** — general UX friction noted, not itemised. Deferred to Phase 6e.
+- **Dev mode DB path confusion** — dev mode silently creates a fresh DB in CWD. No log line showing resolved DB path. Could log the DB URL on startup to make this obvious.
+
+### Remaining Session 20 bugs not yet addressed
+- Bug 3: Horizontal scroll reveals broken layout (white space, split colour)
+- Bug 4: Analysis state lost on Settings navigation (SSE disconnect)
+- Bug 5: Analysis restart blocked after Settings interruption
+- Bug 6: Scrolling breaks on relaunch
+- Bug 8: Review queue text invisible (dark on dark)
+- Bug 9: Shift+click still selects text in WebKit
+
+### What's next — Phase 6c Part 5
+1. **Rekordbox XML export test** — test export with organised tracks, verify in Rekordbox
+2. **Live feedback** — notes from using tracks at a real gig on CDJs
+3. **Metadata review** — spot-check AI tagging accuracy across the library
+4. **UX bug fixes** — address remaining Session 20 bugs
+5. **Dev mode improvement** — log resolved DB path on startup
