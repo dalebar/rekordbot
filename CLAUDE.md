@@ -344,7 +344,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 ## Key Design Decisions
 
 ### Conversion Logic (Phase 1)
-- Lossless (WAV, FLAC, ALAC) → AIFF (lossless-to-lossless, safe)
+- Lossless (WAV, FLAC, ALAC) → AIFF, **always 16-bit (`pcm_s16be`)** for universal CDJ playback compatibility. Source bit-depth is NOT preserved on output — 24-bit FLACs are downsampled to 16-bit. Older CDJ models (CDJ-2000 original, CDJ-900, CDJ-1000, some XDJ firmware) cannot reliably play 24-bit AIFF. Phase 6c bug: converter currently routes 24-bit sources to `pcm_s24be` — to be fixed in Phase 6c Part 6.
 - MP3 → leave as-is (already CDJ-compatible)
 - M4A → inspect with ffprobe first: ALAC inside → convert to AIFF; AAC inside → optional convert to MP3 (user preference)
 - Never transcode lossy-to-lossy without explicit user opt-in
@@ -398,7 +398,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
 **Tests:** 1161 passing across all phases
-**Next step:** Phase 6c Part 5 — XML export test, deeper metadata review, UX bug fixes from Session 20
+**Next step:** Phase 6c Part 6 — fix high-priority bugs from Session 25 smoke test (vertical scrolling, horizontal layout banding, 24-bit AIFF bug, bitrate-column data correctness)
 
 ### Phase Summary
 
@@ -418,6 +418,38 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6c — UI Review & Bug Fixing | 1161 | (dogfooding — no feature brief) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
+
+### Known Open Bugs (Phase 6c)
+
+Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-test.md`). Awaiting fix in Phase 6c Part 6.
+
+**High priority — usability/correctness:**
+- Track table vertical scrolling broken — only visible rows accessible regardless of total count (Session 20 Bug 6)
+- Horizontal scroll reveals colour banding (header light, body dark) — table looks broken when wider than viewport (Session 20 Bug 3)
+- Shift+click range selection also selects text — earlier fix (`select-none` in Part 1) not effective (Session 20 Bug 9 regression)
+- Converter promotes 24-bit FLAC to 24-bit AIFF (`pcm_s24be`) — should always be 16-bit (`pcm_s16be`) for CDJ playback compatibility; 24-bit AIFFs may fail to load on older CDJ models
+
+**Medium priority — data correctness:**
+- Bitrate column in track table shows source bitrate, not output AIFF bitrate
+- Folder template missing literal/variable separator (e.g. `rekordbot_library{artist}/...`) is accepted by settings save without validation — produces malformed proposals
+
+**Medium priority — UX:**
+- "Organise All" button label is misleading — it generates proposals, not file moves (Approve Auto / Approve All commit the moves)
+- "Processing X/Y files" ingestion progress header doesn't dismiss after batch completes (no Dismiss button, unlike AI tagging)
+
+**Low priority — polish:**
+- Tauri window has no `minWidth` — narrowing breaks layout at ~280px
+- Drop zone text wraps awkwardly on narrow windows (no `min-width` or `white-space: nowrap`)
+- "Approve Auto" button doesn't show count like "Analyse Selected (N)" does
+- Review queue panel doesn't update post-approve (still says "23 auto-approved")
+- Track Detail side panel doesn't show proposed file path
+- API key field renders as opaque dots (no `sk-ant-...XXXX` mask visible to user)
+- No startup log line confirming Alembic action (fresh DB? upgraded? no-op?)
+
+**Untested today (deferred deliberately):**
+- Session 20 Bug 4: Analysis state lost on Settings navigation
+- Session 20 Bug 5: Analysis restart blocked after Settings interruption
+- Session 20 Bug 8: Review queue dark-on-dark text (no Needs Review tracks generated; can't reproduce)
 
 ## Known Issues / Don't Touch
 

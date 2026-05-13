@@ -1099,3 +1099,100 @@ Phase 6c Part 4 — full pipeline validation with real data in dev mode, live Re
 3. **Metadata review** — spot-check AI tagging accuracy across the library
 4. **UX bug fixes** — address remaining Session 20 bugs
 5. **Dev mode improvement** — log resolved DB path on startup
+
+---
+
+## Session 25 — 2026-05-13
+
+### What was worked on
+Phase 6c Part 5 — return after ~7 week gap. Wrote `docs/testing/manual-smoke-test.md` checklist (drafted in unfinished Part 5 session in mid-April, never committed at the time). Ran full smoke test against fresh build on real data (24-track FLAC folder). Verified end-to-end pipeline including DB persistence across relaunch. Surfaced and catalogued bugs for fix in Part 6.
+
+### Summary
+
+**Session re-orientation:**
+- Returned after the mid-April session was cut off before its smoke-test doc was written to disk. Discovered the file did not exist; reconstructed and committed it from the agreed structure.
+- Confirmed build was current (`.app` from 16 April, last code commit 21 March — no rebuild needed).
+- Test corpus: `Panorama_Bar_Playlist_01_Tama_Sumo` (23 FLAC files, ~1.6 GB) from `/Volumes/collection/music/downloads/soulseek/complete/`.
+
+**Smoke test written and committed (`docs/testing/manual-smoke-test.md`):**
+- 11 pipeline-ordered sections (Launch → Layout → Ingest → Drag-drop → Analyse → AI Tag → Organise → Scrolling → Settings → Persistence → Log Verification)
+- Pass/fail checkboxes with observation space per step
+- Re-run policy: use a new folder each run, or clear DB and output first
+- Out-of-scope items listed explicitly (XML import/export, crates, set planning — separate test scenarios doc to come)
+- Run history table for tracking
+
+**Full pipeline validated end-to-end:**
+- Ingestion: 23 FLACs → AIFF in <10s, all 23 succeeded
+- Analysis: BPM/Key ran in ~5min 52s (~15s/track, consistent with Session 24 baseline)
+- AI tagging: 23 tracks tagged in 2 batches, 65s total, $0.0484 cost — quality genuinely useful (Marc Mac → Broken Beat, Fred P → Minimal House, Mim Suleiman track identification from sparse ID3)
+- Organisation: 23 auto-approved, files moved to `/Volumes/collection/REKORDBOT/rekordbot_library/{artist}/{album}/{title}.aiff`
+- File-on-disk verification confirmed sizes preserved (move semantics, not copy)
+
+**Key architectural decision: output folder layout:**
+- Changed folder template from `{artist}/{album}/{title}` to `rekordbot_library/{artist}/{album}/{title}`
+- Reasoning: separates app's organised output from `imports/` staging, prevents `REKORDBOT/` root being polluted with hundreds of artist directories alongside transient buckets
+- Cost: zero — single Settings change, template engine supports leading literal segments
+
+**DB persistence across relaunch — VERIFIED:**
+- This was the headline concern coming into the session
+- Confirmed `rekordbot.db` is byte-identical (94208 bytes, same mtime) before quit and after relaunch
+- All 23 tracks with full metadata reappear in UI after relaunch
+- Settings (BPM Min 70 → 60) persisted correctly
+- Watchdog graceful shutdown verified: parent PID detection → 10s grace → clean exit
+- No DB corruption, no recreation, no migration noise
+- Original Session 24 concern likely caused by dev-mode DB path confusion (uses `backend/rekordbot_dev.db` from CWD unless `REKORDBOT_DB_URL` is set), not a real persistence bug
+
+### Bugs encountered and catalogued
+
+**Confirmed from Session 20 list:**
+- Bug 3 (horizontal scroll → split colours / broken layout) — reproduced in §5 (post-analysis overflow) and §8 (banding when scrolled)
+- Bug 6 (scrolling breaks) — reproduced vertically in §5 and §8; survives relaunch
+- Bug 9 (Shift+click selects text) — regression; Part 1's `select-none` fix not effective
+
+**New bugs found:**
+- **24-bit AIFF output** — converter routes 24-bit FLAC sources to `pcm_s24be` instead of always using `pcm_s16be`. Bit-depth preservation logic was probably intended as fidelity preservation but breaks CDJ compatibility (older CDJ models cannot reliably play 24-bit AIFF). Should always downsample to 16-bit.
+- **Bitrate column shows source value, not output** — track table displays the FLAC source bitrate (827, 887, 910 kbps...) rather than the AIFF output bitrate (always 1411 kbps for 16-bit/44.1/stereo, or computed from actual format). Data correctness issue.
+- **Folder template missing slash not validated** — saved `rekordbot_library{artist}/...` without the separator slash; settings save accepted it; first proposal run produced malformed paths. Caught before approval; not destructive. Settings UI needs format validation.
+- **"Organise All" button label misleading** — generates proposals only, no file movement. "Approve Auto" / "Approve All" commit moves.
+- **"Processing X/Y files" ingestion header doesn't dismiss** — stays visible at "0/23" after batch completes, with non-functional Cancel button. Inconsistent with AI tagging panel which has a proper Dismiss button.
+- **Tauri window has no `minWidth`** — narrowing the window to ~280px breaks layout completely (top bar collapses, content clips). Default value should be set in `tauri.conf.json`.
+- **Drop zone text wraps awkwardly when narrow** — "Drag audio files or folders here" word-stacks vertically below ~640px window width.
+- **Approve Auto button doesn't show count** — inconsistent with "Analyse Selected (N)" pattern that updates with row selection.
+- **Review queue panel doesn't update post-approve** — still says "23 auto-approved" after the action that should drain the queue.
+- **Track Detail panel doesn't show proposed path** — useful "where will this go?" affordance missing.
+- **API key field renders as opaque dots** — no visible `sk-ant-...XXXX` mask. Backend masking is correct (verified by post-save validation succeeding); UI rendering is `type=password` over the masked string. Either show the mask in plaintext or add a show/hide toggle.
+- **No startup log line confirming Alembic action** — fresh DB / upgrade / no-op all silent. Single line would aid debugging.
+
+### Incidents
+
+- **API key exposed (twice).** Claude read `config.json` to verify ingestion output directory in §3, then a second time without realising. The key was rotated promptly both times. Memory edit added: `NEVER read /Users/daleb/Library/Application Support/rekordbot/config.json — it contains the Anthropic API key. Ask Dale for any config value instead.`
+
+### Key decisions made
+
+1. **Always 16-bit AIFF output.** Source bit-depth is not preserved on output. Documented in CLAUDE.md "Conversion Logic" section. Fix in Part 6 requires updating `conversion.py` decision engine + adding a unit test to lock the behaviour.
+2. **Output folder structure: `REKORDBOT/rekordbot_library/{artist}/{album}/{title}`.** App namespace separation from `imports/` staging. Achieved via folder-template change, no backend code change.
+3. **Source files left untouched after import.** No automatic deletion or quarantine. Future feature (Phase 6e+) may add a deliberate post-organise cleanup flow with dry-run preview.
+4. **Bug fixes deferred to fresh session.** Part 6 will be a dedicated bug-fix session. Catalogue and prioritisation done; fix order set in "What's next" below.
+5. **Drag-and-drop deliberately skipped** in this run to avoid re-ingestion conflict with §3. Will be tested in a dedicated session post-fix.
+6. **Smoke test scope intentionally narrow** — primary ingest→organise loop only. Alternative workflows (XML import-first, manual metadata edit, etc.) go in a separate `docs/testing/test-scenarios.md` to be written later.
+
+### Untested in this session
+- Session 20 Bug 4 (Analysis state lost on Settings navigation) — deliberately deferred to avoid stacking failing tests
+- Session 20 Bug 5 (Analysis restart blocked post-Settings) — same reason
+- Session 20 Bug 8 (Review queue dark-on-dark text) — couldn't reproduce because organisation produced zero needs-review tracks (all high-confidence)
+- Drag-and-drop file ingestion (§4) — deliberately skipped to avoid re-ingestion conflict
+
+### What's next — Phase 6c Part 6
+
+Bug fixes, prioritised:
+
+1. **24-bit AIFF output** — quick fix in conversion decision engine, must add unit test
+2. **Vertical scrolling** in track table — CSS / flex container fix
+3. **Horizontal scroll colour banding** — likely same root cause as vertical (container backgrounds)
+4. **Shift+click text selection** — investigate why Part 1's `select-none` regressed
+5. **Bitrate column** — distinguish source bitrate from output bitrate in DB and UI
+6. **Folder template validation** — reject malformed templates on settings save
+7. **"Organise All" button label** — clearer wording ("Propose Organisation" or similar)
+8. **Ingestion progress header dismissal** — match AI tagging pattern
+
+Fix one bug → unit test if applicable → commit → move on. Rebuild `.app` periodically (every 2-3 fixes) to verify in packaged mode.
