@@ -182,7 +182,9 @@ class TestApplyConfigToEnv:
         from backend.services.config_manager import apply_config_to_env
 
         config = {"convert_aac_to_mp3": True}
-        with patch.dict(os.environ, {}, clear=False):
+        # Remove any pre-existing env vars (may leak from main.py import)
+        env_clean = {k: v for k, v in os.environ.items() if not k.startswith("REKORDBOT_")}
+        with patch.dict(os.environ, env_clean, clear=True):
             apply_config_to_env(config)
             assert os.environ.get("REKORDBOT_CONVERT_AAC_TO_MP3") == "True"
 
@@ -190,7 +192,9 @@ class TestApplyConfigToEnv:
         from backend.services.config_manager import apply_config_to_env
 
         config = {"confidence_threshold": 0.8}
-        with patch.dict(os.environ, {}, clear=False):
+        # Remove any pre-existing env vars (may leak from main.py import)
+        env_clean = {k: v for k, v in os.environ.items() if not k.startswith("REKORDBOT_")}
+        with patch.dict(os.environ, env_clean, clear=True):
             apply_config_to_env(config)
             assert os.environ.get("REKORDBOT_CONFIDENCE_THRESHOLD") == "0.8"
 
