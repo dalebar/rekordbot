@@ -3,10 +3,11 @@
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from backend.config import Settings, settings
+from backend.exceptions import SettingsError
 from backend.services.config_manager import (
     CONFIGURABLE_FIELDS,
     config_exists,
@@ -129,10 +130,7 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
     if "folder_template" in update_data:
         valid, error_msg = validate_template(update_data["folder_template"])
         if not valid:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": "invalid_folder_template", "detail": error_msg},
-            )
+            raise SettingsError(detail=error_msg, error="invalid_folder_template")
 
     # Merge updates into current config
     for key, value in update_data.items():

@@ -220,8 +220,8 @@ class TestPutSettingsFolderTemplate:
             )
             assert resp.status_code == 400
             body = resp.json()
-            detail = body.get("detail", body)
-            assert detail.get("error") == "invalid_folder_template"
+            assert body["error"] == "invalid_folder_template"
+            assert body["detail"]
 
     @pytest.mark.asyncio
     async def test_accepts_valid_folder_template(

@@ -87,6 +87,15 @@ class SetPlanError(RekordBotError):
         super().__init__(error="set_plan_failed", detail=detail, status_code=status_code)
 
 
+class SettingsError(RekordBotError):
+    """Raised when a settings operation fails (e.g. invalid template)."""
+
+    def __init__(
+        self, detail: str, error: str = "settings_invalid", status_code: int = 400
+    ) -> None:
+        super().__init__(error=error, detail=detail, status_code=status_code)
+
+
 class XmlImportError(RekordBotError):
     """Raised when Rekordbox XML import fails."""
 
