@@ -316,7 +316,7 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3">
+    <div className="flex flex-1 flex-col gap-3 min-h-0 min-w-0">
       {/* Analysis toolbar */}
       <div className="shrink-0">
         <AnalysisControls
@@ -455,7 +455,9 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
       </div>
 
       {/* Preference rules panel */}
-      <PreferenceRulesPanel />
+      <div className="shrink-0 max-h-48 overflow-auto">
+        <PreferenceRulesPanel />
+      </div>
 
       {/* Column visibility menu */}
       {columnMenuPos && (

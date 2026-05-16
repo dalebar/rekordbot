@@ -144,7 +144,7 @@ function App() {
       />
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col min-w-0 min-h-0">
         {/* Header */}
         <header className="flex items-center justify-between border-b border-gray-800 px-6 py-3">
           <h1 className="text-sm font-medium text-gray-400">
