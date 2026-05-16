@@ -205,6 +205,7 @@ function App() {
                   batchId={batch.batch_id}
                   totalFiles={batch.total_files}
                   onComplete={handleBatchComplete}
+                  onDismiss={() => setBatch(null)}
                 />
               </div>
             )}

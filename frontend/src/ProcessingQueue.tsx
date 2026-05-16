@@ -12,9 +12,15 @@ interface ProcessingQueueProps {
   batchId: string;
   totalFiles: number;
   onComplete: () => void;
+  onDismiss: () => void;
 }
 
-export default function ProcessingQueue({ batchId, totalFiles, onComplete }: ProcessingQueueProps) {
+export default function ProcessingQueue({
+  batchId,
+  totalFiles,
+  onComplete,
+  onDismiss,
+}: ProcessingQueueProps) {
   const [files, setFiles] = useState<Map<string, FileProgressEvent>>(new Map());
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -51,7 +57,9 @@ export default function ProcessingQueue({ batchId, totalFiles, onComplete }: Pro
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium text-gray-300">
-            Processing {completedCount} / {totalFiles} files
+            {summary
+              ? `Ingestion complete: ${completedCount} / ${totalFiles} files`
+              : `Processing ${completedCount} / ${totalFiles} files`}
           </h3>
           {summary && (
             <p className="text-xs text-gray-500">
@@ -67,6 +75,14 @@ export default function ProcessingQueue({ batchId, totalFiles, onComplete }: Pro
               className="text-xs text-gray-500 hover:text-gray-300"
             >
               {collapsed ? "Show" : "Hide"}
+            </button>
+          )}
+          {summary && (
+            <button
+              onClick={onDismiss}
+              className="rounded bg-gray-800 px-3 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
+            >
+              Dismiss
             </button>
           )}
           {!summary && (
