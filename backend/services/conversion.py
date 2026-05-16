@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 # AIFF container codecs — files already in AIFF format
 AIFF_CODECS = frozenset({"pcm_s16be", "pcm_s24be", "pcm_s32be"})
 
-# Maximum bit depth for output (CDJs don't support 32-bit)
-MAX_OUTPUT_BIT_DEPTH = 24
+# Output bit depth for AIFF — always 16-bit for universal CDJ compatibility
+OUTPUT_BIT_DEPTH = 16
 
 
 @dataclass(frozen=True)
@@ -52,13 +52,11 @@ def decide_conversion(file_info: FileInfo, convert_aac_to_mp3: bool) -> Conversi
 
     # Lossless (WAV, FLAC, ALAC) → convert to AIFF
     if file_info.is_lossless:
-        bit_depth = file_info.bit_depth or 16
-        output_bit_depth = min(bit_depth, MAX_OUTPUT_BIT_DEPTH)
         return ConversionAction(
             action="convert_to_aiff",
-            reason=f"Lossless {file_info.codec} → AIFF ({output_bit_depth}-bit)",
+            reason=f"Lossless {file_info.codec} → AIFF (16-bit)",
             output_format="aiff",
-            output_bit_depth=output_bit_depth,
+            output_bit_depth=OUTPUT_BIT_DEPTH,
             quality_warning=has_warning,
             warning_detail=warning_detail,
         )

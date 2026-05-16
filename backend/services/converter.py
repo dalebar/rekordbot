@@ -21,12 +21,6 @@ from backend.services.naming import generate_output_path
 
 logger = logging.getLogger(__name__)
 
-# Bit depth to AIFF PCM codec mapping
-AIFF_CODEC_MAP = {
-    16: "pcm_s16be",
-    24: "pcm_s24be",
-}
-
 
 @dataclass
 class TrackResult:
@@ -60,8 +54,7 @@ def build_ffmpeg_command(
         List of command-line arguments for ffmpeg.
     """
     if action.action == "convert_to_aiff":
-        bit_depth = action.output_bit_depth or 16
-        codec = AIFF_CODEC_MAP.get(bit_depth, "pcm_s24be")
+        codec = "pcm_s16be"
         return [
             ffmpeg_path,
             "-y",

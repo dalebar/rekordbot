@@ -62,12 +62,12 @@ class TestBuildFFmpegCommand:
             "/out/song.aiff",
         ]
 
-    def test_24bit_lossless_to_aiff(self) -> None:
+    def test_24bit_source_to_aiff_always_16bit(self) -> None:
         action = ConversionAction(
             action="convert_to_aiff",
             reason="test",
             output_format="aiff",
-            output_bit_depth=24,
+            output_bit_depth=16,
             quality_warning=False,
             warning_detail="",
         )
@@ -79,7 +79,7 @@ class TestBuildFFmpegCommand:
             "-i",
             "/in/song.wav",
             "-c:a",
-            "pcm_s24be",
+            "pcm_s16be",
             "-f",
             "aiff",
             "-write_id3v2",
@@ -87,12 +87,12 @@ class TestBuildFFmpegCommand:
             "/out/song.aiff",
         ]
 
-    def test_32bit_float_to_aiff_capped(self) -> None:
+    def test_32bit_float_to_aiff_always_16bit(self) -> None:
         action = ConversionAction(
             action="convert_to_aiff",
             reason="test",
             output_format="aiff",
-            output_bit_depth=24,  # Already capped by decision engine
+            output_bit_depth=16,
             quality_warning=False,
             warning_detail="",
         )
@@ -104,7 +104,7 @@ class TestBuildFFmpegCommand:
             "-i",
             "/in/song.wav",
             "-c:a",
-            "pcm_s24be",
+            "pcm_s16be",
             "-f",
             "aiff",
             "-write_id3v2",

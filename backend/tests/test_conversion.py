@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from backend.services.conversion import decide_conversion
 from backend.services.format_inspector import FileInfo
 
@@ -47,22 +49,22 @@ class TestDecideConversion:
 
         assert action.action == "convert_to_aiff"
         assert action.output_format == "aiff"
-        assert action.output_bit_depth == 24
+        assert action.output_bit_depth == 16
 
-    def test_wav_32bit_float_to_aiff_capped_at_24(self) -> None:
+    def test_wav_32bit_float_to_aiff_downsampled_to_16(self) -> None:
         info = _make_file_info("pcm_f32le", is_lossless=True, container="wav", bit_depth=32)
         action = decide_conversion(info, convert_aac_to_mp3=False)
 
         assert action.action == "convert_to_aiff"
         assert action.output_format == "aiff"
-        assert action.output_bit_depth == 24  # Capped
+        assert action.output_bit_depth == 16
 
-    def test_wav_32bit_int_to_aiff_capped_at_24(self) -> None:
+    def test_wav_32bit_int_to_aiff_downsampled_to_16(self) -> None:
         info = _make_file_info("pcm_s32le", is_lossless=True, container="wav", bit_depth=32)
         action = decide_conversion(info, convert_aac_to_mp3=False)
 
         assert action.action == "convert_to_aiff"
-        assert action.output_bit_depth == 24
+        assert action.output_bit_depth == 16
 
     def test_flac_16bit_to_aiff(self) -> None:
         info = _make_file_info("flac", is_lossless=True, container="flac", bit_depth=16)
@@ -77,7 +79,7 @@ class TestDecideConversion:
         action = decide_conversion(info, convert_aac_to_mp3=False)
 
         assert action.action == "convert_to_aiff"
-        assert action.output_bit_depth == 24
+        assert action.output_bit_depth == 16
 
     def test_alac_16bit_to_aiff(self) -> None:
         info = _make_file_info(
@@ -101,7 +103,19 @@ class TestDecideConversion:
         )
         action = decide_conversion(info, convert_aac_to_mp3=False)
 
-        assert action.output_bit_depth == 24
+        assert action.output_bit_depth == 16
+
+    @pytest.mark.parametrize("source_bit_depth", [16, 24, 32])
+    def test_lossless_aiff_output_always_16_bit_for_cdj_compat(
+        self, source_bit_depth: int
+    ) -> None:
+        """Locks the spec: AIFF output is ALWAYS 16-bit regardless of source.
+        Older CDJ models cannot reliably play 24-bit AIFF."""
+        info = _make_file_info(
+            "flac", is_lossless=True, container="flac", bit_depth=source_bit_depth
+        )
+        action = decide_conversion(info, convert_aac_to_mp3=False)
+        assert action.output_bit_depth == 16
 
     # --- AIFF → copy as-is ---
 
