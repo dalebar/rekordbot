@@ -198,6 +198,51 @@ class TestPutSettings:
             assert saved_config.get("anthropic_api_key") == valid_key
 
 
+class TestPutSettingsFolderTemplate:
+    """Tests for PUT /api/settings folder template validation."""
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_folder_template(
+        self, settings_client: AsyncClient, tmp_path: Path
+    ) -> None:
+        config_dir = tmp_path / "rekordbot"
+        config_dir.mkdir()
+        with (
+            patch(
+                "backend.services.config_manager._get_app_data_dir",
+                return_value=config_dir,
+            ),
+            patch("backend.routes.settings.load_config", return_value={}),
+        ):
+            resp = await settings_client.put(
+                "/api/settings",
+                json={"folder_template": "{artist}{album}"},
+            )
+            assert resp.status_code == 400
+            body = resp.json()
+            detail = body.get("detail", body)
+            assert detail.get("error") == "invalid_folder_template"
+
+    @pytest.mark.asyncio
+    async def test_accepts_valid_folder_template(
+        self, settings_client: AsyncClient, tmp_path: Path
+    ) -> None:
+        config_dir = tmp_path / "rekordbot"
+        config_dir.mkdir()
+        with (
+            patch(
+                "backend.services.config_manager._get_app_data_dir",
+                return_value=config_dir,
+            ),
+            patch("backend.routes.settings.load_config", return_value={}),
+        ):
+            resp = await settings_client.put(
+                "/api/settings",
+                json={"folder_template": "{artist}/{album}/{title}"},
+            )
+            assert resp.status_code == 200
+
+
 class TestValidateKey:
     """Tests for POST /api/settings/validate-key."""
 

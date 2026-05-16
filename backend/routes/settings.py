@@ -3,7 +3,7 @@
 import logging
 import re
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.config import Settings, settings
@@ -16,6 +16,7 @@ from backend.services.config_manager import (
     save_config,
     validate_output_directory,
 )
+from backend.services.template_engine import validate_template
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,15 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
         if not _is_plausible_api_key(key_val):
             logger.warning("Rejected invalid API key value (failed structural check)")
             update_data.pop("anthropic_api_key")
+
+    # Validate folder template if provided
+    if "folder_template" in update_data:
+        valid, error_msg = validate_template(update_data["folder_template"])
+        if not valid:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_folder_template", "detail": error_msg},
+            )
 
     # Merge updates into current config
     for key, value in update_data.items():

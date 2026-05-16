@@ -6,12 +6,15 @@ TDD: These tests are written before the implementation.
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from backend.services.template_engine import (
     TemplateSegment,
     build_output_path,
     parse_template,
     resolve_template,
     sanitise_path_component,
+    validate_template,
 )
 
 # --- parse_template() ---
@@ -320,3 +323,67 @@ class TestBuildOutputPath:
         track = self._make_track(title="Song", output_format="aiff")
         result = build_output_path("{artist}/{title}", track, Path("/library"), "MyFallback")
         assert "MyFallback" in str(result.path)
+
+
+# --- validate_template() ---
+
+
+class TestValidateTemplate:
+    """Test template validation against the schema."""
+
+    @pytest.mark.parametrize(
+        "template,reason",
+        [
+            ("", "empty template"),
+            ("   ", "whitespace-only template"),
+            ("/{artist}/{album}", "absolute path"),
+            ("{artist", "unbalanced opening brace"),
+            ("artist}", "unbalanced closing brace"),
+            ("{}", "empty variable"),
+            ("{nonexistent}/{album}", "unknown variable"),
+            ("{artist|unknown_fallback}/{album}", "unknown variable in fallback chain"),
+            ("../{artist}/{album}", "path traversal"),
+            ("{artist}/..", "path traversal trailing"),
+            (
+                "rekordbot_library{artist}/{album}",
+                "missing separator between literal and variable",
+            ),
+            ("{artist}folder/{album}", "missing separator between variable and literal"),
+            ("{artist}{album}/{title}", "missing separator between two variables"),
+        ],
+        ids=[
+            "empty",
+            "whitespace",
+            "absolute",
+            "open_brace",
+            "close_brace",
+            "empty_var",
+            "unknown_var",
+            "unknown_fallback",
+            "traversal_leading",
+            "traversal_trailing",
+            "literal_then_var",
+            "var_then_literal",
+            "var_then_var",
+        ],
+    )
+    def test_rejects_invalid_template(self, template: str, reason: str) -> None:
+        valid, error = validate_template(template)
+        assert valid is False, f"Expected rejection for {reason}: {template!r}"
+        assert error, f"Empty error message for {reason}: {template!r}"
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "{artist}/{album}/{title}",
+            "{genre}/{artist}/{title}",
+            '{artist|album_artist|"Unknown"}/{album}/{title}',
+            "rekordbot_library/{artist}/{album}/{title}",
+            '{artist}/{album|"Singles"}/{title}',
+            "{year}/{artist}/{title}",
+        ],
+    )
+    def test_accepts_valid_template(self, template: str) -> None:
+        valid, error = validate_template(template)
+        assert valid is True, f"Expected accept: {template!r}, got error: {error}"
+        assert error == ""

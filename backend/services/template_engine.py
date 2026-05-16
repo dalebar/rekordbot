@@ -111,6 +111,82 @@ def parse_template(template: str) -> list[TemplateSegment]:
     return segments
 
 
+def validate_template(template: str) -> tuple[bool, str]:
+    """Validate a folder template against the schema.
+
+    Args:
+        template: Template string to validate.
+
+    Returns:
+        (valid, error_message). On success, error_message is "".
+        On failure, error_message is a human-readable description of the
+        first failure encountered.
+    """
+    # Rule 1: empty or whitespace-only
+    if not template or not template.strip():
+        return False, "Template cannot be empty."
+
+    # Rule 5: absolute path
+    if template.startswith("/"):
+        return False, "Template must be relative — do not start with '/'."
+
+    # Rule 2: unbalanced braces
+    depth = 0
+    for ch in template:
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        if depth < 0:
+            return False, "Unbalanced braces in template."
+    if depth != 0:
+        return False, "Unbalanced braces in template."
+
+    # Rule 3: empty variable {}
+    if "{}" in template:
+        return False, "Empty variable: '{}' is not allowed."
+
+    # Parse — should succeed since braces are balanced
+    try:
+        segments = parse_template(template)
+    except Exception:
+        return False, "Unbalanced braces in template."
+
+    # Rule 4: unknown variables
+    available = ", ".join(sorted(TEMPLATE_VARIABLES))
+    for seg in segments:
+        if seg.type == "variable":
+            if seg.value not in TEMPLATE_VARIABLES:
+                return (
+                    False,
+                    f"Unknown variable: '{{{seg.value}}}'. Available: {available}.",
+                )
+            for fb in seg.fallbacks:
+                if fb.startswith('"') and fb.endswith('"'):
+                    continue
+                if fb not in TEMPLATE_VARIABLES:
+                    return (
+                        False,
+                        f"Unknown variable: '{{{fb}}}'. Available: {available}.",
+                    )
+
+    # Rule 6: path traversal (..)
+    for seg in segments:
+        if seg.type == "literal" and seg.value == "..":
+            return False, "Path traversal not allowed: '..' segments rejected."
+
+    # Rule 7: adjacent non-separator segments
+    for i in range(1, len(segments)):
+        if segments[i].type != "separator" and segments[i - 1].type != "separator":
+            return (
+                False,
+                "Missing '/' separator between segments in template"
+                " (variables and literals must be separated by '/').",
+            )
+
+    return True, ""
+
+
 def _get_track_value(track: Any, variable: str) -> str | None:
     """Get a template variable's value from a track.
 
