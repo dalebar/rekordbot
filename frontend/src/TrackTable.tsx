@@ -180,10 +180,6 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
 
   const handleRowClick = useCallback(
     (track: Track, e: React.MouseEvent) => {
-      // Prevent text selection on Shift+click
-      if (e.shiftKey) {
-        e.preventDefault();
-      }
       if (e.metaKey || e.ctrlKey) {
         setSelectedIds((prev) => {
           const next = new Set(prev);
@@ -393,7 +389,7 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Table */}
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full select-none text-left text-xs">
             <thead>
               <tr
                 className="border-b border-gray-800 text-gray-500"
