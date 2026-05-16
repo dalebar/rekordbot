@@ -344,7 +344,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 ## Key Design Decisions
 
 ### Conversion Logic (Phase 1)
-- Lossless (WAV, FLAC, ALAC) → AIFF, **always 16-bit (`pcm_s16be`)** for universal CDJ playback compatibility. Source bit-depth is NOT preserved on output — 24-bit FLACs are downsampled to 16-bit. Older CDJ models (CDJ-2000 original, CDJ-900, CDJ-1000, some XDJ firmware) cannot reliably play 24-bit AIFF. Phase 6c bug: converter currently routes 24-bit sources to `pcm_s24be` — to be fixed in Phase 6c Part 6.
+- Lossless (WAV, FLAC, ALAC) → AIFF, **always 16-bit (`pcm_s16be`)** for universal CDJ playback compatibility. Source bit-depth is NOT preserved on output — 24-bit FLACs are downsampled to 16-bit. Older CDJ models (CDJ-2000 original, CDJ-900, CDJ-1000, some XDJ firmware) cannot reliably play 24-bit AIFF. The conversion engine's `OUTPUT_BIT_DEPTH = 16` constant and the `pcm_s16be` hardcode in `build_ffmpeg_command()` are the single source of truth. A parametrised test in `test_conversion.py` locks the invariant across 16/24/32-bit sources.
 - MP3 → leave as-is (already CDJ-compatible)
 - M4A → inspect with ffprobe first: ALAC inside → convert to AIFF; AAC inside → optional convert to MP3 (user preference)
 - Never transcode lossy-to-lossy without explicit user opt-in
@@ -397,8 +397,8 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
-**Tests:** 1161 passing across all phases
-**Next step:** Phase 6c Part 6 — fix high-priority bugs from Session 25 smoke test (vertical scrolling, horizontal layout banding, 24-bit AIFF bug, bitrate-column data correctness)
+**Tests:** 1191 passing across all phases
+**Next step:** Phase 6c Part 7 — bitrate column schema work, Session 20 deferred bugs (4, 5, 8), cancel-revert feature design, or polish list from Session 25
 
 ### Phase Summary
 
@@ -415,41 +415,41 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
-| 6c — UI Review & Bug Fixing | 1161 | (dogfooding — no feature brief) |
+| 6c — UI Review & Bug Fixing | 1191 | (dogfooding — no feature brief) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
 ### Known Open Bugs (Phase 6c)
 
-Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-test.md`). Awaiting fix in Phase 6c Part 6.
+Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-test.md`). Most resolved in Session 26 Part 6. Remaining bugs and deliberate deferrals tracked below.
 
-**High priority — usability/correctness:**
-- Track table vertical scrolling broken — only visible rows accessible regardless of total count (Session 20 Bug 6)
-- Horizontal scroll reveals colour banding (header light, body dark) — table looks broken when wider than viewport (Session 20 Bug 3)
-- Shift+click range selection also selects text — earlier fix (`select-none` in Part 1) not effective (Session 20 Bug 9 regression)
-- Converter promotes 24-bit FLAC to 24-bit AIFF (`pcm_s24be`) — should always be 16-bit (`pcm_s16be`) for CDJ playback compatibility; 24-bit AIFFs may fail to load on older CDJ models
+**Resolved in Session 26 (Phase 6c Part 6):**
+- ✅ Track table vertical scrolling — fixed (`989b7a4`, `8b65b21`)
+- ✅ Horizontal scroll colour banding — fixed (same commits)
+- ✅ Shift+click text selection — fixed (`5b0d57d`)
+- ✅ 24-bit AIFF output — fixed (`df08e30`)
+- ✅ Folder template missing-separator validation — fixed (`fae805d`, `0ddc288`)
+- ✅ "Organise All" button label misleading — fixed (`b7f6a0d`)
+- ✅ Ingestion progress header doesn't dismiss — fixed (`0ad048b`)
 
-**Medium priority — data correctness:**
-- Bitrate column in track table shows source bitrate, not output AIFF bitrate
-- Folder template missing literal/variable separator (e.g. `rekordbot_library{artist}/...`) is accepted by settings save without validation — produces malformed proposals
+**Deferred (require dedicated scoping):**
+- **Bitrate column shows source not output value** — Track.bitrate currently stores source bitrate; fix needs schema change (new output_bitrate column?) plus Alembic migration plus backfill logic. Deferred at start of Session 26.
+- **Cancel-revert for ingestion** — currently cancel stops further file processing but leaves already-processed files in place. A proper revert needs per-file output-provenance tracking (did rekordbot create this file?), an undo log, and a confirmation dialog. Captured during Session 26 bug #8 work.
 
-**Medium priority — UX:**
-- "Organise All" button label is misleading — it generates proposals, not file moves (Approve Auto / Approve All commit the moves)
-- "Processing X/Y files" ingestion progress header doesn't dismiss after batch completes (no Dismiss button, unlike AI tagging)
-
-**Low priority — polish:**
+**Low priority — polish (untouched in Session 26):**
 - Tauri window has no `minWidth` — narrowing breaks layout at ~280px
-- Drop zone text wraps awkwardly on narrow windows (no `min-width` or `white-space: nowrap`)
+- Drop zone text wraps awkwardly on narrow windows
 - "Approve Auto" button doesn't show count like "Analyse Selected (N)" does
 - Review queue panel doesn't update post-approve (still says "23 auto-approved")
 - Track Detail side panel doesn't show proposed file path
 - API key field renders as opaque dots (no `sk-ant-...XXXX` mask visible to user)
 - No startup log line confirming Alembic action (fresh DB? upgraded? no-op?)
+- Stacked toasts after invalid settings save then valid settings save — both persist visually until manually dismissed
 
-**Untested today (deferred deliberately):**
+**Still untested (deferred deliberately):**
 - Session 20 Bug 4: Analysis state lost on Settings navigation
 - Session 20 Bug 5: Analysis restart blocked after Settings interruption
-- Session 20 Bug 8: Review queue dark-on-dark text (no Needs Review tracks generated; can't reproduce)
+- Session 20 Bug 8: Review queue dark-on-dark text (couldn't reproduce in Session 25; no needs-review tracks generated)
 
 ## Known Issues / Don't Touch
 
@@ -471,6 +471,9 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. Re-enabling requires solving the stdout pipe buffer issue first (Phase 6d).
 - uvloop is bundled by PyInstaller (transitive uvicorn dependency) and is explicitly bypassed via `loop="asyncio"` in `uvicorn.run()`. uvloop's libuv event loop had GIL interaction issues with worker threads on macOS.
 - Settings API key validation: structural guard rejects values that don't start with `sk-` or are under 20 chars. Error messages from the validate endpoint are sanitised (no raw Python exceptions). Credit/billing errors return `valid=True` since the key itself is valid.
+- Flexbox constraint chains: `min-h-0` and `min-w-0` only propagate through flex items if every intermediate wrapper is itself a flex container in the same axis. A non-flex wrapper between a parent flex column and a child with `flex-1` breaks the constraint chain — the child falls back to intrinsic content size. When adding `flex-1` to a component's outer wrapper, verify its parent in the consuming component is `flex flex-col` (or `flex flex-row`).
+- For 4xx error responses surfaced to the frontend, use the existing `RekordBotError` exception hierarchy (`backend/exceptions.py`) — never FastAPI's `HTTPException` with a structured `detail` dict. FastAPI wraps the detail under another `detail` key, producing `{"detail": {error, detail}}`, which doesn't match the documented `{error, detail}` schema (CLAUDE.md "Error Handling") and breaks the frontend's `ApiError` type. The global handler in `main.py` serialises `RekordBotError` correctly. Adding a new error class is one line; copy the pattern of `SettingsError`, `CrateError`, etc.
+- Text selection on Shift+click in a table: use `select-none` (CSS `user-select: none`) on the `<table>` element via Tailwind. Selection starts on `mousedown`, so `e.preventDefault()` in the click handler fires too late. Inline `<input>` elements inside the table are unaffected — browsers override parent `user-select` on form controls.
 
 ## Phased Build Plan
 

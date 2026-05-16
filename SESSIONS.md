@@ -1196,3 +1196,71 @@ Bug fixes, prioritised:
 8. **Ingestion progress header dismissal** — match AI tagging pattern
 
 Fix one bug → unit test if applicable → commit → move on. Rebuild `.app` periodically (every 2-3 fixes) to verify in packaged mode.
+
+---
+
+## Session 26 — 2026-05-16
+
+### What was worked on
+Phase 6c Part 6 — focused bug-fix session targeting the prioritised list catalogued in Session 25. Nine commits, 7 of 8 catalogued bugs resolved, one deliberately deferred (bitrate column), plus a bonus test-isolation fix uncovered while verifying the AIFF bug.
+
+### Summary
+
+**Bugs resolved (in commit order):**
+1. **24-bit AIFF output** — converter no longer promotes 24-bit FLAC sources to `pcm_s24be`; always uses `pcm_s16be` for CDJ compatibility. `MAX_OUTPUT_BIT_DEPTH = 24` renamed to `OUTPUT_BIT_DEPTH = 16`; `AIFF_CODEC_MAP` deleted (hardcoded `pcm_s16be` in `build_ffmpeg_command`). Existing tests had defended the buggy behaviour — updated 4 in-place and added a parametrised lock test that asserts 16-bit for 16/24/32-bit sources. (`df08e30`)
+
+2. **Test isolation in `TestApplyConfigToEnv`** — surfaced when running full suite for the first time after AIFF fix. Two tests (`test_converts_bool_to_string`, `test_converts_float_to_string`) passed in isolation but failed in the full suite due to `REKORDBOT_*` env vars leaking from `main.py` import in earlier tests. Two sibling tests in the same class already had the defensive `env_clean / clear=True` pattern; applied the same fix to the two failing tests. (`e242bd9`)
+
+3. **Track table scrolling and horizontal banding** — required two commits to fix. First commit (`989b7a4`) added `min-h-0 min-w-0` to multiple flex items (the App.tsx main column, TrackTable's outer wrapper) and constrained `PreferenceRulesPanel` with `shrink-0 max-h-48 overflow-auto`. Smoke test of packaged build revealed the fix was insufficient — the bug persisted. Devtools inspection showed the TrackTable wrapper in App.tsx (`<div className="min-h-0 flex-1">`) was a flex *item* but not a flex *container*, so its child's `flex-1` had no parent to negotiate with. Second commit (`8b65b21`) added `flex flex-col` to the wrapper. After rebuild, the bug was fully resolved.
+
+4. **Shift+click text selection regression** — the Part 1 fix used `e.preventDefault()` inside the click handler, but text selection on Shift+click starts at `mousedown`, not `click` — too late to suppress. Replaced with `select-none` on the `<table>` element via Tailwind, which inherits to all rows and cells. Inline-edit `<input>` elements are unaffected (browsers override parent `user-select: none` on form controls). Also removed the dead `preventDefault()` block to avoid misleading the next reader. (`5b0d57d`)
+
+5. **Folder template validation** — added `validate_template()` function in `template_engine.py` with 7 rejection rules: empty/whitespace, absolute paths, unbalanced braces, empty variables, unknown variable names (including in fallback chains), path traversal (`..` segments), and missing separator between adjacent non-separator segments (the exact Session 25 bug). Wired into the settings PUT handler. 19 new tests added: 13 parametrised rejection cases and 6 parametrised acceptance cases, plus 2 route integration tests. (`fae805d`)
+
+6. **"Organise" button label clarification** — renamed "Organise All" / "Organise Selected (N)" to "Preview Organisation" / "Preview Organisation (N)" to signal that this step generates a preview, not a commit. In-flight state changed from "Proposing..." to "Previewing..." to match the new verb. Framed from the user's perspective ("Preview") rather than the app's perspective ("Propose"). (`b7f6a0d`)
+
+7. **Ingestion progress dismissal** — the post-completion header continued to read "Processing X / Y files" with no way to dismiss the panel. Added an `onDismiss` callback prop; header now switches to "Ingestion complete: X / Y files" when summary arrives; Dismiss button (neutral gray) appears alongside Show/Hide when complete. Cancel-revert (rolling back already-processed files when the user cancels mid-batch) was considered and deliberately deferred — warrants its own design with output provenance tracking, undo log, and confirmation dialog. (`0ad048b`)
+
+8. **Folder template error response shape** — surfaced in packaged-mode smoke test after rebuild. Bug #5 had used `HTTPException` with a structured `detail` dict (`{error, detail}`), but FastAPI wraps that under another `detail` key, producing `{"detail": {error, detail}}` — incompatible with the project's documented `{error, detail}` schema and the frontend's `ApiError` type. The frontend's toast handler attempted to render the dict as a React child, crashing the app to a blank screen. Refactored to use the existing `RekordBotError` exception hierarchy: added `SettingsError(RekordBotError)` and updated the route to raise it. The global handler in `main.py` produces the correct schema automatically. (`0ddc288`)
+
+**Bugs deferred:**
+- **Bitrate column source vs output (originally bug #5 in Session 25 list)** — deferred at session start because the fix needs schema scoping: `Track.bitrate` currently stores source bitrate, and distinguishing source vs output bitrate may need a migration plus backfill logic. Deserves a dedicated session.
+- **Cancel-revert for ingestion** — flagged during bug #8 work. Requires per-file output provenance tracking (did rekordbot create this file vs copy an existing one?), an undo log, and a confirmation dialog. Out of scope for a bug fix.
+
+### Key decisions made
+1. **Always 16-bit AIFF output is locked in code and tests.** Source bit-depth is not preserved on output. Parametrised lock test makes the invariant explicit with a docstring referencing CDJ compatibility.
+2. **`select-none` on the `<table>` element** is the correct fix for unwanted text selection, not `e.preventDefault()` on click. Click is too late; mousedown is where selection starts. Form controls inside the table are unaffected.
+3. **Flexbox `min-h-0` / `min-w-0` propagation** requires every link in the chain to be a flex container in the appropriate axis. A flex item that is itself a non-flex parent breaks the constraint chain. Lesson: when adding `flex-1` to a child, verify the parent is `flex` (and `flex-col` or `flex-row` as appropriate).
+4. **Validate-on-save pattern** for user-facing config: validate at the route boundary before persistence, return 400 with a useful error message. Avoid silent rejection (the API key path's silent-drop pattern is flagged as a separate known issue).
+5. **Use `RekordBotError` hierarchy, never `HTTPException`** for 4xx responses we want surfaced to the frontend. The global handler in `main.py` produces the documented schema; `HTTPException` does not.
+6. **"Preview Organisation"** framed from user perspective beats "Propose Organisation" from app perspective — clearer signal of no-commit nature.
+7. **Manual dismiss, not auto-dismiss** for completion-state panels — gives users time to read the summary before clearing.
+8. **Test isolation discipline.** Defensive env-clearing pattern needs to be applied consistently. Two latent failures were carried for an indeterminate period because the failing tests passed in isolation. Pre-commit hook does not run the full suite — manually running `uv run pytest` is the only check.
+
+### Things that surprised us
+- **The layout bug needed two iterations.** Initial fix was correct but incomplete — `min-h-0` on a flex item doesn't propagate if there's a non-flex wrapper between it and the constrained child. Devtools inspection of the running app was essential to nailing the second iteration's root cause.
+- **Test count math drift.** CC reported test counts twice that were slightly off (once with "+7" that was actually correct as net, once with "pre-existing failures" that didn't exist). Verifying with actual `pytest` output rather than CC's summary is the reliable check.
+- **Bug #5 broke in packaged mode** but passed all unit and route tests. The issue was at the FastAPI ↔ frontend serialisation boundary. Lesson: route tests assert the response body shape directly; if the schema mismatches the *frontend's expected shape*, only the smoke test catches it.
+
+### Untested in this session
+- Session 20 Bug 4 (Analysis state lost on Settings navigation) — still deferred
+- Session 20 Bug 5 (Analysis restart blocked post-Settings) — still deferred
+- Session 20 Bug 8 (Review queue dark-on-dark text) — couldn't reproduce in Session 25 due to no needs-review tracks
+- Bitrate column (deferred deliberately at session start)
+- Cancel-revert (out of scope, captured as future feature)
+
+### What's next
+- **Phase 6c Part 7 (or wherever appropriate):**
+  - Bitrate column: design schema change (output_bitrate column? or compute on display?), migration, backfill logic
+  - Session 20 deferred bugs 4, 5, 8
+  - Cancel-revert feature design
+  - Low-priority polish list from Session 25 (Tauri min-width, drop zone wrap, Approve Auto count, review queue refresh, etc.)
+- **Phase 6d (Performance Optimisation):** profiling with real library data
+- **Phase 6e (UI Polish & Design):** folder template editor with inline validation, drag-and-drop polish, design pass
+- **Phase 6f (Signing & Distribution):** code signing, notarisation, signed `.dmg`, onboarding docs
+
+### Final state
+- Branch: `feature/phase-6c-dogfooding`, 9 commits ahead of pre-session HEAD
+- Tests: 1170 → 1191 passing (+21: parametrised template validation tests + 2 route tests, minus net 0 from the test isolation fix and AIFF rewrites since those replaced existing tests in place)
+- All commits verified in packaged mode via the manual smoke test (`docs/testing/manual-smoke-test.md`)
+- Ready to merge to `develop` once CLAUDE.md is updated and a final review pass is done
