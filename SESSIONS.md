@@ -1488,3 +1488,179 @@ One named opportunity carried over from CLAUDE.md (line 475): re-enabling concur
 - Tests: 1192 passing (unchanged — no code touched in merge prep).
 - Tags through `phase-6c-complete` all annotated, all pointing at merge commits, all pushed to origin.
 - Ready for Phase 6d feature brief.
+
+---
+
+## Session 30 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 1 — profiling harness scaffolding. Plus the two commits
+that should have been logged at the time but weren't: the Phase 6d
+feature brief (`d4e85ac`) and the Session 29 docs update
+(`cdd3f5b`), both written in earlier work and pushed to origin before
+this session began.
+
+### Summary
+
+**Two commits inherited from the run-up to this session (logged here for
+the audit trail):**
+
+1. `cdd3f5b` — Session 29 entry + CLAUDE.md Phase 6d kickoff updates.
+2. `d4e85ac` — Phase 6d feature brief at `docs/features/phase-6d-performance.md`.
+   Profile-first measurement-then-decide phase. Primary optimisation target:
+   analysis stage (librosa BPM + key). Secondary deliverable:
+   re-enable concurrent conversion. Crate Builder and Set Planner explicitly
+   out of scope (captured as `feature/dogfood-crates-and-sets`). AI tagging
+   profiled but not optimised. UI responsiveness deferred to Phase 6e. Five-step
+   build order locked: harness → instrument → reporting → baseline → decision
+   point. Early-close path if baselines show nothing meaningfully slow.
+
+**One commit landed in this session:**
+
+3. `13e5fe0` — Phase 6d Step 1: profiling harness scaffolding.
+   New files: `backend/services/perf.py`, `backend/tests/test_perf.py`. No
+   existing files modified.
+
+   Harness API:
+   - `PerfRecorder` class — opt-in via `REKORDBOT_PERF_RECORD` env var.
+     JSONL output to `~/Library/Application Support/rekordbot/perf/run-<ts>.jsonl`.
+     Thread-safe writes (lock around write+flush).
+   - `NoOpPerfRecorder` — zero-cost no-op when env var unset or falsy.
+     `contextlib.nullcontext()` for `stage()`, no I/O, no allocations.
+   - `Stage` StrEnum — 28 stage identifiers grouped by pipeline.
+   - `Pipeline` StrEnum + `STAGE_TO_PIPELINE` mapping. Belt-and-braces test
+     catches future drift if a Stage is added without a Pipeline mapping.
+   - `PerfRecord` dataclass — 8 fields: session_id, pipeline, stage,
+     start_ts, duration_s, pid, payload, error.
+   - `get_recorder()` singleton with double-checked locking.
+   - `_reset_for_tests()` private hook for test isolation.
+
+   Tests: 23 new in `test_perf.py`, TDD-first (test file created 1m53s
+   before impl file per filesystem timestamps).
+   - Env var truthy/falsy parsing (parametrised across "1"/"true"/"yes"
+     case-insensitive vs "0"/"false"/"no"/""/"anything-else")
+   - JSONL file creation, ISO timestamp filename format
+   - Full record schema verification (every field, value bounds, types)
+   - Stage→Pipeline mapping coverage
+   - Nested stages (inner record emitted first, time bounds checked)
+   - Exception inside stage block (propagates; record emitted with
+     `error="ValueError"`)
+   - Session ID stability across multiple stages
+   - Thread safety: 4 threads × 50 writes = 200 records, no JSONL
+     corruption, every (thread, iter) pair unique
+   - Singleton thread safety under contention (10 threads, same instance
+     returned)
+   - NoOpPerfRecorder makes no disk writes
+   - `close()` idempotency
+   - `payload=None` serialised as null (not omitted)
+
+   Test count: 1192 → 1215 (+23). mypy clean on new files (21 pre-existing
+   errors in 8 files unchanged — verified by temporarily moving new files
+   aside). Ruff clean.
+
+### Key decisions made
+
+1. **Recorder is opt-in, no-op by default.** When `REKORDBOT_PERF_RECORD`
+   is unset or falsy, `get_recorder()` returns a `NoOpPerfRecorder` that
+   performs no I/O and allocates nothing per stage block beyond the
+   `contextlib.nullcontext()` itself. Same public API as the real
+   recorder so call sites in Step 2 don't need to branch.
+
+2. **Env var read directly via `os.getenv`, not added to pydantic-settings.**
+   `REKORDBOT_PERF_RECORD` is an internal developer instrumentation toggle,
+   not user-facing configuration. Keeping it out of `Settings` means it
+   isn't surfaced in the Settings UI, doesn't appear in `.env.example`,
+   and isn't read at app startup (so it can in principle be toggled
+   mid-process for tests). The brief allows either the
+   config-manager → env-var bridge or a CLI-prepended env var; the bridge
+   wiring is deferred to Step 4 if/when we run the first measurement
+   against a packaged app.
+
+3. **Single file at `backend/services/perf.py`, not a package.** Step 1
+   deliverables fit in ~270 lines. Every other service in the codebase is
+   a single file. Promoting to a package later is mechanical
+   (`git mv perf.py perf/__init__.py`) if Step 2 reveals the API has
+   grown unwieldy.
+
+4. **Stage constants defined upfront for all five pipelines** (28
+   constants total), even though Step 1 instruments none of them. Forces
+   naming and scope decisions before instrumentation; means Step 2
+   prompts can reference `Stage.X` rather than negotiating new strings
+   per pipeline.
+
+5. **One JSONL file per process run** (`run-<timestamp>.jsonl`), not an
+   append-only file across runs. Simplifies the reporting script: read
+   one file, get one run's data. No file rotation needed. Comparing runs
+   is a reporting concern, not a recorder concern.
+
+6. **Thread-safe writes via a single `threading.Lock`.** Both the
+   asyncio loop thread and the ingestion worker thread (and any future
+   concurrent-conversion workers) will call `recorder.stage()`
+   independently. Stress-tested with 200 concurrent writes across 4
+   threads — all 200 records distinct and parseable.
+
+7. **Two minor deviations from spec, both approved:**
+   - `# noqa: SIM115` on the long-lived file handle in `__init__`. The
+     handle is owned for the recorder's lifetime and closed in `close()`
+     — a `with` block doesn't fit the lifetime. Same pattern as stdlib
+     `logging.FileHandler`.
+   - `__exit__` return type annotated `Literal[False]` instead of `bool`
+     for mypy precision. Behaviour unchanged (still doesn't suppress
+     exceptions).
+
+### Things that surprised us
+
+- **TDD order verifiable from filesystem timestamps.** The test file
+  was created at 00:15:03 BST, the impl file at 00:16:56 BST — 1m53s
+  apart. Not something we set out to use as evidence, but a useful
+  side-channel for confirming CC's "tests first" claim. Worth knowing
+  for future TDD review passes.
+
+- **Repo Structure tree in `CLAUDE.md` had pre-existing indentation
+  drift** in the `docs/features/` block — entries for phase-5b through
+  phase-6b were indented one level too shallow. Pre-existing,
+  orthogonal to Phase 6d, fixed inline in this session's docs update
+  while the file was being edited anyway.
+
+### Unresolved questions / blockers
+
+None. The harness is reviewable, committed, pushed. No surprises for
+Step 2 that aren't already documented in the brief.
+
+Two architectural notes carried forward to Step 2 prompts but not
+blocking:
+
+- `NoOpPerfRecorder` inherits from `PerfRecorder` and skips
+  `super().__init__()`. Today safe; if anyone adds a method to
+  `PerfRecorder` that touches `self._path` without overriding it on
+  `NoOpPerfRecorder`, the no-op would `AttributeError`. Structural
+  footgun, not a bug. Considered switching to a Protocol/sibling-class
+  pattern but rejected as overkill for Step 1's surface area.
+
+- `_StageContext._recorder._write(record)` reaches across a private
+  underscore prefix between sibling classes in the same module. Fine
+  in Python, slightly awkward stylistically. Cosmetic.
+
+### What's next — Phase 6d Step 2
+
+Instrument the five in-scope pipelines with `with recorder.stage(...)`
+blocks. From the brief's Build Order: one commit per pipeline,
+~5 commits, ordered ingestion → analysis → AI tagging → XML export →
+XML import. No business-logic changes; each commit verifies the
+existing test suite still passes; no new tests required for
+instrumentation itself (the harness has its own tests).
+
+Step 2 to be opened in a fresh chat session for clean context. Step 1
+review and merge prep belong to this session and stop here.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `13e5fe0`, in sync with
+  `origin/feature/phase-6d-performance`. Working tree clean.
+- Three commits ahead of `develop` (at `b7dc4f4`, `phase-6c-complete`).
+- Tests: 1215 passing (+23 new in `test_perf.py`).
+- CLAUDE.md and SESSIONS.md updated this session (this commit).
+- Phase 6d Step 1 complete per acceptance: harness exists, has unit
+  tests, opt-in via env var, verified no-op when disabled. Step 2 not
+  started.

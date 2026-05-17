@@ -103,7 +103,8 @@ rekordbot/
 │   │   ├── conflict_resolver.py  ← Import conflict resolution (per-track and bulk) (Phase 4b)
 │   │   ├── xml_importer.py       ← XML import pipeline orchestrator with SSE progress (Phase 4b)
 │   │   ├── config_manager.py    ← JSON config persistence and env var integration (Phase 6a)
-│   │   └── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
+│   │   ├── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
+│   │   └── perf.py              ← Opt-in profiling harness: PerfRecorder, Stage enum, JSONL sink (Phase 6d)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
@@ -116,6 +117,7 @@ rekordbot/
 │   │   └── import_xml.py        ← Rekordbox XML import, conflicts, SSE progress (Phase 4b)
 │   └── tests/
 │       ├── conftest.py           ← Shared fixtures (test DB, API client)
+│       ├── test_perf.py          ← PerfRecorder + harness unit tests (Phase 6d)
 │       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
 ├── frontend/
 │   ├── src/
@@ -169,10 +171,11 @@ rekordbot/
     │   ├── phase-3-claude-integration.md
     │   ├── phase-4-rekordbox-xml-export.md
     │   ├── phase-5a-crate-builder.md
-│   ├── phase-5b-set-planner.md
-│   ├── phase-6a-app-shell.md
-│   ├── phase-4b-xml-import.md
-│   └── phase-6b-dmg-packaging.md
+    │   ├── phase-5b-set-planner.md
+    │   ├── phase-6a-app-shell.md
+    │   ├── phase-4b-xml-import.md
+    │   ├── phase-6b-dmg-packaging.md
+    │   └── phase-6d-performance.md
     └── research/
         ├── rekordbox-xml-cdj-compatibility.md
         ├── tauri-python-backend.md
@@ -397,10 +400,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6d — Performance Optimisation (just started)
+**Phase:** 6d — Performance Optimisation (Step 1 complete; Step 2 next)
 **Branch:** `feature/phase-6d-performance`
-**Tests:** 1192 passing across all phases
-**Next step:** Draft Phase 6d feature brief — profile-first measurement pass against the 668-track real library before any optimisation work.
+**Tests:** 1215 passing across all phases
+**Next step:** Phase 6d Step 2 — instrument the five in-scope pipelines (ingestion, analysis, AI tagging, XML export, XML import) with PerfRecorder context blocks. One commit per pipeline; no business-logic changes.
 
 ### Phase Summary
 
@@ -418,7 +421,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
 | 6c — UI Review & Bug Fixing | 1192 | (dogfooding — no feature brief) |
-| 6d — Performance Optimisation | — | (to be drafted) |
+| 6d — Performance Optimisation | 1215 | `docs/features/phase-6d-performance.md` |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
