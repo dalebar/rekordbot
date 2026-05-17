@@ -370,14 +370,14 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 6b — .dmg Packaging & Migration Setup
+### Phase 6b — .dmg Packaging & Migration Setup ✅ Complete
 **Goal:** Get the app into a launchable `.dmg` with database migration infrastructure, so Dale can start dogfooding with real data.
 
 - [x] Alembic initialisation with baseline migration (captures full current schema)
 - [x] Automatic migration on backend startup (fresh DB / pre-Alembic DB / already-migrated DB)
 - [x] `.dmg` packaging with sidecar injection (PyInstaller → Tauri .app → inject sidecar/ → hdiutil)
 - [x] `make build-dmg` target for full build pipeline
-- [ ] End-to-end verification: install from `.dmg` → wizard → full pipeline → data persists
+- [x] End-to-end verification: install from `.dmg` → wizard → full pipeline → data persists (validated throughout Phase 6c dogfooding)
 
 **Deliverable:** Installable `.dmg` with safe schema evolution. Gate to dogfooding.
 
@@ -385,15 +385,37 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
-### Phase 6c — UI Review & Bug Fixing
+### Phase 6c — UI Review & Bug Fixing ✅ Complete
 **Goal:** Use the app for real and fix everything that breaks.
 
-- [ ] Import Rekordbox library, run full pipeline, exercise all features
-- [ ] Collect and fix bugs, UX friction, unexpected behaviour
-- [ ] Bootleg detection refinement (false positives on "single edit", "radio edit" etc.)
-- [ ] Scope determined by real-world use — intentionally open-ended
+**Delivered (63 commits across Sessions 20–28, 1192 tests total / 49 new):**
+- Multi-part dogfooding cycle (Parts 1–8) against a real DJ library — 668-track Larry Levan / Paradise Garage corpus and smaller verification batches
+- Manual smoke test checklist (`docs/testing/manual-smoke-test.md`) — launch, drag-and-drop, table scrolling, settings, review queue, persistence, analysis
+- Bugs fixed during dogfooding:
+  - Track table vertical scrolling and horizontal scroll colour banding
+  - Shift+click text selection (`select-none` on table)
+  - 24-bit AIFF output (CDJ compatibility fix — pinned to 16-bit `pcm_s16be`)
+  - Folder template missing-separator validation
+  - "Organise All" button label and ingestion progress header dismissal
+  - Review queue dark-on-dark text
+  - Analysis state preservation across Settings navigation (Settings rendered as overlay)
+  - Analysis restart blocked after Settings interruption
+  - Dead `confidence_threshold` Settings field consolidated into live `organise_confidence_threshold`
+- Packaged-mode debugging:
+  - Stdout pipe deadlock at ~64KB (worker thread blocking) — removed `StreamHandler` in packaged mode, added `RotatingFileHandler`
+  - Alembic `fileConfig()` silencing post-startup logs — removed from `env.py`, file handler attached in lifespan after `run_migrations()`
+  - Uvicorn `dictConfig()` stripping handlers — passed `log_config=None`
+- Settings validation hardening: structural guards for API key format, length, whitespace before persistence
+- Verified end-to-end in packaged mode across all 8 parts; final verification on a 30-track library demonstrated `organise_confidence_threshold` actively gating the review queue
 
-**Deliverable:** Stable app that works correctly with a real DJ library.
+**Deferred to follow-up branches:**
+- Bitrate column shows source not output value (needs schema change, Alembic migration, backfill)
+- Frontend testing infrastructure (Vitest, React Testing Library, SSE/Tauri mocks)
+
+**Deferred to Phase 6e (polish):**
+- Tauri minWidth, drop zone wrap, Approve Auto count, review queue refresh post-approve, Track Detail proposed path, API key mask visibility, Alembic startup log line, stacked toast dismissal, cancel button "Cancelling..." feedback
+
+*No feature brief — Phase 6c was intentionally dogfood-scoped.*
 
 ---
 
@@ -452,7 +474,8 @@ feature/phase-5a-crate-builder ← merged ✅
 feature/phase-5b-set-planner   ← merged ✅
 feature/phase-6a-app-shell     ← merged ✅
 feature/phase-4b-xml-import    ← merged ✅
-feature/phase-6b-dmg-packaging ← current
+feature/phase-6b-dmg-packaging ← merged ✅
+feature/phase-6c-dogfooding    ← current
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
@@ -500,8 +523,8 @@ Claude has no persistent memory across sessions. All context is externalised int
 | `CLAUDE.md` | Project conventions, architecture, current status — Claude Code reads this automatically |
 | `SESSIONS.md` | Session log — what was built, decisions made, what's next |
 | `docs/features/<phase>.md` | Feature brief for each phase — the specification Claude Code implements against |
-| `docs/claude-code-session-checklist.md` | Step-by-step for starting new phases and continuing interrupted sessions |
-| `docs/phase-completion-checklist.md` | End-of-phase close-out process |
+| `docs/reference/claude-code-session-checklist.md` | Step-by-step for starting new phases and continuing interrupted sessions |
+| `docs/reference/phase-completion-checklist.md` | End-of-phase close-out process |
 
 ### Feature Brief Format
 
@@ -524,7 +547,7 @@ See `docs/features/` for all phase briefs (phase-0 through phase-6a, plus phase-
 **Starting a new phase:**
 1. Write the feature brief in this planning chat
 2. Agree all decisions before implementation
-3. Follow `docs/claude-code-session-checklist.md` — branch, venv, clean commit, paste prompt
+3. Follow `docs/reference/claude-code-session-checklist.md` — branch, venv, clean commit, paste prompt
 
 **Continuing mid-phase:**
 1. Update SESSIONS.md with where you left off
@@ -532,7 +555,7 @@ See `docs/features/` for all phase briefs (phase-0 through phase-6a, plus phase-
 3. Use the continuation prompt from the feature brief
 
 **Closing a phase:**
-1. Follow `docs/phase-completion-checklist.md`
+1. Follow `docs/reference/phase-completion-checklist.md`
 2. Update CLAUDE.md, SESSIONS.md, feature brief
 3. Merge to develop with `--no-ff`
 
@@ -563,4 +586,4 @@ These questions were raised during initial planning and resolved in Session 1. R
 | Free tool vs freemium? | No licensing/auth layer. Personal use first; monetisation deferred. |
 | librosa vs aubio? | librosa from day 1. Better accuracy for both BPM and key detection. Heavier dependency (numpy, scipy, numba) but worth it. Decision revised in Phase 2 planning (Session 4). |
 | Async vs sync SQLAlchemy? | Sync. Async adds complexity for no benefit on single-user desktop app with local SQLite. |
-| Alembic migrations? | Deferred to Phase 6. During dev, schema changes handled by recreating the dev database. |
+| Alembic migrations? | Deferred to Phase 6. During dev, schema changes handled by recreating the dev database. Resolved in Phase 6b: Alembic introduced with single baseline migration capturing current schema, automatic startup migration runner handles fresh / pre-Alembic / already-migrated databases. |
