@@ -41,7 +41,7 @@ export function clearApiErrorHandler(): void {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // Only set Content-Type for requests with a body (POST, PUT, PATCH).
   // Setting it on GET requests triggers unnecessary CORS preflight checks.
-  const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
+  const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) };
   const method = (options?.method ?? "GET").toUpperCase();
   if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
@@ -833,9 +833,7 @@ export function deleteCrate(crateId: number): Promise<{ status: string; crate_id
 }
 
 /** Refresh a crate (re-run AI assignment). */
-export function refreshCrate(
-  crateId: number,
-): Promise<{ status: string; message: string }> {
+export function refreshCrate(crateId: number): Promise<{ status: string; message: string }> {
   return request(`/api/crates/${crateId}/refresh`, { method: "POST" });
 }
 
@@ -1072,16 +1070,12 @@ export function moveTrackInSet(
 }
 
 /** Get candidate pool for a set. */
-export function getCandidates(
-  setId: number,
-): Promise<SetTrackItem[]> {
+export function getCandidates(setId: number): Promise<SetTrackItem[]> {
   return request<SetTrackItem[]>(`/api/sets/${setId}/candidates`);
 }
 
 /** Export a set as a Rekordbox playlist. */
-export function exportSet(
-  setId: number,
-): Promise<{
+export function exportSet(setId: number): Promise<{
   status: string;
   set_id: number;
   set_name: string;
@@ -1283,9 +1277,7 @@ export interface ImportConflict {
 }
 
 /** Start Rekordbox XML import. */
-export function importRekordboxXml(
-  filePath: string,
-): Promise<{ status: string; message: string }> {
+export function importRekordboxXml(filePath: string): Promise<{ status: string; message: string }> {
   return request<{ status: string; message: string }>("/api/import/rekordbox", {
     method: "POST",
     body: JSON.stringify({ file_path: filePath }),
