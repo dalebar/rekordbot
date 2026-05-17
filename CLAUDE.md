@@ -333,7 +333,7 @@ logger.error("Conversion failed for %s: %s", filename, str(error))
 ### Output
 
 - During development (uvicorn): logs to stdout, human-readable format
-- In production (sidecar): logs to stdout, captured by Tauri's sidecar event stream, forwarded to the app's log file via Tauri's log system
+- In production (sidecar): logs to stdout AND to a rotating file at `~/Library/Application Support/rekordbot/rekordbot.log` (5MB max, 3 backups). File handler added automatically when `--parent-pid` is present.
 
 ## Error Handling
 
@@ -344,7 +344,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 ## Key Design Decisions
 
 ### Conversion Logic (Phase 1)
-- Lossless (WAV, FLAC, ALAC) → AIFF (lossless-to-lossless, safe)
+- Lossless (WAV, FLAC, ALAC) → AIFF, **always 16-bit (`pcm_s16be`)** for universal CDJ playback compatibility. Source bit-depth is NOT preserved on output — 24-bit FLACs are downsampled to 16-bit. Older CDJ models (CDJ-2000 original, CDJ-900, CDJ-1000, some XDJ firmware) cannot reliably play 24-bit AIFF. The conversion engine's `OUTPUT_BIT_DEPTH = 16` constant and the `pcm_s16be` hardcode in `build_ffmpeg_command()` are the single source of truth. A parametrised test in `test_conversion.py` locks the invariant across 16/24/32-bit sources.
 - MP3 → leave as-is (already CDJ-compatible)
 - M4A → inspect with ffprobe first: ALAC inside → convert to AIFF; AAC inside → optional convert to MP3 (user preference)
 - Never transcode lossy-to-lossy without explicit user opt-in
@@ -379,6 +379,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 - Rust code detects production vs dev mode: `std::process::Command` from sidecar/ subdir vs Tauri sidecar API
 - Frontend polls backend health on mount with retries (20 attempts × 500ms) for sidecar startup delay
 - CORS allows all origins (`allow_origins=["*"]`) — safe since backend only binds to 127.0.0.1
+- Bundled ffmpeg resolved at startup: sidecar detects `Contents/Resources/ffmpeg` relative to its own executable and sets `REKORDBOT_FFMPEG_PATH` before Settings instantiation
 - `.dmg` built via `make build-dmg`: PyInstaller → Tauri .app → inject sidecar/_internal/ → hdiutil .dmg
 
 ### Database Migrations (Phase 6b)
@@ -394,10 +395,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6c — UI Review & Bug Fixing (next)
-**Branch:** `feature/phase-6c-dogfooding` (to be created from `develop`)
-**Tests:** 1154 passing across all phases
-**Next step:** Merge 6b → develop → main, branch 6c, begin dogfooding with real library
+**Phase:** 6c — UI Review & Bug Fixing (in progress)
+**Branch:** `feature/phase-6c-dogfooding`
+**Tests:** 1192 passing across all phases
+**Next step:** Phase 6c merge prep — phase-completion checklist sweep, prettier/ruff-format drift cleanup on untouched files, then merge `feature/phase-6c-dogfooding` → `develop` with `--no-ff` and a phase tag.
 
 ### Phase Summary
 
@@ -414,8 +415,45 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
+| 6c — UI Review & Bug Fixing | 1192 | (dogfooding — no feature brief) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
+
+### Known Open Bugs (Phase 6c)
+
+Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-test.md`). Most resolved in Session 26 Part 6. Remaining bugs and deliberate deferrals tracked below.
+
+**Resolved in Session 26 (Phase 6c Part 6):**
+- ✅ Track table vertical scrolling — fixed (`989b7a4`, `8b65b21`)
+- ✅ Horizontal scroll colour banding — fixed (same commits)
+- ✅ Shift+click text selection — fixed (`5b0d57d`)
+- ✅ 24-bit AIFF output — fixed (`df08e30`)
+- ✅ Folder template missing-separator validation — fixed (`fae805d`, `0ddc288`)
+- ✅ "Organise All" button label misleading — fixed (`b7f6a0d`)
+- ✅ Ingestion progress header doesn't dismiss — fixed (`0ad048b`)
+
+**Resolved in Session 27 (Phase 6c Part 7):**
+- ✅ Review queue dark-on-dark text — fixed (`13f6e4b`)
+- ✅ Analysis state lost on Settings navigation — fixed (`6c1c18b`)
+- ✅ Analysis restart blocked after Settings interruption — fixed (shared root cause with Bug 4, `6c1c18b`)
+
+**Resolved in Session 28 (Phase 6c Part 8):**
+- ✅ Dead `confidence_threshold` Settings field — consolidated into `organise_confidence_threshold` and surfaced in the Settings UI Advanced section with clear label and helper text. Verified in packaged mode against a real 30-track library. (`daac2a6`)
+
+**Deferred (require dedicated scoping):**
+- **Bitrate column shows source not output value** — Track.bitrate currently stores source bitrate; fix needs schema change (new output_bitrate column?) plus Alembic migration plus backfill logic. Deferred at start of Session 26.
+- **Cancel-revert for ingestion** — currently cancel stops further file processing but leaves already-processed files in place. A proper revert needs per-file output-provenance tracking (did rekordbot create this file?), an undo log, and a confirmation dialog. Captured during Session 26 bug #8 work.
+
+**Low priority — polish (untouched in Session 26):**
+- Tauri window has no `minWidth` — narrowing breaks layout at ~280px
+- Drop zone text wraps awkwardly on narrow windows
+- "Approve Auto" button doesn't show count like "Analyse Selected (N)" does
+- Review queue panel doesn't update post-approve (still says "23 auto-approved")
+- Track Detail side panel doesn't show proposed file path
+- API key field renders as opaque dots (no `sk-ant-...XXXX` mask visible to user)
+- No startup log line confirming Alembic action (fresh DB? upgraded? no-op?)
+- Stacked toasts after invalid settings save then valid settings save — both persist visually until manually dismissed
+- Cancel button (analysis and ingestion) shows no immediate feedback during pending cancellation — current-track finishes its work (~4-5s) before cancellation takes effect, but the button doesn't change state during the wait. Add "Cancelling..." disabled state.
 
 ## Known Issues / Don't Touch
 
@@ -426,7 +464,23 @@ Test counts are cumulative. Each phase's feature brief has full deliverables, ar
 - librosa emits deprecation warnings for audioread on Python 3.13 — harmless, librosa 1.0 will drop audioread.
 - ffmpeg's AIFF muxer defaults to `-write_id3v2 0`, silently dropping all metadata tags. The converter explicitly passes `-write_id3v2 1` to preserve ID3v2 tags in AIFF output.
 - PyInstaller `--onedir` sidecar must live in `Contents/MacOS/sidecar/` (not directly in `Contents/MacOS/`) to prevent PyInstaller's bootloader from detecting `.app` bundle mode, which changes library resolution paths and breaks `_internal/` lookup.
-- In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `main.py` forces UTF-8 via `reconfigure()` to prevent crashes on unicode characters in logs/metadata.
+- In bundled mode, Python stdout/stderr defaults to ASCII encoding (no terminal attached). `sys.stdout/stderr.reconfigure(encoding="utf-8")` in main.py prevents crashes on unicode in logs. `PYTHONUTF8=1`, `LANG=en_US.UTF-8`, `LC_ALL=en_US.UTF-8` set in Rust sidecar spawn as belt-and-suspenders for library encoding.
+- ffmpeg and ffprobe are both bundled as Tauri resources in `frontend/src-tauri/resources/`. Both need `xattr -c` and `chmod 755` on macOS Sequoia before building. Tauri places them in `Contents/Resources/resources/` (nested subdirectory).
+- Duplicate detection checks file existence: if a hash-matched track's output file is missing from disk, the orphaned DB record (and related CrateTrack/SetTrack rows) is cleaned up and ingestion continues.
+- File logging in packaged mode: `log_config=None` passed to `uvicorn.run()` to prevent uvicorn from calling `dictConfig()`. Alembic's `env.py` had a `fileConfig()` call that read `alembic.ini`'s `[loggers]` section, replacing root logger handlers and setting level to WARNING — this was the root cause of silent post-startup logs. Removed in Phase 6c. File handler is attached in lifespan AFTER `run_migrations()` to survive Alembic's logger setup.
+- FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
+- AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
+- Ingestion worker runs in a plain `threading.Thread` (not asyncio) because PyInstaller-bundled stdout is piped to Tauri, and after ~64KB the pipe buffer fills, blocking any thread that writes to stdout via Python's logging StreamHandler. The StreamHandler is removed from the root logger in packaged mode. The worker thread communicates SSE events to the asyncio event loop via `loop.call_soon_threadsafe`. This architecture was validated with 668-file batch ingestion.
+- `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore in Phase 6d if concurrent conversion is re-enabled.
+- `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. Re-enabling requires solving the stdout pipe buffer issue first (Phase 6d).
+- uvloop is bundled by PyInstaller (transitive uvicorn dependency) and is explicitly bypassed via `loop="asyncio"` in `uvicorn.run()`. uvloop's libuv event loop had GIL interaction issues with worker threads on macOS.
+- Settings API key validation: structural guard rejects values that don't start with `sk-` or are under 20 chars. Error messages from the validate endpoint are sanitised (no raw Python exceptions). Credit/billing errors return `valid=True` since the key itself is valid.
+- Flexbox constraint chains: `min-h-0` and `min-w-0` only propagate through flex items if every intermediate wrapper is itself a flex container in the same axis. A non-flex wrapper between a parent flex column and a child with `flex-1` breaks the constraint chain — the child falls back to intrinsic content size. When adding `flex-1` to a component's outer wrapper, verify its parent in the consuming component is `flex flex-col` (or `flex flex-row`).
+- For 4xx error responses surfaced to the frontend, use the existing `RekordBotError` exception hierarchy (`backend/exceptions.py`) — never FastAPI's `HTTPException` with a structured `detail` dict. FastAPI wraps the detail under another `detail` key, producing `{"detail": {error, detail}}`, which doesn't match the documented `{error, detail}` schema (CLAUDE.md "Error Handling") and breaks the frontend's `ApiError` type. The global handler in `main.py` serialises `RekordBotError` correctly. Adding a new error class is one line; copy the pattern of `SettingsError`, `CrateError`, etc.
+- Text selection on Shift+click in a table: use `select-none` (CSS `user-select: none`) on the `<table>` element via Tailwind. Selection starts on `mousedown`, so `e.preventDefault()` in the click handler fires too late. Inline `<input>` elements inside the table are unaffected — browsers override parent `user-select` on form controls.
+- `organise_confidence_threshold` is the live organisation threshold (default 0.7), exposed in Settings → Advanced. The short-named `confidence_threshold` field that previously appeared in `CONFIGURABLE_FIELDS` and the Settings UI was dead config and was removed in Session 28. Old user configs with the short name silently drop the key on next save via `CONFIGURABLE_FIELDS` filtering in `save_config()`. The per-request `OrganiseRequest.options.confidence_threshold` override on `/api/organise/propose` is wired-up-but-unused — intentional API affordance, not a bug.
+- BPM and key detection produce `BPMResult.confidence` and `KeyResult.confidence` values for informational display only. No threshold-based gating action consumes them anywhere in the pipeline. If a future feature wants to gate on these (e.g. "skip tag writing for low-confidence BPM"), it will need to introduce its own threshold field — not reuse the now-removed generic `confidence_threshold`.
+- SettingsPanel renders as an absolutely-positioned overlay (`absolute inset-0 z-10 bg-gray-950`) inside a `relative` wrapper in App.tsx, NOT as a swap-mount. This is deliberate — preserving in-flight component state (analysis SSE connection, progress bar state, etc.) across Settings round-trips required keeping `<main>` mounted continuously. ConflictReviewPanel and SetPlannerView remain swap-mounted because they are full workflows where state-loss on entry is acceptable. The Settings overlay sits below the header (it shares a parent with `<main>`, not with the header). z-index `z-10` places it above the underlying view but below `CrateCreateDialog` and `SetCreateDialog` (which use `z-40` for true modal behaviour).
 
 ## Phased Build Plan
 

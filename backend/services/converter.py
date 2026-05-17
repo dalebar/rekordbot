@@ -1,9 +1,9 @@
 """Converter service — orchestrates inspection, decision, ffmpeg execution, and DB storage."""
 
-import asyncio
 import hashlib
 import logging
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -12,18 +12,14 @@ from sqlalchemy.orm import Session
 
 from backend.config import Settings
 from backend.exceptions import ConversionError, DuplicateTrackError
+from backend.models.crate import CrateTrack
+from backend.models.set_plan import SetTrack
 from backend.models.track import Track
 from backend.services.conversion import ConversionAction, decide_conversion
 from backend.services.format_inspector import FileInfo, inspect_file
 from backend.services.naming import generate_output_path
 
 logger = logging.getLogger(__name__)
-
-# Bit depth to AIFF PCM codec mapping
-AIFF_CODEC_MAP = {
-    16: "pcm_s16be",
-    24: "pcm_s24be",
-}
 
 
 @dataclass
@@ -43,6 +39,7 @@ def build_ffmpeg_command(
     output_path: Path,
     action: ConversionAction,
     file_info: FileInfo,
+    ffmpeg_path: str = "ffmpeg",
 ) -> list[str]:
     """Build the ffmpeg command for a conversion.
 
@@ -51,15 +48,15 @@ def build_ffmpeg_command(
         output_path: Destination file path.
         action: The conversion action to perform.
         file_info: Parsed info about the source file.
+        ffmpeg_path: Path to the ffmpeg binary.
 
     Returns:
         List of command-line arguments for ffmpeg.
     """
     if action.action == "convert_to_aiff":
-        bit_depth = action.output_bit_depth or 16
-        codec = AIFF_CODEC_MAP.get(bit_depth, "pcm_s24be")
+        codec = "pcm_s16be"
         return [
-            "ffmpeg",
+            ffmpeg_path,
             "-y",
             "-i",
             str(input_path),
@@ -74,7 +71,7 @@ def build_ffmpeg_command(
 
     if action.action == "convert_to_mp3":
         return [
-            "ffmpeg",
+            ffmpeg_path,
             "-y",
             "-i",
             str(input_path),
@@ -104,8 +101,8 @@ def compute_file_hash(path: Path) -> str:
     return sha256.hexdigest()
 
 
-async def _run_ffmpeg(cmd: list[str]) -> None:
-    """Run an ffmpeg command as an async subprocess.
+def _run_ffmpeg_sync(cmd: list[str]) -> None:
+    """Run an ffmpeg command as a synchronous subprocess.
 
     Args:
         cmd: The ffmpeg command arguments.
@@ -114,19 +111,14 @@ async def _run_ffmpeg(cmd: list[str]) -> None:
         ConversionError: If ffmpeg exits with a non-zero code.
     """
     logger.info("Running ffmpeg: %s", " ".join(cmd))
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await process.communicate()
+    result = subprocess.run(cmd, capture_output=True, timeout=300)
 
-    if process.returncode != 0:
-        error_msg = stderr.decode().strip() if stderr else "Unknown ffmpeg error"
-        raise ConversionError(f"ffmpeg failed (exit {process.returncode}): {error_msg}")
+    if result.returncode != 0:
+        error_msg = result.stderr.decode().strip() if result.stderr else "Unknown ffmpeg error"
+        raise ConversionError(f"ffmpeg failed (exit {result.returncode}): {error_msg}")
 
 
-async def convert_file(
+def convert_file(
     path: Path,
     db_session: Session,
     settings: Settings,
@@ -145,7 +137,7 @@ async def convert_file(
     """
     try:
         # Step 1: Inspect
-        file_info = await inspect_file(path)
+        file_info = inspect_file(path)
         logger.info(
             "Inspected %s: %s/%s, %d kbps, %s",
             path.name,
@@ -160,36 +152,52 @@ async def convert_file(
         logger.info("Decision for %s: %s — %s", path.name, action.action, action.reason)
 
         # Step 3: Hash source file for duplicate detection
-        file_hash = await asyncio.to_thread(compute_file_hash, path)
+        logger.debug("Hashing source file %s (%d bytes)...", path.name, path.stat().st_size)
+        file_hash = compute_file_hash(path)
+        logger.debug("Hash complete for %s: %s", path.name, file_hash[:12])
 
         # Step 4: Check for duplicates
         existing = db_session.query(Track).filter_by(file_hash=file_hash).first()
         if existing:
-            logger.info("Duplicate detected for %s (matches track %d)", path.name, existing.id)
-            return TrackResult(
-                success=False,
-                duplicate=True,
-                file_path=str(path),
-                action="skip_duplicate",
-                error=f"Duplicate of existing track: {existing.file_path}",
-            )
+            if Path(existing.file_path).exists():
+                logger.info("Duplicate detected for %s (matches track %d)", path.name, existing.id)
+                return TrackResult(
+                    success=False,
+                    duplicate=True,
+                    file_path=str(path),
+                    action="skip_duplicate",
+                    error=f"Duplicate of existing track: {existing.file_path}",
+                )
+            else:
+                # Output file is missing — clean up orphaned record and continue
+                logger.warning(
+                    "Orphaned track %d (file missing: %s) — cleaning up",
+                    existing.id,
+                    existing.file_path,
+                )
+                db_session.query(CrateTrack).filter_by(track_id=existing.id).delete()
+                db_session.query(SetTrack).filter_by(track_id=existing.id).delete()
+                db_session.delete(existing)
+                db_session.commit()
 
         # Step 5: Generate output path
+        logger.debug("Generating output path for %s", path.name)
         output_dir = Path(settings.output_directory).expanduser()
         output_path = generate_output_path(path, output_dir, action.output_format)
 
         # Step 6: Execute conversion or copy
+        logger.debug("Starting %s for %s", action.action, path.name)
         if action.action in ("convert_to_aiff", "convert_to_mp3"):
-            cmd = build_ffmpeg_command(path, output_path, action, file_info)
-            await _run_ffmpeg(cmd)
+            cmd = build_ffmpeg_command(path, output_path, action, file_info, settings.ffmpeg_path)
+            _run_ffmpeg_sync(cmd)
         else:
             # copy_as_is
-            await asyncio.to_thread(shutil.copy2, str(path), str(output_path))
+            shutil.copy2(str(path), str(output_path))
 
         logger.info("Output written to %s", output_path)
 
         # Step 7: Get output file size
-        output_size = await asyncio.to_thread(lambda: output_path.stat().st_size)
+        output_size = output_path.stat().st_size
 
         # Step 8: Create Track record
         track = Track(

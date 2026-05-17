@@ -27,7 +27,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [convertAac, setConvertAac] = useState(false);
   const [bpmMin, setBpmMin] = useState(70);
   const [bpmMax, setBpmMax] = useState(180);
-  const [confidence, setConfidence] = useState(0.6);
+  const [organiseConfidence, setOrganiseConfidence] = useState(0.7);
   const [trackDuration, setTrackDuration] = useState(7);
   const [maxTracks, setMaxTracks] = useState(50);
 
@@ -48,7 +48,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         setConvertAac(s.convert_aac_to_mp3);
         setBpmMin(s.bpm_range_min);
         setBpmMax(s.bpm_range_max);
-        setConfidence(s.confidence_threshold);
+        setOrganiseConfidence(s.organise_confidence_threshold);
         setTrackDuration(s.set_track_duration_minutes);
         setMaxTracks(s.set_max_tracks);
         setLoading(false);
@@ -126,7 +126,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         convert_aac_to_mp3: convertAac,
         bpm_range_min: bpmMin,
         bpm_range_max: bpmMax,
-        confidence_threshold: confidence,
+        organise_confidence_threshold: organiseConfidence,
         set_track_duration_minutes: trackDuration,
         set_max_tracks: maxTracks,
       });
@@ -143,7 +143,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     convertAac,
     bpmMin,
     bpmMax,
-    confidence,
+    organiseConfidence,
     trackDuration,
     maxTracks,
     addToast,
@@ -160,21 +160,18 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500">
+      <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-950 text-gray-500">
         Loading settings...
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="absolute inset-0 z-10 overflow-y-auto bg-gray-950 p-6">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">Settings</h2>
-          <button
-            className="text-sm text-gray-400 hover:text-gray-200"
-            onClick={onClose}
-          >
+          <button className="text-sm text-gray-400 hover:text-gray-200" onClick={onClose}>
             Close
           </button>
         </div>
@@ -214,9 +211,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {/* Output Directory */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Output Directory
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Output Directory</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -243,9 +238,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {/* Key Notation */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Key Notation
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Key Notation</label>
             <select
               value={keyNotation}
               onChange={(e) => setKeyNotation(e.target.value)}
@@ -259,9 +252,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {/* Folder Template */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Folder Template
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Folder Template</label>
             <input
               type="text"
               value={folderTemplate}
@@ -269,9 +260,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               className="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200"
               placeholder="{artist}/{album}/{title}"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Preview: {templatePreview}
-            </p>
+            <p className="text-xs text-gray-500 mt-1">Preview: {templatePreview}</p>
           </div>
 
           {/* Convert AAC to MP3 */}
@@ -325,20 +314,24 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </div>
               </div>
 
-              {/* Confidence Threshold */}
+              {/* Organisation Confidence Threshold */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">
-                  Confidence Threshold (0.0–1.0)
+                  Organisation Confidence Threshold
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   min="0"
                   max="1"
-                  value={confidence}
-                  onChange={(e) => setConfidence(Number(e.target.value))}
+                  value={organiseConfidence}
+                  onChange={(e) => setOrganiseConfidence(Number(e.target.value))}
                   className="w-24 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Tracks scoring below this go to the review queue. Higher = more tracks need manual
+                  review.
+                </p>
               </div>
 
               {/* Track Duration */}
@@ -357,9 +350,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
 
               {/* Max Tracks Per Set */}
               <div>
-                <label className="block text-xs text-gray-400 mb-1">
-                  Max Tracks Per Set
-                </label>
+                <label className="block text-xs text-gray-400 mb-1">Max Tracks Per Set</label>
                 <input
                   type="number"
                   min="1"
@@ -381,10 +372,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
           >
             {saving ? "Saving..." : "Save Settings"}
           </button>
-          <button
-            className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200"
-            onClick={onClose}
-          >
+          <button className="px-4 py-2 text-sm text-gray-400 hover:text-gray-200" onClick={onClose}>
             Cancel
           </button>
         </div>

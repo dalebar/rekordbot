@@ -38,7 +38,9 @@ export default function SetCreateDialog({ onClose, onCreated }: SetCreateDialogP
   const [crates, setCrates] = useState<CrateSummary[]>([]);
 
   useEffect(() => {
-    listCrates().then(setCrates).catch(() => {});
+    listCrates()
+      .then(setCrates)
+      .catch(() => {});
   }, []);
 
   const handleCreate = useCallback(async () => {

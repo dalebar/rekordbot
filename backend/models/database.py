@@ -9,7 +9,7 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-engine = create_engine(settings.db_url, echo=False)
+engine = create_engine(settings.db_url, echo=False, connect_args={"timeout": 30})
 SessionLocal = sessionmaker(bind=engine)
 
 

@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse  # type: ignore[import-not-found]
 
 from backend.config import settings
-from backend.models.database import SessionLocal
 from backend.services.queue import ProcessingQueue
 
 logger = logging.getLogger(__name__)
@@ -75,6 +74,7 @@ async def ingest(request: IngestRequest) -> IngestResponse:
     Accepts file and directory paths, expands directories, filters to
     supported audio formats, and dispatches to the processing queue.
     """
+    logger.info("Ingest request received: %d paths", len(request.paths))
     global _queue
 
     if _queue is not None and _queue.is_processing:
@@ -100,16 +100,13 @@ async def ingest(request: IngestRequest) -> IngestResponse:
 
     batch_id = str(uuid.uuid4())
     _queue = ProcessingQueue(queue_settings)
-    db_session = SessionLocal()
 
     # Start processing in background
     async def _run_batch() -> None:
         try:
-            await _queue.process_batch(file_paths, db_session)
+            await _queue.process_batch(file_paths)
         except Exception:
             logger.exception("Batch processing failed")
-        finally:
-            db_session.close()
 
     asyncio.create_task(_run_batch())
 

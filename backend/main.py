@@ -1,12 +1,14 @@
 """FastAPI application entry point for rekordbot."""
 
 import logging
+import logging.handlers
 import os
 import shutil
 import signal
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -22,9 +24,21 @@ from backend.services.watchdog import parse_parent_pid, start_watchdog
 _config = load_config()
 apply_config_to_env(_config)
 
-# In packaged mode (--parent-pid present), use app data directory for DB.
-if "--parent-pid" in sys.argv and "REKORDBOT_DB_URL" not in os.environ:
-    os.environ["REKORDBOT_DB_URL"] = get_db_path()
+# In packaged mode (--parent-pid present), configure paths for .app bundle.
+if "--parent-pid" in sys.argv:
+    if "REKORDBOT_DB_URL" not in os.environ:
+        os.environ["REKORDBOT_DB_URL"] = get_db_path()
+
+    # Resolve bundled ffmpeg/ffprobe in .app bundle.
+    # Sidecar is at Contents/MacOS/sidecar/rekordbot-server
+    # Tauri places resources/ contents into Contents/Resources/resources/
+    _resources_dir = Path(sys.executable).parent.parent.parent / "Resources" / "resources"
+    _bundled_ffmpeg = _resources_dir / "ffmpeg"
+    if _bundled_ffmpeg.exists():
+        os.environ.setdefault("REKORDBOT_FFMPEG_PATH", str(_bundled_ffmpeg))
+    _bundled_ffprobe = _resources_dir / "ffprobe"
+    if _bundled_ffprobe.exists():
+        os.environ.setdefault("REKORDBOT_FFPROBE_PATH", str(_bundled_ffprobe))
 
 from backend.config import settings  # noqa: E402
 from backend.exceptions import RekordBotError  # noqa: E402
@@ -48,18 +62,53 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-    datefmt="%H:%M:%S",
-)
+_log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+_log_format = "%(asctime)s %(levelname)-8s %(name)s — %(message)s"
+_log_datefmt = "%H:%M:%S"
+
+logging.basicConfig(level=_log_level, format=_log_format, datefmt=_log_datefmt)
+
 logger = logging.getLogger(__name__)
+
+# Log file path for packaged mode (used by _build_log_config and lifespan)
+_LOG_FILE_PATH = Path.home() / "Library" / "Application Support" / "rekordbot" / "rekordbot.log"
+_is_packaged = "--parent-pid" in sys.argv
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — run migrations and initialise on startup."""
     run_migrations(engine)
+
+    # Attach file handler in packaged mode AFTER migrations. Alembic's
+    # env.py previously called fileConfig() which nuked root logger handlers;
+    # that call is now removed, but we still attach after migrations as a
+    # safeguard. uvicorn is started with log_config=None so it never calls
+    # dictConfig() either — our basicConfig and this handler stay put.
+    if _is_packaged:
+        _LOG_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            str(_LOG_FILE_PATH),
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter(_log_format, datefmt=_log_datefmt))
+        root_logger = logging.getLogger()
+        root_logger.addHandler(file_handler)
+
+        # Remove StreamHandlers to prevent stdout pipe deadlock.
+        # In packaged mode, stdout is piped to Tauri and the pipe buffer
+        # fills after ~64KB of log output, blocking the worker thread.
+        for handler in root_logger.handlers[:]:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                handler, logging.FileHandler
+            ):
+                root_logger.removeHandler(handler)
+
+        logger.info("File logging active: %s", _LOG_FILE_PATH)
+
     logger.info("rekordbot backend started on port %d", settings.port)
 
     # Startup health checks (non-blocking — log warnings only)
@@ -183,10 +232,14 @@ if __name__ == "__main__":
             host="127.0.0.1",
             port=settings.port,
             reload=True,
+            log_config=None,
+            loop="asyncio",
         )
     else:
         uvicorn.run(
             app,
             host="127.0.0.1",
             port=settings.port,
+            log_config=None,
+            loop="asyncio",
         )

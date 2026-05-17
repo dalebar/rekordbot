@@ -210,7 +210,7 @@ class TestErrorHandlingIntegration:
         """Pydantic validation errors use standard format."""
         resp = await app_client.put(
             "/api/settings",
-            json={"confidence_threshold": 5.0},
+            json={"organise_confidence_threshold": 5.0},
         )
         assert resp.status_code == 422
         data = resp.json()

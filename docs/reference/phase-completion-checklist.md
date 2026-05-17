@@ -56,7 +56,7 @@ In `docs/features/<phase>.md`, change the Status field at the top to "Complete â
 
 ```bash
 git add CLAUDE.md SESSIONS.md docs/features/<phase>.md
-git commit -m "Update project docs for Phase [N] completion"
+git commit -m "Update project docs for Phase <N> completion"   # substitute <N> with the phase number (e.g. 6c)
 ```
 
 ### 8. Merge to develop
@@ -69,17 +69,25 @@ git log --oneline -5                      # verify merge looks right
 
 The `--no-ff` flag creates a merge commit even if fast-forward is possible. This preserves the branch history in the git log, making it clear where each phase's work starts and ends.
 
-### 9. Tag (optional but recommended)
+### 9. Tag the merge commit
+
+Tagging marks phase boundaries on `develop` and is the project convention â€” always apply a tag after merging. Substitute `<N>` with the actual phase number and `<phase-name>` with the phase title.
 
 ```bash
-git tag -a phase-N-complete -m "Phase N: [phase name] complete"
+git tag -a phase-<N>-complete -m "Phase <N>: <phase name> complete"
 ```
 
-Useful for quickly checking out known-good states later.
+Then push the tag to origin:
+
+```bash
+git push origin phase-<N>-complete
+```
+
+Tags let you quickly check out known-good states and provide a visible audit trail of phase landings on `develop`.
 
 ### 10. Review the project plan
 
-Before moving on, review `docs/djapp-project-plan.md` against the current state of the project. Check for:
+Before moving on, review `docs/rekordbot-project-plan.md` against the current state of the project. Check for:
 - Completed phases accurately reflected (deliverables, not unchecked boxes)
 - Tech stack and architecture still match reality
 - Feature map updated with anything built or changed during this phase

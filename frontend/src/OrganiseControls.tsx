@@ -10,12 +10,7 @@ import {
   type ProposalResponse,
 } from "./api/client";
 
-export type OrganiseFilterMode =
-  | "all"
-  | "unorganised"
-  | "proposed"
-  | "review_needed"
-  | "organised";
+export type OrganiseFilterMode = "all" | "unorganised" | "proposed" | "review_needed" | "organised";
 
 interface OrganiseControlsProps {
   selectedTrackIds: number[];
@@ -115,10 +110,10 @@ export default function OrganiseControls({
           className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
         >
           {proposing
-            ? "Proposing..."
+            ? "Previewing..."
             : selectedTrackIds.length > 0
-              ? `Organise Selected (${selectedTrackIds.length})`
-              : "Organise All"}
+              ? `Preview Organisation (${selectedTrackIds.length})`
+              : "Preview Organisation"}
         </button>
 
         {/* Cancel */}
@@ -189,8 +184,7 @@ export default function OrganiseControls({
           <span>
             Moved: {approveResult.total_moved}
             {approveResult.failed > 0 && `, ${approveResult.failed} failed`}
-            {approveResult.dirs_cleaned > 0 &&
-              `, ${approveResult.dirs_cleaned} empty dirs cleaned`}
+            {approveResult.dirs_cleaned > 0 && `, ${approveResult.dirs_cleaned} empty dirs cleaned`}
           </span>
           <button
             onClick={() => setApproveResult(null)}

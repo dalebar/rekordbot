@@ -1,15 +1,20 @@
-"""Processing queue — manages batch file processing with concurrency control and SSE."""
+"""Processing queue — manages batch file processing with SSE progress reporting.
+
+Uses a plain background thread for file processing to avoid asyncio event loop
+starvation that causes deadlocks after ~40-45 files on macOS.
+"""
 
 import asyncio
 import json
 import logging
+import queue
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from backend.config import Settings
+from backend.models.database import SessionLocal
 from backend.services.converter import TrackResult, convert_file
 
 logger = logging.getLogger(__name__)
@@ -37,23 +42,25 @@ class BatchResult:
 
 
 class ProcessingQueue:
-    """Manages concurrent file processing with SSE progress reporting.
+    """Manages file processing in a background thread with SSE progress reporting.
+
+    Processing runs in a plain thread to avoid asyncio event loop starvation.
+    SSE events are pushed to the asyncio event queue via call_soon_threadsafe.
 
     Attributes:
         settings: Application settings.
-        _semaphore: Limits concurrent ffmpeg processes.
-        _cancel_event: Set to request cancellation.
+        _cancel_event: Set to request cancellation (threading.Event).
         _progress: Current batch progress.
-        _event_queue: SSE events are pushed here for consumption.
+        _event_queue: asyncio.Queue for SSE event consumption.
     """
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._semaphore = asyncio.Semaphore(settings.max_concurrent_conversions)
-        self._cancel_event = asyncio.Event()
+        self._cancel_event = threading.Event()
         self._progress = BatchProgress()
         self._event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._processing = False
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def is_processing(self) -> bool:
@@ -65,7 +72,12 @@ class ProcessingQueue:
         self._cancel_event.set()
         logger.info("Batch cancellation requested")
 
-    async def _emit_event(
+    def _push_event(self, event: dict[str, Any]) -> None:
+        """Thread-safe: push an SSE event from the worker thread."""
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(self._event_queue.put_nowait, event)
+
+    def _emit(
         self,
         file_path: str,
         status: str,
@@ -73,7 +85,7 @@ class ProcessingQueue:
         message: str = "",
         error: str | None = None,
     ) -> None:
-        """Push an SSE event to the event queue."""
+        """Emit an SSE event (callable from any thread)."""
         event_data = {
             "file_path": file_path,
             "status": status,
@@ -88,28 +100,44 @@ class ProcessingQueue:
         }
         if error:
             event_data["error"] = error
-        await self._event_queue.put({"event": "file_progress", "data": event_data})
+        self._push_event({"event": "file_progress", "data": event_data})
 
-    async def _process_one(self, path: Path, db_session: Session) -> TrackResult:
-        """Process a single file with semaphore-controlled concurrency."""
-        async with self._semaphore:
+    def _worker_thread(self, work_queue: queue.Queue[Path | None]) -> list[TrackResult]:
+        """Worker thread — processes files sequentially, fully synchronous."""
+        results: list[TrackResult] = []
+
+        while True:
+            path = work_queue.get()
+            if path is None:
+                break
+
             if self._cancel_event.is_set():
-                return TrackResult(
-                    success=False,
-                    file_path=str(path),
-                    error="Cancelled",
-                    action="cancelled",
+                results.append(
+                    TrackResult(
+                        success=False,
+                        file_path=str(path),
+                        error="Cancelled",
+                        action="cancelled",
+                    )
                 )
+                continue
 
-            await self._emit_event(str(path), "processing", message=f"Processing {path.name}...")
+            self._emit(str(path), "processing", message=f"Processing {path.name}...")
 
-            result = await convert_file(path, db_session, self.settings)
+            db_session = SessionLocal()
+            try:
+                result = convert_file(path, db_session, self.settings)
+            except Exception as e:
+                logger.exception("Unexpected error processing %s", path.name)
+                result = TrackResult(success=False, file_path=str(path), error=str(e))
+            finally:
+                db_session.close()
 
-            # Update progress
+            # Update progress and emit events
             if result.duplicate:
                 self._progress.duplicates += 1
                 self._progress.completed += 1
-                await self._emit_event(
+                self._emit(
                     str(path),
                     "skipped",
                     action="skip_duplicate",
@@ -117,7 +145,7 @@ class ProcessingQueue:
                 )
             elif result.success:
                 self._progress.completed += 1
-                await self._emit_event(
+                self._emit(
                     str(path),
                     "complete",
                     action=result.action,
@@ -126,25 +154,34 @@ class ProcessingQueue:
             else:
                 self._progress.failed += 1
                 self._progress.completed += 1
-                await self._emit_event(
+                self._emit(
                     str(path),
                     "failed",
                     message=f"Failed: {path.name}",
                     error=result.error,
                 )
 
-            return result
+            results.append(result)
 
-    async def process_batch(
+        return results
+
+    def _run_worker_and_signal(
         self,
-        paths: list[Path],
-        db_session: Session,
-    ) -> BatchResult:
-        """Process a batch of files concurrently.
+        work_queue: queue.Queue[Path | None],
+        future: asyncio.Future[list[TrackResult]],
+    ) -> None:
+        """Run the worker and signal the asyncio Future when done."""
+        try:
+            results = self._worker_thread(work_queue)
+            self._loop.call_soon_threadsafe(future.set_result, results)  # type: ignore[union-attr]
+        except Exception as e:
+            self._loop.call_soon_threadsafe(future.set_exception, e)  # type: ignore[union-attr]
+
+    async def process_batch(self, paths: list[Path]) -> BatchResult:
+        """Process a batch of files in a background thread.
 
         Args:
             paths: List of audio file paths to process.
-            db_session: SQLAlchemy session for database operations.
 
         Returns:
             BatchResult with summary and per-file results.
@@ -152,32 +189,42 @@ class ProcessingQueue:
         self._processing = True
         self._cancel_event.clear()
         self._progress = BatchProgress(total=len(paths))
+        self._loop = asyncio.get_event_loop()
 
-        # Emit queued events for all files
+        # Populate stdlib queue
+        work_queue: queue.Queue[Path | None] = queue.Queue()
         for path in paths:
-            await self._emit_event(str(path), "queued", message=f"Queued: {path.name}")
+            work_queue.put(path)
+        work_queue.put(None)  # sentinel
 
-        # Process all files concurrently (bounded by semaphore)
-        tasks = [self._process_one(path, db_session) for path in paths]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Create Future for getting results back from thread
+        worker_future: asyncio.Future[list[TrackResult]] = self._loop.create_future()
+
+        # Run worker in a plain thread
+        thread = threading.Thread(
+            target=self._run_worker_and_signal,
+            args=(work_queue, worker_future),
+            name="ingest-worker",
+            daemon=True,
+        )
+        thread.start()
+
+        # Wait for the thread to finish without blocking the event loop
+        results = await worker_future
 
         # Build batch result
         batch_result = BatchResult(total=len(paths))
         for result in results:
-            if isinstance(result, Exception):
-                logger.exception("Unexpected error in batch processing: %s", result)
+            batch_result.results.append(result)
+            if result.duplicate:
+                batch_result.duplicates += 1
+            elif result.success:
+                batch_result.succeeded += 1
+            else:
                 batch_result.failed += 1
-            elif isinstance(result, TrackResult):
-                batch_result.results.append(result)
-                if result.duplicate:
-                    batch_result.duplicates += 1
-                elif result.success:
-                    batch_result.succeeded += 1
-                else:
-                    batch_result.failed += 1
 
         # Emit batch complete event
-        await self._event_queue.put(
+        self._push_event(
             {
                 "event": "batch_complete",
                 "data": {

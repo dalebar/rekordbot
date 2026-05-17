@@ -7,7 +7,9 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from backend.models.database import SessionLocal, init_db
+from backend.models.crate import Crate, CrateTrack
+from backend.models.database import Base, SessionLocal, init_db
+from backend.models.set_plan import SetPlan, SetTrack
 from backend.models.track import Track
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "audio"
@@ -17,11 +19,17 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "audio"
 async def client(tmp_path):
     """Async HTTP client with a fresh database."""
     from backend.main import app
+    from backend.models.database import engine as prod_engine
 
+    Base.metadata.drop_all(prod_engine)
     init_db()
 
-    # Clean tracks table for test isolation
+    # Clean tables for test isolation
     db = SessionLocal()
+    db.query(SetTrack).delete()
+    db.query(SetPlan).delete()
+    db.query(CrateTrack).delete()
+    db.query(Crate).delete()
     db.query(Track).delete()
     db.commit()
     db.close()
@@ -236,3 +244,103 @@ class TestAnalyseEndpoints:
         response = await client.post("/api/tracks/analyse/cancel")
         assert response.status_code == 200
         assert response.json()["status"] == "no_active_batch"
+
+
+class TestDeleteTracks:
+    """Test DELETE /api/tracks."""
+
+    async def test_delete_tracks_by_id(self, client, db_with_track):
+        """Delete tracks by ID — records removed."""
+        track_id, _ = db_with_track
+        response = await client.request("DELETE", "/api/tracks", json={"track_ids": [track_id]})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] == 1
+        assert data["not_found"] == 0
+        assert data["file_errors"] == 0
+
+        # Verify track is gone
+        get_response = await client.get("/api/tracks")
+        assert all(t["id"] != track_id for t in get_response.json()["tracks"])
+
+    async def test_delete_with_file_removal(self, client, db_with_track):
+        """Delete with delete_files=true — output file removed from disk."""
+        track_id, file_path = db_with_track
+        assert file_path.exists()
+
+        response = await client.request(
+            "DELETE",
+            "/api/tracks",
+            json={"track_ids": [track_id], "delete_files": True},
+        )
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 1
+        assert not file_path.exists()
+
+    async def test_delete_with_missing_file(self, client, tmp_path):
+        """Delete with delete_files=true but file already missing — no error."""
+        db = SessionLocal()
+        track = Track(file_path=str(tmp_path / "nonexistent.mp3"))
+        db.add(track)
+        db.commit()
+        track_id = track.id
+        db.close()
+
+        response = await client.request(
+            "DELETE",
+            "/api/tracks",
+            json={"track_ids": [track_id], "delete_files": True},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] == 1
+        assert data["file_errors"] == 0
+
+    async def test_delete_tracks_in_crates_and_sets(self, client, db_with_track):
+        """Delete tracks that are in crates/sets — associations also removed."""
+        track_id, _ = db_with_track
+
+        db = SessionLocal()
+        crate = Crate(name="Test", description="test")
+        db.add(crate)
+        db.commit()
+        crate_id = crate.id
+        db.add(CrateTrack(crate_id=crate_id, track_id=track_id, assignment_method="ai"))
+        db.commit()
+
+        set_plan = SetPlan(name="Test Set", description="test")
+        db.add(set_plan)
+        db.commit()
+        set_plan_id = set_plan.id
+        db.add(SetTrack(set_id=set_plan_id, track_id=track_id, position=1))
+        db.commit()
+        db.close()
+
+        response = await client.request("DELETE", "/api/tracks", json={"track_ids": [track_id]})
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 1
+
+        # Verify associations are gone
+        db = SessionLocal()
+        assert db.query(CrateTrack).filter_by(track_id=track_id).first() is None
+        assert db.query(SetTrack).filter_by(track_id=track_id).first() is None
+        # Crate/set themselves still exist
+        assert db.query(Crate).filter_by(id=crate_id).first() is not None
+        assert db.query(SetPlan).filter_by(id=set_plan_id).first() is not None
+        db.close()
+
+    async def test_delete_empty_track_ids(self, client):
+        """Delete with empty track_ids — 200 with deleted=0."""
+        response = await client.request("DELETE", "/api/tracks", json={"track_ids": []})
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 0
+
+    async def test_delete_nonexistent_ids(self, client):
+        """Delete with non-existent IDs — not_found incremented."""
+        response = await client.request(
+            "DELETE", "/api/tracks", json={"track_ids": [99998, 99999]}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] == 0
+        assert data["not_found"] == 2

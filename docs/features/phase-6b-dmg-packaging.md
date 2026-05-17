@@ -234,7 +234,7 @@ build-dmg:
 - Document any issues found and fixes applied
 - Update CLAUDE.md with Phase 6b status
 - Update SESSIONS.md
-- Update `djapp-project-plan.md` phase listing
+- Update `rekordbot-project-plan.md` phase listing
 - Commit: "Verify end-to-end .dmg install and update project docs for Phase 6b"
 
 ---

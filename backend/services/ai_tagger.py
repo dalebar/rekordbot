@@ -190,7 +190,7 @@ class AiTagger:
 
         self._processing = False
         logger.info(
-            "AI tagging pipeline complete: %d succeeded, %d failed, " "$%.4f estimated cost",
+            "AI tagging pipeline complete: %d succeeded, %d failed, $%.4f estimated cost",
             self._pipeline_result.succeeded,
             self._pipeline_result.failed,
             self._pipeline_result.estimated_cost_usd,

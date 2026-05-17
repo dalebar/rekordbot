@@ -215,10 +215,11 @@ async def ai_tag_status() -> AiTagStatusResponse:
 @router.post("/tracks/ai-tag/validate-key", response_model=ValidateKeyResponse)
 async def validate_api_key() -> ValidateKeyResponse:
     """Validate the configured Anthropic API key."""
+    logger.info("Validating API key, key present: %s", bool(settings.anthropic_api_key))
     if not settings.anthropic_api_key:
         return ValidateKeyResponse(
             valid=False,
-            error="No API key configured. " "Set REKORDBOT_ANTHROPIC_API_KEY in your .env file.",
+            error="No API key configured. Set REKORDBOT_ANTHROPIC_API_KEY in your .env file.",
         )
 
     try:
@@ -229,4 +230,16 @@ async def validate_api_key() -> ValidateKeyResponse:
         await client.validate_api_key()
         return ValidateKeyResponse(valid=True, model=settings.ai_model)
     except AiTagError as e:
-        return ValidateKeyResponse(valid=False, error=e.detail)
+        # Distinguish auth failures (invalid key) from transient API errors
+        # (429 rate limit, 529 overload). If the API didn't explicitly reject
+        # the key, assume it's valid — don't disable the button for transient issues.
+        is_auth_failure = (
+            "Invalid" in (e.detail or "") or "authentication" in (e.detail or "").lower()
+        )
+        if is_auth_failure:
+            return ValidateKeyResponse(valid=False, error=e.detail)
+        logger.warning("API key validation got transient error: %s", e.detail)
+        return ValidateKeyResponse(
+            valid=True,
+            error=f"Key appears valid but API returned an error: {e.detail}",
+        )

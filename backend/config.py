@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     output_directory: str = "~/rekordbot/library"
-    max_concurrent_conversions: int = 2
+    max_concurrent_conversions: int = 1
     convert_aac_to_mp3: bool = False
     anthropic_api_key: str = ""
 
@@ -46,7 +46,6 @@ class Settings(BaseSettings):
     # Phase 2: Analysis settings
     bpm_range_min: int = 70
     bpm_range_max: int = 180
-    confidence_threshold: float = 0.6
     max_concurrent_analyses: int = 1
     default_key_notation: str = "camelot"
 

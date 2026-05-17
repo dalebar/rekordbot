@@ -41,9 +41,9 @@ export function clearApiErrorHandler(): void {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // Only set Content-Type for requests with a body (POST, PUT, PATCH).
   // Setting it on GET requests triggers unnecessary CORS preflight checks.
-  const headers: Record<string, string> = { ...options?.headers as Record<string, string> };
+  const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) };
   const method = (options?.method ?? "GET").toUpperCase();
-  if (["POST", "PUT", "PATCH"].includes(method) && !headers["Content-Type"]) {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -302,6 +302,24 @@ export function updateTrack(trackId: number, update: TrackUpdate): Promise<Track
 export function revertField(trackId: number, field: "bpm" | "key" | "genre"): Promise<Track> {
   return request<Track>(`/api/tracks/${trackId}/revert/${field}`, {
     method: "PUT",
+  });
+}
+
+/** Delete tracks response. */
+export interface DeleteTracksResponse {
+  deleted: number;
+  not_found: number;
+  file_errors: number;
+}
+
+/** Delete tracks by ID, optionally removing output files from disk. */
+export function deleteTracks(
+  trackIds: number[],
+  deleteFiles = false,
+): Promise<DeleteTracksResponse> {
+  return request<DeleteTracksResponse>("/api/tracks", {
+    method: "DELETE",
+    body: JSON.stringify({ track_ids: trackIds, delete_files: deleteFiles }),
   });
 }
 
@@ -815,9 +833,7 @@ export function deleteCrate(crateId: number): Promise<{ status: string; crate_id
 }
 
 /** Refresh a crate (re-run AI assignment). */
-export function refreshCrate(
-  crateId: number,
-): Promise<{ status: string; message: string }> {
+export function refreshCrate(crateId: number): Promise<{ status: string; message: string }> {
   return request(`/api/crates/${crateId}/refresh`, { method: "POST" });
 }
 
@@ -1054,16 +1070,12 @@ export function moveTrackInSet(
 }
 
 /** Get candidate pool for a set. */
-export function getCandidates(
-  setId: number,
-): Promise<SetTrackItem[]> {
+export function getCandidates(setId: number): Promise<SetTrackItem[]> {
   return request<SetTrackItem[]>(`/api/sets/${setId}/candidates`);
 }
 
 /** Export a set as a Rekordbox playlist. */
-export function exportSet(
-  setId: number,
-): Promise<{
+export function exportSet(setId: number): Promise<{
   status: string;
   set_id: number;
   set_name: string;
@@ -1149,7 +1161,7 @@ export interface SettingsResponse {
   convert_aac_to_mp3: boolean;
   bpm_range_min: number;
   bpm_range_max: number;
-  confidence_threshold: number;
+  organise_confidence_threshold: number;
   set_track_duration_minutes: number;
   set_max_tracks: number;
 }
@@ -1163,7 +1175,7 @@ export interface SettingsUpdateRequest {
   convert_aac_to_mp3?: boolean;
   bpm_range_min?: number;
   bpm_range_max?: number;
-  confidence_threshold?: number;
+  organise_confidence_threshold?: number;
   set_track_duration_minutes?: number;
   set_max_tracks?: number;
 }
@@ -1265,9 +1277,7 @@ export interface ImportConflict {
 }
 
 /** Start Rekordbox XML import. */
-export function importRekordboxXml(
-  filePath: string,
-): Promise<{ status: string; message: string }> {
+export function importRekordboxXml(filePath: string): Promise<{ status: string; message: string }> {
   return request<{ status: string; message: string }>("/api/import/rekordbox", {
     method: "POST",
     body: JSON.stringify({ file_path: filePath }),

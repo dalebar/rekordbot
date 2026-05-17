@@ -22,7 +22,7 @@ class TestInspectRealFiles:
     """Test inspect_file with actual audio fixtures."""
 
     async def test_inspect_wav_16bit(self) -> None:
-        info = await inspect_file(_fixture("silence_16bit.wav"))
+        info = inspect_file(_fixture("silence_16bit.wav"))
         assert info.codec == "pcm_s16le"
         assert info.bit_depth == 16
         assert info.is_lossless is True
@@ -30,42 +30,42 @@ class TestInspectRealFiles:
         assert info.channels == 2
 
     async def test_inspect_wav_24bit(self) -> None:
-        info = await inspect_file(_fixture("silence_24bit.wav"))
+        info = inspect_file(_fixture("silence_24bit.wav"))
         assert info.codec == "pcm_s24le"
         assert info.bit_depth == 24
         assert info.is_lossless is True
 
     async def test_inspect_flac(self) -> None:
-        info = await inspect_file(_fixture("silence_16bit.flac"))
+        info = inspect_file(_fixture("silence_16bit.flac"))
         assert info.codec == "flac"
         assert info.bit_depth == 16
         assert info.is_lossless is True
 
     async def test_inspect_aiff(self) -> None:
-        info = await inspect_file(_fixture("silence_16bit.aiff"))
+        info = inspect_file(_fixture("silence_16bit.aiff"))
         assert info.codec == "pcm_s16be"
         assert info.bit_depth == 16
         assert info.is_lossless is True
 
     async def test_inspect_mp3_320k(self) -> None:
-        info = await inspect_file(_fixture("silence_320k.mp3"))
+        info = inspect_file(_fixture("silence_320k.mp3"))
         assert info.codec == "mp3"
         assert info.is_lossless is False
         assert info.bit_depth is None
 
     async def test_inspect_mp3_128k(self) -> None:
-        info = await inspect_file(_fixture("silence_128k.mp3"))
+        info = inspect_file(_fixture("silence_128k.mp3"))
         assert info.codec == "mp3"
         assert info.is_lossless is False
 
     async def test_inspect_alac(self) -> None:
-        info = await inspect_file(_fixture("silence_alac.m4a"))
+        info = inspect_file(_fixture("silence_alac.m4a"))
         assert info.codec == "alac"
         assert info.is_lossless is True
         assert info.bit_depth == 16
 
     async def test_inspect_aac(self) -> None:
-        info = await inspect_file(_fixture("silence_aac.m4a"))
+        info = inspect_file(_fixture("silence_aac.m4a"))
         assert info.codec == "aac"
         assert info.is_lossless is False
 
@@ -83,7 +83,7 @@ class TestConvertRealFiles:
             output_directory=str(tmp_path / "output"),
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_16bit.wav"), db_session, settings)
+        result = convert_file(_fixture("silence_16bit.wav"), db_session, settings)
 
         assert result.success is True
         assert result.track is not None
@@ -100,7 +100,7 @@ class TestConvertRealFiles:
             output_directory=str(tmp_path / "output"),
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_16bit.flac"), db_session, settings)
+        result = convert_file(_fixture("silence_16bit.flac"), db_session, settings)
 
         assert result.success is True
         assert result.track is not None
@@ -114,7 +114,7 @@ class TestConvertRealFiles:
             output_directory=str(tmp_path / "output"),
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_16bit.aiff"), db_session, settings)
+        result = convert_file(_fixture("silence_16bit.aiff"), db_session, settings)
 
         assert result.success is True
         assert result.action == "copy_as_is"
@@ -128,7 +128,7 @@ class TestConvertRealFiles:
             output_directory=str(tmp_path / "output"),
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_320k.mp3"), db_session, settings)
+        result = convert_file(_fixture("silence_320k.mp3"), db_session, settings)
 
         assert result.success is True
         assert result.action == "copy_as_is"
@@ -142,7 +142,7 @@ class TestConvertRealFiles:
             output_directory=str(tmp_path / "output"),
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_128k.mp3"), db_session, settings)
+        result = convert_file(_fixture("silence_128k.mp3"), db_session, settings)
 
         assert result.success is True
         assert result.track is not None
@@ -155,7 +155,7 @@ class TestConvertRealFiles:
             output_directory=str(tmp_path / "output"),
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_alac.m4a"), db_session, settings)
+        result = convert_file(_fixture("silence_alac.m4a"), db_session, settings)
 
         assert result.success is True
         assert result.action == "convert_to_aiff"
@@ -170,7 +170,7 @@ class TestConvertRealFiles:
             convert_aac_to_mp3=False,
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_aac.m4a"), db_session, settings)
+        result = convert_file(_fixture("silence_aac.m4a"), db_session, settings)
 
         assert result.success is True
         assert result.action == "copy_as_is"
@@ -185,7 +185,7 @@ class TestConvertRealFiles:
             convert_aac_to_mp3=True,
             db_url="sqlite://",
         )
-        result = await convert_file(_fixture("silence_aac.m4a"), db_session, settings)
+        result = convert_file(_fixture("silence_aac.m4a"), db_session, settings)
 
         assert result.success is True
         assert result.action == "convert_to_mp3"
@@ -201,10 +201,10 @@ class TestConvertRealFiles:
         )
 
         # First ingest succeeds
-        result1 = await convert_file(_fixture("silence_16bit.wav"), db_session, settings)
+        result1 = convert_file(_fixture("silence_16bit.wav"), db_session, settings)
         assert result1.success is True
 
         # Second ingest of same file is detected as duplicate
-        result2 = await convert_file(_fixture("silence_16bit.wav"), db_session, settings)
+        result2 = convert_file(_fixture("silence_16bit.wav"), db_session, settings)
         assert result2.success is False
         assert result2.duplicate is True

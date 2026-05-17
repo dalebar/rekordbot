@@ -1,4 +1,4 @@
-# CrateAI — Tauri + Python Backend Lifecycle Research
+# rekordbot — Tauri + Python Backend Lifecycle Research
 
 *Research document for Chat B. Produced for decision-making in the main development chat.*
 
@@ -10,16 +10,16 @@
 
 Tauri's sidecar feature allows you to bundle external binaries alongside your app. The binary is declared in `tauri.conf.json` under `bundle.externalBin`, and Tauri handles including it in the final distributable package.
 
-**Naming convention:** Tauri requires sidecar binaries to follow a strict naming pattern. The binary must be suffixed with the platform's target triple. For example, if your config says `"externalBin": ["binaries/crateai-server"]`, Tauri expects:
+**Naming convention:** Tauri requires sidecar binaries to follow a strict naming pattern. The binary must be suffixed with the platform's target triple. For example, if your config says `"externalBin": ["binaries/rekordbot-server"]`, Tauri expects:
 
-- `src-tauri/binaries/crateai-server-aarch64-apple-darwin` (macOS Apple Silicon)
-- `src-tauri/binaries/crateai-server-x86_64-apple-darwin` (macOS Intel)
-- `src-tauri/binaries/crateai-server-x86_64-pc-windows-msvc.exe` (Windows)
-- `src-tauri/binaries/crateai-server-x86_64-unknown-linux-gnu` (Linux)
+- `src-tauri/binaries/rekordbot-server-aarch64-apple-darwin` (macOS Apple Silicon)
+- `src-tauri/binaries/rekordbot-server-x86_64-apple-darwin` (macOS Intel)
+- `src-tauri/binaries/rekordbot-server-x86_64-pc-windows-msvc.exe` (Windows)
+- `src-tauri/binaries/rekordbot-server-x86_64-unknown-linux-gnu` (Linux)
 
 You can get your current platform's triple by running `rustc --print host-tuple`.
 
-**Path resolution:** Paths in `externalBin` are relative to the `src-tauri/` directory. So `"binaries/crateai-server"` resolves to `src-tauri/binaries/crateai-server-{target-triple}`.
+**Path resolution:** Paths in `externalBin` are relative to the `src-tauri/` directory. So `"binaries/rekordbot-server"` resolves to `src-tauri/binaries/rekordbot-server-{target-triple}`.
 
 **Permissions (Tauri v2):** The shell plugin must be installed and configured. You need to grant sidecar execution permission in `src-tauri/capabilities/default.json`:
 
@@ -28,7 +28,7 @@ You can get your current platform's triple by running `rustc --print host-tuple`
   "identifier": "shell:allow-spawn",
   "allow": [
     {
-      "name": "binaries/crateai-server",
+      "name": "binaries/rekordbot-server",
       "sidecar": true,
       "args": true
     }
@@ -40,7 +40,7 @@ Setting `"args": true` allows any arguments. For production you could lock this 
 
 ### Process Lifecycle
 
-**Spawning:** The sidecar is spawned either from Rust (`app.shell().sidecar("crateai-server")`) or from JavaScript (`Command.sidecar("binaries/crateai-server")`). Use `.spawn()` for long-running processes (like our FastAPI server) rather than `.execute()` which blocks until the process exits.
+**Spawning:** The sidecar is spawned either from Rust (`app.shell().sidecar("rekordbot-server")`) or from JavaScript (`Command.sidecar("binaries/rekordbot-server")`). Use `.spawn()` for long-running processes (like our FastAPI server) rather than `.execute()` which blocks until the process exits.
 
 **Shutdown — the critical detail:** Tauri does NOT automatically kill sidecar processes when the app closes. The official docs are explicit: "you are in charge of killing the child process when your app closes; otherwise, you pollute the user's machine with orphan processes." Since Tauri v1.0.3, Tauri emits a `RunEvent::Exit` event before killing child processes, allowing graceful shutdown.
 
@@ -58,7 +58,7 @@ fn main() {
         .run(move |_app_handle, event| match event {
             RunEvent::Ready => {
                 let (_, child) = app_handle.shell()
-                    .sidecar("crateai-server")
+                    .sidecar("rekordbot-server")
                     .expect("Failed to create sidecar command")
                     .spawn()
                     .expect("Failed to spawn backend sidecar");
@@ -243,7 +243,7 @@ ffmpeg is a separate binary (~70-80 MB). Two viable approaches:
 {
   "bundle": {
     "externalBin": [
-      "binaries/crateai-server",
+      "binaries/rekordbot-server",
       "binaries/ffmpeg"
     ]
   }
@@ -411,7 +411,7 @@ Based on the research above, here's what Phase 0 scaffolding should include beyo
 The sidecar pattern requires a `binaries/` directory inside `src-tauri/` for the compiled Python binary. Adjusted structure:
 
 ```
-crateai/
+rekordbot/
 ├── CLAUDE.md
 ├── SESSIONS.md
 ├── README.md
@@ -465,7 +465,7 @@ dev-frontend:
 	cd frontend && npm run tauri dev
 
 build-backend:
-	cd backend && pyinstaller --onedir --name crateai-server main.py
+	cd backend && pyinstaller --onedir --name rekordbot-server main.py
 	./scripts/rename-sidecar.sh
 
 build: build-backend

@@ -2,13 +2,16 @@
 
 import asyncio
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Body, Query
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse  # type: ignore[import-not-found]
 
 from backend.config import settings
+from backend.models.crate import CrateTrack
 from backend.models.database import SessionLocal
+from backend.models.set_plan import SetTrack
 from backend.models.track import Track
 from backend.services.analysis import AnalysisQueue, write_tags_batch
 from backend.services.key_notation import key_to_display
@@ -78,6 +81,21 @@ class TrackUpdate(BaseModel):
     subgenre: str | None = None
     mood: str | None = None
     energy: int | None = None
+
+
+class DeleteTracksRequest(BaseModel):
+    """Request body for DELETE /api/tracks."""
+
+    track_ids: list[int]
+    delete_files: bool = False
+
+
+class DeleteTracksResponse(BaseModel):
+    """Response for DELETE /api/tracks."""
+
+    deleted: int
+    not_found: int
+    file_errors: int
 
 
 class BPMMultiplyRequest(BaseModel):
@@ -465,7 +483,7 @@ async def bpm_multiply(track_id: int, request: BPMMultiplyRequest) -> TrackDetai
 
 @router.get("/tracks", response_model=EnhancedTrackListResponse)
 async def list_tracks(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=50, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
 ) -> EnhancedTrackListResponse:
     """List all tracks with analysis metadata, sortable/filterable."""
@@ -480,6 +498,52 @@ async def list_tracks(
             total=total,
             limit=limit,
             offset=offset,
+        )
+    finally:
+        db_session.close()
+
+
+@router.delete("/tracks", response_model=DeleteTracksResponse)
+async def delete_tracks(request: DeleteTracksRequest = Body(...)) -> DeleteTracksResponse:  # noqa: B008
+    """Delete tracks by ID, optionally removing output files from disk."""
+    if not request.track_ids:
+        return DeleteTracksResponse(deleted=0, not_found=0, file_errors=0)
+
+    db_session = SessionLocal()
+    try:
+        tracks = db_session.query(Track).filter(Track.id.in_(request.track_ids)).all()
+        found_ids = {t.id for t in tracks}
+        not_found = len(request.track_ids) - len(found_ids)
+        file_errors = 0
+
+        if request.delete_files:
+            for track in tracks:
+                try:
+                    file_path = Path(track.file_path)
+                    if file_path.exists():
+                        file_path.unlink()
+                        logger.info("Deleted file: %s", track.file_path)
+                    else:
+                        logger.info("File already missing: %s", track.file_path)
+                except OSError:
+                    logger.exception("Failed to delete file: %s", track.file_path)
+                    file_errors += 1
+
+        # Delete associated CrateTrack and SetTrack rows, then tracks
+        db_session.query(CrateTrack).filter(CrateTrack.track_id.in_(found_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db_session.query(SetTrack).filter(SetTrack.track_id.in_(found_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db_session.query(Track).filter(Track.id.in_(found_ids)).delete(synchronize_session="fetch")
+        db_session.commit()
+
+        logger.info("Deleted %d tracks (%d not found)", len(found_ids), not_found)
+        return DeleteTracksResponse(
+            deleted=len(found_ids),
+            not_found=not_found,
+            file_errors=file_errors,
         )
     finally:
         db_session.close()

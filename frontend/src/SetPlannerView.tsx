@@ -20,7 +20,10 @@ interface SetPlannerViewProps {
 }
 
 /** BPM transition quality indicator. */
-function bpmQuality(bpmA: number | null, bpmB: number | null): {
+function bpmQuality(
+  bpmA: number | null,
+  bpmB: number | null,
+): {
   label: string;
   color: string;
 } {
@@ -33,7 +36,10 @@ function bpmQuality(bpmA: number | null, bpmB: number | null): {
 }
 
 /** Key compatibility indicator (simplified — green if same Camelot number group). */
-function keyCompat(keyA: number | null, keyB: number | null): {
+function keyCompat(
+  keyA: number | null,
+  keyB: number | null,
+): {
   label: string;
   color: string;
 } {
@@ -141,9 +147,7 @@ export default function SetPlannerView({ setId, onBack }: SetPlannerViewProps) {
   }, []);
 
   if (!detail) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>
-    );
+    return <div className="flex items-center justify-center h-full text-gray-500">Loading...</div>;
   }
 
   // Get tracks in position order (non-candidates)
@@ -154,9 +158,8 @@ export default function SetPlannerView({ setId, onBack }: SetPlannerViewProps) {
   // Find which segment a position belongs to
   const getSegmentForPosition = (position: number): SetSegmentItem | null => {
     return (
-      detail.segments.find(
-        (s) => position >= s.start_position && position <= s.end_position,
-      ) || null
+      detail.segments.find((s) => position >= s.start_position && position <= s.end_position) ||
+      null
     );
   };
 
@@ -168,10 +171,7 @@ export default function SetPlannerView({ setId, onBack }: SetPlannerViewProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-800">
         <div className="flex items-center gap-4">
-          <button
-            className="text-sm text-gray-500 hover:text-gray-300"
-            onClick={onBack}
-          >
+          <button className="text-sm text-gray-500 hover:text-gray-300" onClick={onBack}>
             &larr; Back
           </button>
           <div>
@@ -212,9 +212,7 @@ export default function SetPlannerView({ setId, onBack }: SetPlannerViewProps) {
           Shuffle: Reorder
         </button>
         <div className="flex-1" />
-        {progressMessage && (
-          <span className="text-xs text-blue-400">{progressMessage}</span>
-        )}
+        {progressMessage && <span className="text-xs text-blue-400">{progressMessage}</span>}
         <button
           className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 rounded"
           onClick={() => setShowCandidates(!showCandidates)}

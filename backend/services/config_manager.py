@@ -25,7 +25,7 @@ CONFIGURABLE_FIELDS: set[str] = {
     "convert_aac_to_mp3",
     "bpm_range_min",
     "bpm_range_max",
-    "confidence_threshold",
+    "organise_confidence_threshold",
     "set_track_duration_minutes",
     "set_max_tracks",
 }

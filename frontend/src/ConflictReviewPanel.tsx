@@ -30,18 +30,15 @@ export default function ConflictReviewPanel({ onClose, onRefresh }: ConflictRevi
     loadConflicts();
   }, [loadConflicts]);
 
-  const handleFieldChoice = useCallback(
-    (trackId: number, field: string, choice: string) => {
-      setResolutions((prev) => ({
-        ...prev,
-        [trackId]: {
-          ...(prev[trackId] || {}),
-          [field]: choice,
-        },
-      }));
-    },
-    [],
-  );
+  const handleFieldChoice = useCallback((trackId: number, field: string, choice: string) => {
+    setResolutions((prev) => ({
+      ...prev,
+      [trackId]: {
+        ...(prev[trackId] || {}),
+        [field]: choice,
+      },
+    }));
+  }, []);
 
   const handleResolveTrack = useCallback(
     async (trackId: number) => {
@@ -126,26 +123,17 @@ export default function ConflictReviewPanel({ onClose, onRefresh }: ConflictRevi
       {/* Conflict list */}
       <div className="flex-1 overflow-y-auto">
         {conflicts.map((conflict) => (
-          <div
-            key={conflict.track_id}
-            className="mb-2 rounded border border-gray-800 bg-gray-900"
-          >
+          <div key={conflict.track_id} className="mb-2 rounded border border-gray-800 bg-gray-900">
             {/* Track header */}
             <button
               onClick={() =>
-                setExpandedTrack(
-                  expandedTrack === conflict.track_id ? null : conflict.track_id,
-                )
+                setExpandedTrack(expandedTrack === conflict.track_id ? null : conflict.track_id)
               }
               className="flex w-full items-center justify-between p-3 text-left text-xs hover:bg-gray-800"
             >
               <div>
-                <span className="font-medium text-gray-200">
-                  {conflict.title || "Untitled"}
-                </span>
-                {conflict.artist && (
-                  <span className="ml-2 text-gray-500">— {conflict.artist}</span>
-                )}
+                <span className="font-medium text-gray-200">{conflict.title || "Untitled"}</span>
+                {conflict.artist && <span className="ml-2 text-gray-500">— {conflict.artist}</span>}
               </div>
               <span className="text-gray-600">
                 {conflict.conflicts.length} conflict
@@ -167,8 +155,7 @@ export default function ConflictReviewPanel({ onClose, onRefresh }: ConflictRevi
                   </thead>
                   <tbody>
                     {conflict.conflicts.map((f) => {
-                      const choice =
-                        resolutions[conflict.track_id]?.[f.field] || f.recommended;
+                      const choice = resolutions[conflict.track_id]?.[f.field] || f.recommended;
                       return (
                         <tr key={f.field} className="border-t border-gray-800">
                           <td className="py-2 text-gray-400">{f.field}</td>
@@ -186,11 +173,7 @@ export default function ConflictReviewPanel({ onClose, onRefresh }: ConflictRevi
                             <div className="flex gap-1">
                               <button
                                 onClick={() =>
-                                  handleFieldChoice(
-                                    conflict.track_id,
-                                    f.field,
-                                    "rekordbox",
-                                  )
+                                  handleFieldChoice(conflict.track_id, f.field, "rekordbox")
                                 }
                                 className={`rounded px-2 py-0.5 ${
                                   choice === "rekordbox"
@@ -202,11 +185,7 @@ export default function ConflictReviewPanel({ onClose, onRefresh }: ConflictRevi
                               </button>
                               <button
                                 onClick={() =>
-                                  handleFieldChoice(
-                                    conflict.track_id,
-                                    f.field,
-                                    "rekordbot",
-                                  )
+                                  handleFieldChoice(conflict.track_id, f.field, "rekordbot")
                                 }
                                 className={`rounded px-2 py-0.5 ${
                                   choice === "rekordbot"

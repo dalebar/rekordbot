@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   bpmMultiply,
+  deleteTracks,
   getCrate,
   getTracks,
   updateTrack,
@@ -8,6 +9,7 @@ import {
   type Track,
   type TrackUpdate,
 } from "./api/client";
+import { useToast } from "./ToastProvider";
 import AnalysisControls, { type FilterMode } from "./AnalysisControls";
 import ColumnMenu, { type ColumnConfig } from "./ColumnMenu";
 import ExportControls from "./ExportControls";
@@ -72,11 +74,15 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
   const [editingCell, setEditingCell] = useState<{ trackId: number; field: string } | null>(null);
   const [editValue, setEditValue] = useState("");
   const [crateTrackIds, setCrateTrackIds] = useState<Set<number> | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { addToast } = useToast();
 
   const loadTracks = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getTracks(500, 0);
+      const data = await getTracks(5000, 0);
       setTracks(data.tracks);
       setTotal(data.total);
 
@@ -113,7 +119,8 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
         );
       }
       if (filter === "conflicts") return t.has_bpm_conflict || t.has_key_conflict;
-      if (filter === "ai_tagged") return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
+      if (filter === "ai_tagged")
+        return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
       if (filter === "not_ai_tagged") return t.ai_status === "untagged";
 
       // Organisation filters
@@ -249,6 +256,49 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
     setDetailTrack(updated);
   }, []);
 
+  const handleSelectAll = useCallback(() => {
+    const allIds = new Set(sortedTracks.map((t) => t.id));
+    if (selectedIds.size === sortedTracks.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(allIds);
+    }
+  }, [sortedTracks, selectedIds.size]);
+
+  // Intercept Cmd+A to select all visible tracks
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+        e.preventDefault();
+        const allIds = new Set(sortedTracks.map((t) => t.id));
+        setSelectedIds(allIds);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sortedTracks]);
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    try {
+      const result = await deleteTracks([...selectedIds], deleteFiles);
+      addToast(
+        "success",
+        `Deleted ${result.deleted} track${result.deleted !== 1 ? "s" : ""}${result.file_errors > 0 ? ` (${result.file_errors} file error${result.file_errors !== 1 ? "s" : ""})` : ""}`,
+      );
+      setSelectedIds(new Set());
+      setDetailTrack(null);
+      await loadTracks();
+    } catch {
+      // Global error handler shows toast
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+      setDeleteFiles(false);
+    }
+  }, [selectedIds, deleteFiles, addToast, loadTracks]);
+
   if (loading && tracks.length === 0) {
     return <p className="text-sm text-gray-600">Loading tracks...</p>;
   }
@@ -262,58 +312,84 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-3">
+    <div className="flex flex-1 flex-col gap-3 min-h-0 min-w-0">
       {/* Analysis toolbar */}
-      <AnalysisControls
-        selectedTrackIds={[...selectedIds]}
-        onRefresh={loadTracks}
-        filter={filter}
-        onFilterChange={(f) => {
-          setFilter(f);
-          if (f !== "all") setOrganiseFilter("all");
-        }}
-      />
+      <div className="shrink-0">
+        <AnalysisControls
+          selectedTrackIds={[...selectedIds]}
+          onRefresh={loadTracks}
+          filter={filter}
+          onFilterChange={(f) => {
+            setFilter(f);
+            if (f !== "all") setOrganiseFilter("all");
+          }}
+        />
+      </div>
 
       {/* Organisation toolbar */}
-      <OrganiseControls
-        selectedTrackIds={[...selectedIds]}
-        onRefresh={loadTracks}
-        filter={organiseFilter}
-        onFilterChange={(f) => {
-          setOrganiseFilter(f);
-          if (f !== "all") setFilter("all");
-        }}
-        onProposalReady={setProposal}
-      />
+      <div className="shrink-0">
+        <OrganiseControls
+          selectedTrackIds={[...selectedIds]}
+          onRefresh={loadTracks}
+          filter={organiseFilter}
+          onFilterChange={(f) => {
+            setOrganiseFilter(f);
+            if (f !== "all") setFilter("all");
+          }}
+          onProposalReady={setProposal}
+        />
+      </div>
 
       {/* Export toolbar */}
-      <ExportControls trackCount={total} onRefresh={loadTracks} />
+      <div className="shrink-0">
+        <ExportControls trackCount={total} onRefresh={loadTracks} />
+      </div>
 
       {/* Review queue (shown when proposal has items needing review) */}
       {proposal && (
-        <ReviewQueue
-          proposal={proposal}
-          onClose={() => setProposal(null)}
-          onRefresh={loadTracks}
-        />
+        <div className="max-h-48 shrink-0 overflow-auto">
+          <ReviewQueue
+            proposal={proposal}
+            onClose={() => setProposal(null)}
+            onRefresh={loadTracks}
+          />
+        </div>
       )}
 
-      {/* Track count */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">
-          {filteredTracks.length} of {total} tracks
-          {selectedIds.size > 0 && ` (${selectedIds.size} selected)`}
-        </span>
+      {/* Track count and actions */}
+      <div className="flex shrink-0 items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            {filteredTracks.length} of {total} tracks
+            {selectedIds.size > 0 && ` (${selectedIds.size} selected)`}
+          </span>
+          {sortedTracks.length > 0 && (
+            <button
+              onClick={handleSelectAll}
+              className="rounded px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300"
+            >
+              {selectedIds.size === sortedTracks.length ? "Deselect All" : "Select All"}
+            </button>
+          )}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="rounded bg-red-900/50 px-2 py-0.5 text-xs text-red-300 hover:bg-red-800/50"
+            >
+              Delete Selected
+            </button>
+          )}
+        </div>
         <button onClick={loadTracks} className="text-xs text-gray-500 hover:text-gray-300">
           Refresh
         </button>
       </div>
 
       {/* Table + detail panel layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Table */}
-        <div className="flex-1 overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div className="flex-1 overflow-auto">
+          <table className="w-full select-none text-left text-xs">
             <thead>
               <tr
                 className="border-b border-gray-800 text-gray-500"
@@ -375,7 +451,9 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
       </div>
 
       {/* Preference rules panel */}
-      <PreferenceRulesPanel />
+      <div className="shrink-0 max-h-48 overflow-auto">
+        <PreferenceRulesPanel />
+      </div>
 
       {/* Column visibility menu */}
       {columnMenuPos && (
@@ -386,6 +464,49 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
           onClose={() => setColumnMenuPos(null)}
           position={columnMenuPos}
         />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-96 rounded-lg border border-gray-700 bg-gray-900 p-5 shadow-xl">
+            <h3 className="mb-3 text-sm font-medium text-gray-200">
+              Delete {selectedIds.size} track{selectedIds.size !== 1 ? "s" : ""}?
+            </h3>
+            <p className="mb-4 text-xs text-gray-400">
+              This removes the selected tracks from rekordbot's database and any crates or sets they
+              belong to.
+            </p>
+            <label className="mb-4 flex items-center gap-2 text-xs text-gray-300">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                onChange={(e) => setDeleteFiles(e.target.checked)}
+                className="rounded border-gray-600"
+              />
+              Also delete output files from disk
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteFiles(false);
+                }}
+                disabled={deleting}
+                className="rounded px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deleting}
+                className="rounded bg-red-700 px-3 py-1.5 text-xs text-white hover:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

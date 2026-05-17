@@ -82,9 +82,7 @@ export default function SetListPanel({ onSetSelect, onNewSet, refreshTrigger }: 
         {sets.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-sm text-gray-600">No sets yet</p>
-            <p className="text-xs text-gray-700 mt-1">
-              Create a set to plan your DJ performance
-            </p>
+            <p className="text-xs text-gray-700 mt-1">Create a set to plan your DJ performance</p>
           </div>
         )}
       </div>

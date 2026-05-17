@@ -77,9 +77,7 @@ export default function ImportControls({ onRefresh, onConflicts }: ImportControl
   }, []);
 
   const pct =
-    progress && progress.total > 0
-      ? Math.round((progress.processed / progress.total) * 100)
-      : 0;
+    progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
 
   return (
     <div className="flex flex-col gap-2">
@@ -122,9 +120,7 @@ export default function ImportControls({ onRefresh, onConflicts }: ImportControl
         {summary && (
           <span className="text-xs text-gray-500">
             Imported {summary.tracks_imported} tracks, {summary.tracks_matched} matched
-            {summary.tracks_conflict > 0 && (
-              <>, {summary.tracks_conflict} conflicts</>
-            )}
+            {summary.tracks_conflict > 0 && <>, {summary.tracks_conflict} conflicts</>}
             {summary.tracks_skipped > 0 && (
               <>
                 {" · "}
@@ -136,9 +132,7 @@ export default function ImportControls({ onRefresh, onConflicts }: ImportControl
                 </button>
               </>
             )}
-            {summary.playlists_imported > 0 && (
-              <>, {summary.playlists_imported} playlists</>
-            )}
+            {summary.playlists_imported > 0 && <>, {summary.playlists_imported} playlists</>}
           </span>
         )}
 

@@ -1,11 +1,13 @@
 """Settings API routes — configuration management and first-run status."""
 
 import logging
+import re
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from backend.config import Settings, settings
+from backend.exceptions import SettingsError
 from backend.services.config_manager import (
     CONFIGURABLE_FIELDS,
     config_exists,
@@ -15,6 +17,7 @@ from backend.services.config_manager import (
     save_config,
     validate_output_directory,
 )
+from backend.services.template_engine import validate_template
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class SettingsResponse(BaseModel):
     convert_aac_to_mp3: bool = False
     bpm_range_min: int = 70
     bpm_range_max: int = 180
-    confidence_threshold: float = 0.6
+    organise_confidence_threshold: float = 0.7
     set_track_duration_minutes: int = 7
     set_max_tracks: int = 50
 
@@ -46,7 +49,7 @@ class SettingsUpdate(BaseModel):
     convert_aac_to_mp3: bool | None = None
     bpm_range_min: int | None = None
     bpm_range_max: int | None = None
-    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    organise_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     set_track_duration_minutes: int | None = Field(default=None, ge=1)
     set_max_tracks: int | None = Field(default=None, ge=1)
 
@@ -98,7 +101,7 @@ async def get_settings() -> SettingsResponse:
         convert_aac_to_mp3=settings.convert_aac_to_mp3,
         bpm_range_min=settings.bpm_range_min,
         bpm_range_max=settings.bpm_range_max,
-        confidence_threshold=settings.confidence_threshold,
+        organise_confidence_threshold=settings.organise_confidence_threshold,
         set_track_duration_minutes=settings.set_track_duration_minutes,
         set_max_tracks=settings.set_max_tracks,
     )
@@ -115,6 +118,19 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
     # Handle masked API key: if user didn't change it, keep existing
     if "anthropic_api_key" in update_data and is_key_masked(update_data["anthropic_api_key"]):
         update_data.pop("anthropic_api_key")
+
+    # Structural guard: reject values that don't look like a plausible API key
+    if "anthropic_api_key" in update_data:
+        key_val = update_data["anthropic_api_key"]
+        if not _is_plausible_api_key(key_val):
+            logger.warning("Rejected invalid API key value (failed structural check)")
+            update_data.pop("anthropic_api_key")
+
+    # Validate folder template if provided
+    if "folder_template" in update_data:
+        valid, error_msg = validate_template(update_data["folder_template"])
+        if not valid:
+            raise SettingsError(detail=error_msg, error="invalid_folder_template")
 
     # Merge updates into current config
     for key, value in update_data.items():
@@ -148,10 +164,15 @@ async def validate_key(body: ValidateKeyRequest) -> ValidateKeyResponse:
         )
         return ValidateKeyResponse(valid=True)
     except Exception as e:
-        error_msg = str(e)
-        if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
+        error_msg = str(e).lower()
+        if "authentication" in error_msg or "invalid" in error_msg or "api key" in error_msg:
             return ValidateKeyResponse(valid=False, error="Invalid API key.")
-        return ValidateKeyResponse(valid=False, error=f"API error: {error_msg}")
+        if "credit" in error_msg or "balance" in error_msg:
+            return ValidateKeyResponse(
+                valid=True,
+                error="API key is valid but account has insufficient credits.",
+            )
+        return ValidateKeyResponse(valid=False, error="Could not validate key. Try again later.")
 
 
 @router.post("/validate-directory")
@@ -208,6 +229,17 @@ def _check_ffmpeg() -> bool:
     import shutil
 
     return shutil.which(settings.ffmpeg_path) is not None
+
+
+_API_KEY_PATTERN = re.compile(r"^sk-\S{17,}$")
+
+
+def _is_plausible_api_key(value: str) -> bool:
+    """Check that a value looks structurally like an Anthropic API key.
+
+    Must start with 'sk-', be at least 20 chars, and contain no spaces or newlines.
+    """
+    return bool(_API_KEY_PATTERN.match(value)) and len(value) >= 20
 
 
 # Re-export settings singleton for convenience (used by status endpoint)

@@ -41,6 +41,7 @@ export default function AnalysisControls({
   const [aiProgress, setAiProgress] = useState({ tagged: 0, total: 0, failed: 0 });
   const [aiComplete, setAiComplete] = useState<AiTagCompleteEvent | null>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
 
   const handleAnalyse = useCallback(async () => {
     try {
@@ -79,8 +80,27 @@ export default function AnalysisControls({
   // Check if API key is configured on mount
   useEffect(() => {
     postValidateApiKey()
-      .then((result) => setHasApiKey(result.valid))
-      .catch(() => setHasApiKey(false));
+      .then((result) => {
+        if (result.valid) {
+          setHasApiKey(true);
+          setApiKeyMissing(false);
+        } else if (result.error && result.error.includes("Invalid")) {
+          // Genuine auth failure — disable the button
+          setHasApiKey(false);
+          setApiKeyMissing(true);
+        } else {
+          // No key configured or transient error — check if key is missing
+          const noKey = result.error?.includes("No API key") ?? false;
+          setHasApiKey(noKey ? false : true);
+          setApiKeyMissing(noKey);
+        }
+      })
+      .catch((err) => {
+        // Can't reach backend — assume key is valid, don't disable
+        console.warn("API key validation failed:", err);
+        setHasApiKey(true);
+        setApiKeyMissing(false);
+      });
   }, []);
 
   const handleAiTag = useCallback(async () => {
@@ -198,6 +218,11 @@ export default function AnalysisControls({
           </button>
         )}
 
+        {/* API key missing hint */}
+        {apiKeyMissing && !aiTagging && (
+          <span className="text-xs text-amber-400">API key not configured — set in Settings</span>
+        )}
+
         {/* Write Tags button */}
         <button
           onClick={handleWriteTags}
@@ -273,10 +298,7 @@ export default function AnalysisControls({
             {aiComplete.token_usage.output_tokens.toLocaleString()} out
           </span>
           <span>Cost: ${aiComplete.token_usage.estimated_cost_usd.toFixed(4)}</span>
-          <button
-            onClick={() => setAiComplete(null)}
-            className="text-gray-600 hover:text-gray-400"
-          >
+          <button onClick={() => setAiComplete(null)} className="text-gray-600 hover:text-gray-400">
             Dismiss
           </button>
         </div>

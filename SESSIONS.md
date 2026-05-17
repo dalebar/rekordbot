@@ -752,3 +752,646 @@ Ran the .dmg through manual acceptance testing. App installs, launches, connects
 - Merge `feature/phase-6b-dmg-packaging` → `develop` → `main` with `--no-ff` and phase tag
 - Branch `feature/phase-6c-dogfooding` from `develop`
 - Begin Phase 6c focusing on ingestion/organisation/export workflow bugs
+
+---
+
+## Session 18 — 2026-03-17
+
+### What was worked on
+Phase 6c — first round of bug fixes from dogfooding. Ghost tracks, duplicate detection, track deletion, packaged-mode logging, and ffmpeg path resolution.
+
+### Summary
+Fixed the three bugs triaged in Session 17, plus two packaged-mode infrastructure issues discovered during debugging.
+
+**Bug fixes:**
+- **Orphaned track cleanup (Bug 3):** Duplicate detection in `converter.py` now checks whether the matched track's output file still exists on disk. If missing, deletes the orphaned Track record and related CrateTrack/SetTrack rows, then allows ingestion to continue. 3 new tests (TDD).
+- **Track deletion (Bug 2):** Added `DELETE /api/tracks` endpoint in `tagging.py` accepting `{track_ids, delete_files}`. Explicitly deletes CrateTrack/SetTrack associations before Track records (SQLite FK cascades not enabled). Optional file deletion from disk with graceful handling of already-missing files. 6 new tests.
+- **Delete UI:** "Delete Selected" button in TrackTable with confirmation dialog, "also delete files" checkbox, toast notification on completion.
+- **DELETE body parsing:** FastAPI doesn't parse JSON body for DELETE by default — added `Body(...)` annotation with `# noqa: B008` for Ruff compatibility.
+- **DELETE Content-Type:** Frontend `request()` function wasn't setting `Content-Type: application/json` for DELETE method — added to the method list.
+
+**Infrastructure fixes:**
+- **File logging:** Added `RotatingFileHandler` (5MB, 3 backups) to `~/Library/Application Support/rekordbot/rekordbot.log` when `--parent-pid` is present. Diagnostic message logged immediately after handler setup.
+- **Bundled ffmpeg path:** In packaged mode, `main.py` resolves `Contents/Resources/ffmpeg` relative to the sidecar executable and sets `REKORDBOT_FFMPEG_PATH` via `os.environ.setdefault()` before Settings instantiation.
+- **`build_ffmpeg_command()` parameterised:** Now accepts `ffmpeg_path` parameter instead of hardcoding `"ffmpeg"`. `convert_file()` passes `settings.ffmpeg_path`.
+
+**Test count:** 1154 → 1163 (+9 tests)
+
+### Bugs encountered during development
+1. **SQLite rowid reuse** — Test assertions checking orphan deletion by ID failed because SQLite reused the deleted row's primary key for the new track. Fixed by asserting on hash uniqueness and file_path instead of ID.
+2. **DetachedInstanceError in test** — CrateTrack/SetTrack test accessed SQLAlchemy objects after `db.close()`. Fixed by capturing IDs into local variables before closing the session.
+
+### Key decisions made
+1. Explicit CrateTrack/SetTrack deletion rather than relying on FK cascades — SQLite doesn't enforce `ON DELETE CASCADE` without `PRAGMA foreign_keys = ON`, which isn't set in the app's engine configuration.
+2. `Body(...)` with `# noqa: B008` for DELETE endpoint — standard FastAPI pattern, Ruff's B008 rule is a false positive for dependency injection defaults.
+3. ffmpeg path resolved via `sys.executable` relative path, not PATH manipulation — more reliable, doesn't affect other subprocesses.
+
+### Known remaining issues
+- ffprobe is NOT bundled in `frontend/src-tauri/resources/` (only ffmpeg). In packaged mode, ffprobe will fail PATH lookup. Needs to be copied alongside ffmpeg before next .dmg build.
+- Bug 1 (organisation not applied after ingestion) not yet investigated.
+
+### What's next
+- Bundle ffprobe in Tauri resources
+- Rebuild .dmg and verify all fixes with real library
+- Investigate Bug 1 (organisation pipeline in packaged mode)
+
+---
+
+## Session 19 — 2026-03-20
+
+### What was worked on
+Phase 6c — continued dogfooding fixes: packaged-mode logging, ffmpeg path resolution, and track table UX improvements.
+
+### Summary
+Fixed remaining packaged-mode infrastructure issues and several track table UX problems discovered during real-world testing with a large library.
+
+**Packaged-mode fixes:**
+- **Tauri resource path:** Fixed bundled ffmpeg path to use `Contents/Resources/resources/` (Tauri nests the `resources/` directory, not flattening it into `Contents/Resources/`).
+- **File logging surviving uvicorn:** uvicorn's `dictConfig()` was stripping the root logger's file handler. Split handler creation (module level) from attachment (lifespan handler, after uvicorn init). Two iterations needed — first moved everything into lifespan, then split create/attach for cleaner separation.
+
+**Track table UX fixes:**
+- **Shift+click text selection:** Added `select-none` to table, but this broke row clicks in Tauri's WebKit webview. Reverted and used `e.preventDefault()` in `handleRowClick` when Shift is held instead.
+- **Select All / Deselect All:** Button in the actions bar toggles between selecting and deselecting all visible tracks. Cmd+A keyboard shortcut intercepted to select all.
+- **Vertical scrolling:** Table now scrolls within its viewport container (`min-h-0` on flex parent, `overflow-auto` on table wrapper).
+- **Track limit:** Increased from 500 to 5000 (both frontend fetch and backend API validation) to support large libraries. Proper pagination deferred to Phase 6e.
+
+### Bugs encountered during development
+1. **`select-none` breaks WebKit clicks** — Tailwind's `select-none` (CSS `user-select: none`) prevents click events from firing in Tauri's WebKit webview. Fixed by using `e.preventDefault()` on Shift+click only.
+2. **File handler stripped by uvicorn** — `uvicorn.run()` calls `logging.config.dictConfig()` which replaces all root logger handlers. Handler must be attached after uvicorn starts (in lifespan), not at module level.
+
+### Key decisions made
+1. `e.preventDefault()` on Shift+click rather than CSS `user-select: none` — WebKit compatibility.
+2. File handler created at module level but attached in lifespan — clean separation, survives uvicorn's logger reconfiguration.
+3. Track limit increased to 5000 as a pragmatic fix — full pagination is a Phase 6e concern.
+
+### What's next
+- ~~Bundle ffprobe in Tauri resources~~ ✅ Done
+- Rebuild .dmg and verify all fixes with real library
+- Investigate Bug 1 (organisation pipeline in packaged mode)
+
+---
+
+## Session 20 — 2026-03-20 (continued)
+
+### What was worked on
+Phase 6c Part 1 — full end-to-end dogfooding with 211-track real library.
+
+### Summary
+Completed a full dogfooding run: ingest → analyse → organise with a real 211-track library downloaded via slsk-batchdl. Confirmed the core pipeline works end-to-end in packaged mode. Also fixed processing queue layout overflow.
+
+**What works in packaged mode (.dmg):**
+- File ingestion: 211/211 succeeded (FLAC → AIFF conversion, MP3 copy)
+- Tag reading: mutagen reads existing ID3/FLAC tags correctly — Title, Artist, Album, Genre populated
+- BPM/Key analysis: librosa analysis completes (slow — ~15-20 min for 211 tracks at 1 concurrent)
+- Organisation propose: 203 auto-approved, 8 need review (based on metadata quality)
+- Organisation approve: files moved into Artist/Album folder structure correctly
+- Review queue: Accept/Skip/Custom path options work
+- Track selection: click, Cmd+click, Shift+click, Select All button all work
+- Track deletion: Delete Selected with confirmation dialog works
+- Processing queue: auto-collapses on completion with Show/Hide toggle
+- Data persistence: tracks survive app quit and relaunch
+
+**Fixes applied during dogfooding:**
+- **Processing queue overflow:** Queue showing 211 file results pushed TrackTable off screen. Fixed with max-height constraint, auto-collapse on batch completion, and Show/Hide toggle button.
+- **CLAUDE.md updated:** ffprobe now bundled, added known issues for uvicorn handler stripping and FastAPI DELETE body parsing.
+
+**Bugs discovered (to fix in Part 2):**
+1. **AI Tagging silently fails** — clicking "AI Tag All Untagged" or "AI Tag Selected" does nothing. No toast error visible. API key is configured in Settings. Needs log investigation.
+2. **Layout breaks at normal window sizes** — track table invisible without maximising/full-screen. Drop zone + toolbars + processing queue consume all viewport space. Fundamental flex layout issue.
+3. **Horizontal scroll reveals broken layout** — white space and split colour scheme when scrolling right.
+4. **Analysis state lost on Settings navigation** — opening Settings panel while analysis is running disconnects SSE stream. On return, analysis appears stuck. Backend may still be running but frontend lost connection.
+5. **Analysis restart blocked** — after Settings navigation interruption, "Analyse All Unanalysed" does nothing (backend thinks previous batch is still running).
+6. **Scrolling breaks on relaunch** — track table not scrollable after app restart with existing data.
+7. **File logging still not capturing post-startup logs** — the lifespan handler approach still doesn't work. uvicorn may be reconfiguring logging AFTER the lifespan handler runs. Need a different approach (e.g. uvicorn log_config parameter override).
+8. **Review queue text invisible** — dark text on dark background in the review queue panel.
+9. **Shift+click still selects text** — preventDefault in handleRowClick doesn't fully prevent browser text selection in WebKit.
+10. **Bug 1 resolved** — "Organisation not applied after ingestion" was not a bug. Organisation needs metadata (from analysis/tagging) to make sensible proposals. Freshly ingested tracks with no metadata all go to "needs review" with 0% confidence, which is correct behaviour.
+
+### Key decisions made
+1. Bug 1 is not a bug — organisation correctly requires metadata before proposing folder structure.
+2. Layout issues are the highest priority for Part 2 — the app is barely usable at normal window sizes.
+3. AI tagging investigation needs working logs first — the logging issue blocks diagnosis.
+4. Analysis performance (~4-5s per track) is acceptable for Phase 6c; optimisation deferred to 6d.
+
+### What's next — Phase 6c Part 2 priorities
+1. **Fix logging** — try uvicorn log_config override instead of root logger handler attachment
+2. **Fix layout** — fundamental rework of App.tsx flex structure so track table is always visible
+3. **Investigate AI tagging** — check logs (once working) or code to find why it silently fails
+4. **Export XML** — test Rekordbox XML export with organised tracks
+5. **Minor UX** — review queue text visibility, Shift+click text selection, deselect behaviour
+
+---
+
+## Session 21 — 2026-03-20 (continued)
+
+### What was worked on
+Phase 6c Part 2 — fixed the three highest-priority bugs from Session 20: file logging, layout, and AI tagging silent failure.
+
+### Summary
+Addressed Part 2 priorities #1–3 from Session 20. All three were code-only fixes (no tests, no build).
+
+**1. File logging fixed (main.py, alembic/env.py):**
+- Three iterations to find the real root cause:
+  1. `_build_log_config()` dict passed via `log_config=` to `uvicorn.run()` — startup logs appeared but post-startup route handler logs did not.
+  2. Added `"backend"` logger entry and belt-and-suspenders re-attachment in lifespan — handler was confirmed present but logs still missing.
+  3. **Root cause found:** Alembic's `env.py` calls `fileConfig(config.config_file_name)` which reads `alembic.ini`'s `[loggers]` section, replacing root logger handlers and setting level to WARNING. Everything after `run_migrations()` went silent.
+- Final fix: removed `fileConfig()` call from `env.py` (Alembic loggers inherit app config). Passed `log_config=None` to `uvicorn.run()` (skip `dictConfig()` entirely). Removed `_build_log_config()`. File handler attached in lifespan AFTER `run_migrations()`. `logging.basicConfig()` handles console logging for the whole process.
+- Added `logger.info("Ingest request received: %d paths", ...)` in `routes/ingest.py` as a post-startup test point.
+
+**2. Layout fixed (App.tsx, DropZone.tsx, TrackTable.tsx):**
+- **App.tsx:** Added `shrink-0` to drop zone/import controls wrapper div. Wrapped TrackTable in `<div className="min-h-0 flex-1">` so it fills remaining space.
+- **DropZone.tsx:** Made compact — changed from stacked vertical layout (`flex-col gap-4`, `p-12`) to inline row (`flex items-center gap-3`, `px-6 py-4`). Drop target text and format hint sit side-by-side. Button alongside drop target. Text sizes reduced (`text-lg` → `text-sm`, `text-sm` → `text-xs`).
+- **TrackTable.tsx:** Wrapped AnalysisControls, OrganiseControls, ExportControls each in `<div className="shrink-0">`. Added `shrink-0` to track count/actions bar. Wrapped ReviewQueue in `<div className="max-h-48 shrink-0 overflow-auto">` to cap its height.
+- Track table is now visible and scrollable at 800px window height with all toolbars showing.
+
+**3. AI tagging silent failure diagnosed and fixed (AnalysisControls.tsx, ai_tagging.py):**
+- Root cause: `postValidateApiKey()` makes a real `messages.create` call. If the Anthropic API returns a transient error (429 rate limit, 529 overload), the SDK raises `APIError`, the route returns `valid: false`, and the frontend disables the button — even with a valid key.
+- Fix (backend): `validate_api_key` endpoint now distinguishes auth failures (`AuthenticationError` / "Invalid" in error) from transient API errors. Auth failures return `valid=false`; transient errors return `valid=true` with an error message (assume key is valid if not explicitly rejected).
+- Fix (frontend): validation effect now only sets `hasApiKey=false` on genuine auth rejection. Transient errors and unreachable backend default to `hasApiKey=true`. Amber "API key not configured" hint only shows when no key is set (`apiKeyMissing` state), not on transient failures. Added `console.warn` in catch block.
+
+**4. AI tagging encoding error investigated (turned out to be corrupted config — see Session 22):**
+- AI tagging in packaged mode failed with `httpcore.LocalProtocolError: Illegal header value` — appeared to be `'ascii' codec can't encode character '\u2013'`.
+- Initially appeared to be a PyInstaller ASCII encoding issue. Added `PYTHONUTF8=1`/`LANG`/`LC_ALL` env vars in main.py and later in Rust sidecar spawn.
+- **Actual root cause discovered in Session 22:** the `anthropic_api_key` in config.json contained a previous error message string, not a real API key. The "encoding error" was the literal text of the error message being sent as the `X-Api-Key` header.
+
+### Key decisions made
+1. `log_config=None` to uvicorn — bypass `dictConfig()` entirely rather than fighting it. Simpler than building a dict config that survives uvicorn's internal handling.
+2. Alembic `fileConfig()` removed — app logging is already configured; letting Alembic reconfigure it was the real culprit for silent post-startup logs.
+3. DropZone made compact inline rather than hero-sized — it's a secondary action area, not the primary focus.
+4. AI tagging validation: transient API errors should not disable the button. Only genuine auth rejection (invalid/missing key) should prevent usage.
+5. `PYTHONUTF8=1` / `LANG` / `LC_ALL` set in Rust sidecar spawn as belt-and-suspenders for encoding in PyInstaller bundles, even though the immediate issue turned out to be corrupted config data (see Session 22).
+
+### What's next
+- Rebuild .dmg and verify all fixes with real library
+- Test Rekordbox XML export with organised tracks
+- Minor UX: review queue text visibility, Shift+click text selection
+
+---
+
+## Session 22 — 2026-03-20 (continued)
+
+### What was worked on
+Phase 6c Part 2 continued — packaged-mode testing of Session 21 fixes, debugging logging and AI tagging.
+
+### Summary
+Rebuilt .dmg and tested all three fixes from Session 21. Layout fix worked immediately. Logging and AI tagging required multiple iterations to resolve.
+
+**Logging — iterative debugging to find root cause:**
+- Session 21's `_build_log_config()` approach: file handler installed, startup logs captured, but post-startup route handler logs missing. Multiple iterations tried:
+  1. Added `"backend"` logger with `propagate: False` to dictConfig — no improvement.
+  2. Belt-and-suspenders handler re-attachment in lifespan — handler confirmed present, still no post-startup logs.
+  3. Bypassed uvicorn entirely with `log_config=None` — same result.
+- **Actual root cause found:** Alembic's `env.py` calls `fileConfig(config.config_file_name)` which reads `alembic.ini`'s `[loggers]/[handlers]/[formatters]` sections. This replaces root logger handlers (removing our RotatingFileHandler) and sets root level to WARNING. Everything after `run_migrations()` went silent.
+- **Final fix:** Removed `fileConfig()` call from `env.py`. Kept `log_config=None` for uvicorn. File handler attached in lifespan AFTER `run_migrations()`. Full post-startup logging confirmed working: startup, access logs, ingest pipeline, converter decisions, batch completion, AI tagging validation.
+
+**AI tagging — root cause was corrupted config, not encoding:**
+- Logs revealed: `httpcore.LocalProtocolError: Illegal header value b" API error: 'ascii' codec can't encode character '\u2013' in position 138"` — looked like an encoding issue.
+- Attempted fixes: `PYTHONUTF8=1`/`LANG`/`LC_ALL` as env vars in main.py (no effect — too late), then in Rust sidecar spawn (no effect — the error was not actually an encoding problem).
+- **Actual root cause:** The `anthropic_api_key` value in `config.json` was the literal error message string `" API error: 'ascii' codec can't encode character '\u2013' in position 138: ordinal not in range(128)"` — a previous validation error had been saved as the key value. This garbage string was being sent as the `X-Api-Key` header, which Anthropic rejected, and httpcore reported as an illegal header value.
+- After clearing the corrupted key and entering a fresh one, the Anthropic API was reached successfully (proper HTTP 400 response about credit balance, not a connection error).
+- AI tagging is blocked only by Anthropic account billing — the `400 Bad Request` / "credit balance too low" error persists despite $5 balance showing in the Console. Likely a propagation delay or spending limit issue on Anthropic's side.
+
+**Layout — confirmed working:**
+- Track table visible and scrollable at normal window size (~1280x800). Drop zone compact inline. All toolbars visible with `shrink-0`.
+
+### Bugs encountered during development
+1. **Alembic `fileConfig()` nukes logging** — `env.py`'s `fileConfig(alembic.ini)` replaces root logger handlers and sets level to WARNING. Removing the call is safe; Alembic loggers inherit from the app's logging config.
+2. **Corrupted API key in config.json** — An error message string was saved as the `anthropic_api_key` value. The Settings save pathway needs investigation — how did a validation error end up persisted as a config value? Low priority since it's a one-time occurrence and manually correctable.
+
+### Key decisions made
+1. `PYTHONUTF8=1` / `LANG` / `LC_ALL` env vars kept in Rust sidecar spawn despite not being the fix for this specific issue — they're still good practice for PyInstaller bundles on macOS.
+2. The "encoding error" in AI tagging was a red herring — always check the actual config/data before assuming an encoding issue.
+3. AI tagging end-to-end test deferred to Part 3 — blocked by Anthropic billing, not by app code.
+
+### Remaining Session 20 bugs not yet addressed
+- Bug 3: Horizontal scroll reveals broken layout (white space, split colour)
+- Bug 4: Analysis state lost on Settings navigation (SSE disconnect)
+- Bug 5: Analysis restart blocked after Settings interruption
+- Bug 6: Scrolling breaks on relaunch
+- Bug 8: Review queue text invisible (dark on dark)
+- Bug 9: Shift+click still selects text in WebKit
+
+### What's next — Phase 6c Part 3 priorities
+1. **AI tagging end-to-end test** — once Anthropic billing resolves, test full tagging pipeline in packaged mode
+2. **Export XML** — test Rekordbox XML export with organised tracks
+3. **Investigate Settings save bug** — how did an error message get saved as the API key?
+4. **Minor UX bugs** — review queue text visibility, horizontal scroll layout, analysis SSE interruption
+5. **Full pipeline test with real library** — ingest → analyse → AI tag → organise → export
+
+---
+
+## Session 23 — 2026-03-20
+
+### What was worked on
+Phase 6c Part 3 — Settings save bug fix, ingestion hang debugging and resolution, first real-data batch import.
+
+### Summary
+
+**Settings save bug (Task 1):**
+- Added structural API key validation guard in `update_settings` — rejects values that don't start with `sk-`, are under 20 chars, or contain whitespace. Garbage values silently dropped, other settings still save.
+- Sanitised error messages in `validate_key` endpoint — auth errors return "Invalid API key", credit/billing errors return `valid=True` with descriptive message, everything else returns generic safe message (no raw Python exceptions).
+- 16 new tests in `test_settings_routes.py` covering GET/PUT/validate/status endpoints.
+
+**Ingestion hang (Task 2 — major debugging session):**
+Root cause: Python's `logging.StreamHandler` writes to stdout, which in PyInstaller-bundled mode is piped to Tauri. After ~64KB of log output (~45 tracks), the macOS pipe buffer fills. The worker thread blocks on `_io_FileIO_write` inside `_bufferedwriter_flush_unlocked`, hanging indefinitely because Tauri doesn't drain the sidecar's stdout pipe.
+
+Diagnosed via macOS `sample` tool, which showed the worker thread stuck in `_io_FileIO_write`.
+
+Fix: Remove `StreamHandler` instances from the root logger in packaged mode after adding the `RotatingFileHandler`. All log output goes to the file handler only.
+
+Architectural changes made during investigation (all retained as improvements):
+1. **Session-per-task** — `ProcessingQueue` creates a new `SessionLocal()` per file instead of sharing one session across concurrent tasks. Prevents SQLAlchemy session corruption.
+2. **SQLite busy timeout** — `connect_args={"timeout": 30}` added to the engine. Prevents immediate `SQLITE_BUSY` failures on concurrent writes.
+3. **Worker pool** — Replaced `asyncio.gather` over all paths (created N coroutines) with a bounded worker pool that pulls from a `queue.Queue`. Only `max_concurrent_conversions` workers exist at any time.
+4. **Plain thread worker** — Worker runs in a `threading.Thread`, not an asyncio task. SSE events pushed to the asyncio event queue via `loop.call_soon_threadsafe`. Eliminates all asyncio involvement in the processing path.
+5. **Synchronous subprocess** — `subprocess.run` replaced `asyncio.create_subprocess_exec` for both ffprobe and ffmpeg. With 1 sequential worker, async subprocess provided no benefit and added complexity.
+6. **Synchronous convert_file** — Changed from `async def` to plain `def`. All internal operations (inspect, hash, convert, DB commit) are synchronous.
+7. **uvloop bypass** — `loop="asyncio"` added to `uvicorn.run()` to force the standard asyncio event loop. uvloop (bundled by PyInstaller as a uvicorn dependency) had GIL interaction issues with worker threads on macOS.
+8. **max_concurrent_conversions=1** — Concurrent conversion disabled pending proper investigation in Phase 6d.
+
+**First real-data batch import:**
+668 tracks successfully imported from Larry Levan at Paradise Garage — House Masters list. 670 files total: 668 FLAC→AIFF conversions succeeded, 2 failed (likely .incomplete files or non-audio). Completed in ~2 minutes 41 seconds. Tracks visible in track table.
+
+### Bugs encountered and resolved
+1. **Stdout pipe deadlock** — Root cause of all ingestion hangs. Worker thread blocks on stdout write when Tauri's pipe buffer fills (~64KB). Fix: remove StreamHandler in packaged mode.
+2. **Corrupted API key in config.json** — Error message string saved as key value. Fix: structural validation guard rejects non-key strings.
+3. **Shared SQLAlchemy session** — Single session passed to concurrent tasks caused undefined behaviour. Fix: session-per-task in worker.
+4. **Coroutine explosion** — `asyncio.gather` with 670 tasks overwhelmed the event loop scheduler. Fix: bounded worker pool with `queue.Queue`.
+
+### Key decisions made
+1. Worker thread architecture (plain `threading.Thread` + `call_soon_threadsafe`) is the production pattern for ingestion. Simpler and more reliable than any asyncio-based approach.
+2. Synchronous `subprocess.run` for ffprobe/ffmpeg is correct for single-worker processing. Async subprocess adds complexity with no benefit at concurrency=1.
+3. Diagnostic converter logging demoted to DEBUG. Production log lines: Inspected, Decision, Running ffmpeg, Output written, Track created.
+4. Re-enabling concurrent conversion deferred to Phase 6d — requires solving the stdout pipe issue first.
+5. uvloop bypassed via `loop="asyncio"` — belt-and-suspenders alongside the StreamHandler removal.
+
+### Remaining Session 20 bugs not yet addressed
+- Bug 3: Horizontal scroll reveals broken layout (white space, split colour)
+- Bug 4: Analysis state lost on Settings navigation (SSE disconnect)
+- Bug 5: Analysis restart blocked after Settings interruption
+- Bug 6: Scrolling breaks on relaunch
+- Bug 8: Review queue text invisible (dark on dark)
+- Bug 9: Shift+click still selects text in WebKit
+
+### What's next — Phase 6c Part 4 priorities
+1. **Analysis** — Run BPM/key analysis on 668 imported tracks
+2. **AI tagging** — Test if Anthropic billing has cleared (API key validated successfully at end of Session 23)
+3. **Organisation** — Test organise pipeline with real tracks
+4. **Export XML** — Test Rekordbox XML export with real library
+5. **Full pipeline validation** — Verify the complete ingest → analyse → AI tag → organise → export loop
+6. **UI bugs** — Scrolling, horizontal layout, review queue text visibility
+
+---
+
+## Session 24 — 2026-03-21
+
+### What was worked on
+Phase 6c Part 4 — full pipeline validation with real data in dev mode, live Rekordbox import for a real gig.
+
+### Summary
+
+**Dev mode setup:**
+- Switched from packaged mode to dev mode for faster iteration.
+- Dev mode creates a separate DB (`backend/rekordbot_dev.db`) from CWD — not the production DB at `~/Library/Application Support/rekordbot/rekordbot.db`. Pointed dev mode at the production DB via `REKORDBOT_DB_URL` env var to reuse the 668 previously ingested tracks.
+- The env var name is `REKORDBOT_DB_URL` (matching the Settings field `db_url`), not `REKORDBOT_DATABASE_URL`. Dev mode startup command: `REKORDBOT_DB_URL="sqlite:////Users/daleb/Library/Application Support/rekordbot/rekordbot.db" uv run uvicorn main:app --host 127.0.0.1 --port 8420 --reload`
+
+**Analysis (priority 1) — complete:**
+- BPM/key analysis ran successfully on all 668 tracks. ~10-15 seconds per track, ~2 hours total.
+- BPM and key values reasonable for the genre (disco/house/boogie — Paradise Garage collection).
+- No errors or crashes during the full run.
+
+**AI tagging (priority 2) — complete:**
+- Anthropic billing resolved — API key validated successfully, tagging pipeline functional.
+- AI tagging completed on all 668 tracks. Genre, artist, album, mood, energy populated from filename and audio analysis data.
+- Cost well within $5 credit budget.
+
+**Organisation (priority 3) — complete:**
+- Organisation pipeline ran on real data. Most tracks auto-approved; a handful needed review (auto-approved).
+- Organised output added directly to Rekordbox at `/Volumes/collection/music/playlists/Larry Levan`.
+
+**Rekordbox import — validated:**
+- 659 tracks visible in Rekordbox with full metadata: artist, title, album, genre, key, BPM, waveforms loaded.
+- Dale used the app to prepare additional folders for a live 8-hour set the following day — genuine real-world usage.
+- Direct folder import to Rekordbox (bypassing XML export) used for speed — pragmatic choice for gig prep.
+
+**Full pipeline milestone achieved:** ingest → analyse → AI tag → organise → add to Rekordbox. This is the core workflow rekordbot was built for, validated end-to-end with a real DJ library under real time pressure.
+
+### Key decisions made
+1. Dev mode pointed at production DB via `REKORDBOT_DB_URL` env var — avoids re-ingesting when switching between dev and packaged mode.
+2. Direct folder import to Rekordbox is a valid quick workflow alongside XML export (which preserves playlist/crate structure).
+
+### Bugs / friction noted
+- **Analysis speed** — ~10-15s per track is slow for large batches (librosa CPU-bound). Investigate in Phase 6d: concurrent analysis, caching, lighter-weight BPM detection.
+- **UI needs work** — general UX friction noted, not itemised. Deferred to Phase 6e.
+- **Dev mode DB path confusion** — dev mode silently creates a fresh DB in CWD. No log line showing resolved DB path. Could log the DB URL on startup to make this obvious.
+
+### Remaining Session 20 bugs not yet addressed
+- Bug 3: Horizontal scroll reveals broken layout (white space, split colour)
+- Bug 4: Analysis state lost on Settings navigation (SSE disconnect)
+- Bug 5: Analysis restart blocked after Settings interruption
+- Bug 6: Scrolling breaks on relaunch
+- Bug 8: Review queue text invisible (dark on dark)
+- Bug 9: Shift+click still selects text in WebKit
+
+### What's next — Phase 6c Part 5
+1. **Rekordbox XML export test** — test export with organised tracks, verify in Rekordbox
+2. **Live feedback** — notes from using tracks at a real gig on CDJs
+3. **Metadata review** — spot-check AI tagging accuracy across the library
+4. **UX bug fixes** — address remaining Session 20 bugs
+5. **Dev mode improvement** — log resolved DB path on startup
+
+---
+
+## Session 25 — 2026-05-13
+
+### What was worked on
+Phase 6c Part 5 — return after ~7 week gap. Wrote `docs/testing/manual-smoke-test.md` checklist (drafted in unfinished Part 5 session in mid-April, never committed at the time). Ran full smoke test against fresh build on real data (24-track FLAC folder). Verified end-to-end pipeline including DB persistence across relaunch. Surfaced and catalogued bugs for fix in Part 6.
+
+### Summary
+
+**Session re-orientation:**
+- Returned after the mid-April session was cut off before its smoke-test doc was written to disk. Discovered the file did not exist; reconstructed and committed it from the agreed structure.
+- Confirmed build was current (`.app` from 16 April, last code commit 21 March — no rebuild needed).
+- Test corpus: `Panorama_Bar_Playlist_01_Tama_Sumo` (23 FLAC files, ~1.6 GB) from `/Volumes/collection/music/downloads/soulseek/complete/`.
+
+**Smoke test written and committed (`docs/testing/manual-smoke-test.md`):**
+- 11 pipeline-ordered sections (Launch → Layout → Ingest → Drag-drop → Analyse → AI Tag → Organise → Scrolling → Settings → Persistence → Log Verification)
+- Pass/fail checkboxes with observation space per step
+- Re-run policy: use a new folder each run, or clear DB and output first
+- Out-of-scope items listed explicitly (XML import/export, crates, set planning — separate test scenarios doc to come)
+- Run history table for tracking
+
+**Full pipeline validated end-to-end:**
+- Ingestion: 23 FLACs → AIFF in <10s, all 23 succeeded
+- Analysis: BPM/Key ran in ~5min 52s (~15s/track, consistent with Session 24 baseline)
+- AI tagging: 23 tracks tagged in 2 batches, 65s total, $0.0484 cost — quality genuinely useful (Marc Mac → Broken Beat, Fred P → Minimal House, Mim Suleiman track identification from sparse ID3)
+- Organisation: 23 auto-approved, files moved to `/Volumes/collection/REKORDBOT/rekordbot_library/{artist}/{album}/{title}.aiff`
+- File-on-disk verification confirmed sizes preserved (move semantics, not copy)
+
+**Key architectural decision: output folder layout:**
+- Changed folder template from `{artist}/{album}/{title}` to `rekordbot_library/{artist}/{album}/{title}`
+- Reasoning: separates app's organised output from `imports/` staging, prevents `REKORDBOT/` root being polluted with hundreds of artist directories alongside transient buckets
+- Cost: zero — single Settings change, template engine supports leading literal segments
+
+**DB persistence across relaunch — VERIFIED:**
+- This was the headline concern coming into the session
+- Confirmed `rekordbot.db` is byte-identical (94208 bytes, same mtime) before quit and after relaunch
+- All 23 tracks with full metadata reappear in UI after relaunch
+- Settings (BPM Min 70 → 60) persisted correctly
+- Watchdog graceful shutdown verified: parent PID detection → 10s grace → clean exit
+- No DB corruption, no recreation, no migration noise
+- Original Session 24 concern likely caused by dev-mode DB path confusion (uses `backend/rekordbot_dev.db` from CWD unless `REKORDBOT_DB_URL` is set), not a real persistence bug
+
+### Bugs encountered and catalogued
+
+**Confirmed from Session 20 list:**
+- Bug 3 (horizontal scroll → split colours / broken layout) — reproduced in §5 (post-analysis overflow) and §8 (banding when scrolled)
+- Bug 6 (scrolling breaks) — reproduced vertically in §5 and §8; survives relaunch
+- Bug 9 (Shift+click selects text) — regression; Part 1's `select-none` fix not effective
+
+**New bugs found:**
+- **24-bit AIFF output** — converter routes 24-bit FLAC sources to `pcm_s24be` instead of always using `pcm_s16be`. Bit-depth preservation logic was probably intended as fidelity preservation but breaks CDJ compatibility (older CDJ models cannot reliably play 24-bit AIFF). Should always downsample to 16-bit.
+- **Bitrate column shows source value, not output** — track table displays the FLAC source bitrate (827, 887, 910 kbps...) rather than the AIFF output bitrate (always 1411 kbps for 16-bit/44.1/stereo, or computed from actual format). Data correctness issue.
+- **Folder template missing slash not validated** — saved `rekordbot_library{artist}/...` without the separator slash; settings save accepted it; first proposal run produced malformed paths. Caught before approval; not destructive. Settings UI needs format validation.
+- **"Organise All" button label misleading** — generates proposals only, no file movement. "Approve Auto" / "Approve All" commit moves.
+- **"Processing X/Y files" ingestion header doesn't dismiss** — stays visible at "0/23" after batch completes, with non-functional Cancel button. Inconsistent with AI tagging panel which has a proper Dismiss button.
+- **Tauri window has no `minWidth`** — narrowing the window to ~280px breaks layout completely (top bar collapses, content clips). Default value should be set in `tauri.conf.json`.
+- **Drop zone text wraps awkwardly when narrow** — "Drag audio files or folders here" word-stacks vertically below ~640px window width.
+- **Approve Auto button doesn't show count** — inconsistent with "Analyse Selected (N)" pattern that updates with row selection.
+- **Review queue panel doesn't update post-approve** — still says "23 auto-approved" after the action that should drain the queue.
+- **Track Detail panel doesn't show proposed path** — useful "where will this go?" affordance missing.
+- **API key field renders as opaque dots** — no visible `sk-ant-...XXXX` mask. Backend masking is correct (verified by post-save validation succeeding); UI rendering is `type=password` over the masked string. Either show the mask in plaintext or add a show/hide toggle.
+- **No startup log line confirming Alembic action** — fresh DB / upgrade / no-op all silent. Single line would aid debugging.
+
+### Incidents
+
+- **API key exposed (twice).** Claude read `config.json` to verify ingestion output directory in §3, then a second time without realising. The key was rotated promptly both times. Memory edit added: `NEVER read /Users/daleb/Library/Application Support/rekordbot/config.json — it contains the Anthropic API key. Ask Dale for any config value instead.`
+
+### Key decisions made
+
+1. **Always 16-bit AIFF output.** Source bit-depth is not preserved on output. Documented in CLAUDE.md "Conversion Logic" section. Fix in Part 6 requires updating `conversion.py` decision engine + adding a unit test to lock the behaviour.
+2. **Output folder structure: `REKORDBOT/rekordbot_library/{artist}/{album}/{title}`.** App namespace separation from `imports/` staging. Achieved via folder-template change, no backend code change.
+3. **Source files left untouched after import.** No automatic deletion or quarantine. Future feature (Phase 6e+) may add a deliberate post-organise cleanup flow with dry-run preview.
+4. **Bug fixes deferred to fresh session.** Part 6 will be a dedicated bug-fix session. Catalogue and prioritisation done; fix order set in "What's next" below.
+5. **Drag-and-drop deliberately skipped** in this run to avoid re-ingestion conflict with §3. Will be tested in a dedicated session post-fix.
+6. **Smoke test scope intentionally narrow** — primary ingest→organise loop only. Alternative workflows (XML import-first, manual metadata edit, etc.) go in a separate `docs/testing/test-scenarios.md` to be written later.
+
+### Untested in this session
+- Session 20 Bug 4 (Analysis state lost on Settings navigation) — deliberately deferred to avoid stacking failing tests
+- Session 20 Bug 5 (Analysis restart blocked post-Settings) — same reason
+- Session 20 Bug 8 (Review queue dark-on-dark text) — couldn't reproduce because organisation produced zero needs-review tracks (all high-confidence)
+- Drag-and-drop file ingestion (§4) — deliberately skipped to avoid re-ingestion conflict
+
+### What's next — Phase 6c Part 6
+
+Bug fixes, prioritised:
+
+1. **24-bit AIFF output** — quick fix in conversion decision engine, must add unit test
+2. **Vertical scrolling** in track table — CSS / flex container fix
+3. **Horizontal scroll colour banding** — likely same root cause as vertical (container backgrounds)
+4. **Shift+click text selection** — investigate why Part 1's `select-none` regressed
+5. **Bitrate column** — distinguish source bitrate from output bitrate in DB and UI
+6. **Folder template validation** — reject malformed templates on settings save
+7. **"Organise All" button label** — clearer wording ("Propose Organisation" or similar)
+8. **Ingestion progress header dismissal** — match AI tagging pattern
+
+Fix one bug → unit test if applicable → commit → move on. Rebuild `.app` periodically (every 2-3 fixes) to verify in packaged mode.
+
+---
+
+## Session 26 — 2026-05-16
+
+### What was worked on
+Phase 6c Part 6 — focused bug-fix session targeting the prioritised list catalogued in Session 25. Nine commits, 7 of 8 catalogued bugs resolved, one deliberately deferred (bitrate column), plus a bonus test-isolation fix uncovered while verifying the AIFF bug.
+
+### Summary
+
+**Bugs resolved (in commit order):**
+1. **24-bit AIFF output** — converter no longer promotes 24-bit FLAC sources to `pcm_s24be`; always uses `pcm_s16be` for CDJ compatibility. `MAX_OUTPUT_BIT_DEPTH = 24` renamed to `OUTPUT_BIT_DEPTH = 16`; `AIFF_CODEC_MAP` deleted (hardcoded `pcm_s16be` in `build_ffmpeg_command`). Existing tests had defended the buggy behaviour — updated 4 in-place and added a parametrised lock test that asserts 16-bit for 16/24/32-bit sources. (`df08e30`)
+
+2. **Test isolation in `TestApplyConfigToEnv`** — surfaced when running full suite for the first time after AIFF fix. Two tests (`test_converts_bool_to_string`, `test_converts_float_to_string`) passed in isolation but failed in the full suite due to `REKORDBOT_*` env vars leaking from `main.py` import in earlier tests. Two sibling tests in the same class already had the defensive `env_clean / clear=True` pattern; applied the same fix to the two failing tests. (`e242bd9`)
+
+3. **Track table scrolling and horizontal banding** — required two commits to fix. First commit (`989b7a4`) added `min-h-0 min-w-0` to multiple flex items (the App.tsx main column, TrackTable's outer wrapper) and constrained `PreferenceRulesPanel` with `shrink-0 max-h-48 overflow-auto`. Smoke test of packaged build revealed the fix was insufficient — the bug persisted. Devtools inspection showed the TrackTable wrapper in App.tsx (`<div className="min-h-0 flex-1">`) was a flex *item* but not a flex *container*, so its child's `flex-1` had no parent to negotiate with. Second commit (`8b65b21`) added `flex flex-col` to the wrapper. After rebuild, the bug was fully resolved.
+
+4. **Shift+click text selection regression** — the Part 1 fix used `e.preventDefault()` inside the click handler, but text selection on Shift+click starts at `mousedown`, not `click` — too late to suppress. Replaced with `select-none` on the `<table>` element via Tailwind, which inherits to all rows and cells. Inline-edit `<input>` elements are unaffected (browsers override parent `user-select: none` on form controls). Also removed the dead `preventDefault()` block to avoid misleading the next reader. (`5b0d57d`)
+
+5. **Folder template validation** — added `validate_template()` function in `template_engine.py` with 7 rejection rules: empty/whitespace, absolute paths, unbalanced braces, empty variables, unknown variable names (including in fallback chains), path traversal (`..` segments), and missing separator between adjacent non-separator segments (the exact Session 25 bug). Wired into the settings PUT handler. 19 new tests added: 13 parametrised rejection cases and 6 parametrised acceptance cases, plus 2 route integration tests. (`fae805d`)
+
+6. **"Organise" button label clarification** — renamed "Organise All" / "Organise Selected (N)" to "Preview Organisation" / "Preview Organisation (N)" to signal that this step generates a preview, not a commit. In-flight state changed from "Proposing..." to "Previewing..." to match the new verb. Framed from the user's perspective ("Preview") rather than the app's perspective ("Propose"). (`b7f6a0d`)
+
+7. **Ingestion progress dismissal** — the post-completion header continued to read "Processing X / Y files" with no way to dismiss the panel. Added an `onDismiss` callback prop; header now switches to "Ingestion complete: X / Y files" when summary arrives; Dismiss button (neutral gray) appears alongside Show/Hide when complete. Cancel-revert (rolling back already-processed files when the user cancels mid-batch) was considered and deliberately deferred — warrants its own design with output provenance tracking, undo log, and confirmation dialog. (`0ad048b`)
+
+8. **Folder template error response shape** — surfaced in packaged-mode smoke test after rebuild. Bug #5 had used `HTTPException` with a structured `detail` dict (`{error, detail}`), but FastAPI wraps that under another `detail` key, producing `{"detail": {error, detail}}` — incompatible with the project's documented `{error, detail}` schema and the frontend's `ApiError` type. The frontend's toast handler attempted to render the dict as a React child, crashing the app to a blank screen. Refactored to use the existing `RekordBotError` exception hierarchy: added `SettingsError(RekordBotError)` and updated the route to raise it. The global handler in `main.py` produces the correct schema automatically. (`0ddc288`)
+
+**Bugs deferred:**
+- **Bitrate column source vs output (originally bug #5 in Session 25 list)** — deferred at session start because the fix needs schema scoping: `Track.bitrate` currently stores source bitrate, and distinguishing source vs output bitrate may need a migration plus backfill logic. Deserves a dedicated session.
+- **Cancel-revert for ingestion** — flagged during bug #8 work. Requires per-file output provenance tracking (did rekordbot create this file vs copy an existing one?), an undo log, and a confirmation dialog. Out of scope for a bug fix.
+
+### Key decisions made
+1. **Always 16-bit AIFF output is locked in code and tests.** Source bit-depth is not preserved on output. Parametrised lock test makes the invariant explicit with a docstring referencing CDJ compatibility.
+2. **`select-none` on the `<table>` element** is the correct fix for unwanted text selection, not `e.preventDefault()` on click. Click is too late; mousedown is where selection starts. Form controls inside the table are unaffected.
+3. **Flexbox `min-h-0` / `min-w-0` propagation** requires every link in the chain to be a flex container in the appropriate axis. A flex item that is itself a non-flex parent breaks the constraint chain. Lesson: when adding `flex-1` to a child, verify the parent is `flex` (and `flex-col` or `flex-row` as appropriate).
+4. **Validate-on-save pattern** for user-facing config: validate at the route boundary before persistence, return 400 with a useful error message. Avoid silent rejection (the API key path's silent-drop pattern is flagged as a separate known issue).
+5. **Use `RekordBotError` hierarchy, never `HTTPException`** for 4xx responses we want surfaced to the frontend. The global handler in `main.py` produces the documented schema; `HTTPException` does not.
+6. **"Preview Organisation"** framed from user perspective beats "Propose Organisation" from app perspective — clearer signal of no-commit nature.
+7. **Manual dismiss, not auto-dismiss** for completion-state panels — gives users time to read the summary before clearing.
+8. **Test isolation discipline.** Defensive env-clearing pattern needs to be applied consistently. Two latent failures were carried for an indeterminate period because the failing tests passed in isolation. Pre-commit hook does not run the full suite — manually running `uv run pytest` is the only check.
+
+### Things that surprised us
+- **The layout bug needed two iterations.** Initial fix was correct but incomplete — `min-h-0` on a flex item doesn't propagate if there's a non-flex wrapper between it and the constrained child. Devtools inspection of the running app was essential to nailing the second iteration's root cause.
+- **Test count math drift.** CC reported test counts twice that were slightly off (once with "+7" that was actually correct as net, once with "pre-existing failures" that didn't exist). Verifying with actual `pytest` output rather than CC's summary is the reliable check.
+- **Bug #5 broke in packaged mode** but passed all unit and route tests. The issue was at the FastAPI ↔ frontend serialisation boundary. Lesson: route tests assert the response body shape directly; if the schema mismatches the *frontend's expected shape*, only the smoke test catches it.
+
+### Untested in this session
+- Session 20 Bug 4 (Analysis state lost on Settings navigation) — still deferred
+- Session 20 Bug 5 (Analysis restart blocked post-Settings) — still deferred
+- Session 20 Bug 8 (Review queue dark-on-dark text) — couldn't reproduce in Session 25 due to no needs-review tracks
+- Bitrate column (deferred deliberately at session start)
+- Cancel-revert (out of scope, captured as future feature)
+
+### What's next
+- **Phase 6c Part 7 (or wherever appropriate):**
+  - Bitrate column: design schema change (output_bitrate column? or compute on display?), migration, backfill logic
+  - Session 20 deferred bugs 4, 5, 8
+  - Cancel-revert feature design
+  - Low-priority polish list from Session 25 (Tauri min-width, drop zone wrap, Approve Auto count, review queue refresh, etc.)
+- **Phase 6d (Performance Optimisation):** profiling with real library data
+- **Phase 6e (UI Polish & Design):** folder template editor with inline validation, drag-and-drop polish, design pass
+- **Phase 6f (Signing & Distribution):** code signing, notarisation, signed `.dmg`, onboarding docs
+
+### Final state
+- Branch: `feature/phase-6c-dogfooding`, 9 commits ahead of pre-session HEAD
+- Tests: 1170 → 1191 passing (+21: parametrised template validation tests + 2 route tests, minus net 0 from the test isolation fix and AIFF rewrites since those replaced existing tests in place)
+- All commits verified in packaged mode via the manual smoke test (`docs/testing/manual-smoke-test.md`)
+- Ready to merge to `develop` once CLAUDE.md is updated and a final review pass is done
+
+---
+
+## Session 27 — 2026-05-17
+
+### What was worked on
+Phase 6c Part 7 — closing three Session 20 deferred bugs that had been carried for six prior sessions. Two commits resolved all three bugs. A separate finding (dead Confidence Threshold config) surfaced during verification and is logged for next session.
+
+### Summary
+
+**Bugs resolved:**
+
+1. **Bug 8: Review queue dark-on-dark text** — three instances of `text-gray-600` against `bg-gray-900` had contrast ratio ~2.4:1, below WCAG AA's 4.5:1 floor. Changed to `text-gray-400` (~6.4:1). Affected the proposed-path line, reasoning italic, and auto-approved track rows in `ReviewQueue.tsx`. Verified in packaged mode after forcing tracks into the review state via `REKORDBOT_ORGANISE_CONFIDENCE_THRESHOLD=0.95` env override. (`13f6e4b`)
+
+2. **Bugs 4 & 5: Analysis state lost on Settings navigation; restart blocked** — both caused by the same root cause: SettingsPanel was swap-mounted in App.tsx, which unmounted `<main>` and destroyed AnalysisControls's component-local state (analysing flag, progress, SSE connection reference). Refactored Settings to render as an absolutely-positioned overlay so `<main>` stays mounted throughout. Verified in dev and packaged modes — progress bar survives Settings round-trips, second analysis click works after batch completion. (`6c1c18b`)
+
+**New findings logged for next session:**
+
+1. **Confidence Threshold UI field is dead config.** The Settings UI exposes a `confidence_threshold` field that persists to `config.json` but has no consumer in the codebase. The organiser reads `organise_confidence_threshold`, a separate hardcoded field not in `CONFIGURABLE_FIELDS`. Confirmed during bug 8 verification — changing the UI value to 0.95 then 0.99 then back had no effect on organisation outcomes; only the env override produced needs-review tracks. Bug 8 was therefore unverifiable through the UI alone.
+
+2. **Cancel button no-feedback gap.** Both analysis and ingestion cancel paths have a 4-5 second window where the in-flight track finishes processing before cancellation registers. The button stays as "Cancel" during this time. Should display "Cancelling..." disabled. Out of scope for bug fix session; logged as polish for Phase 6e.
+
+### Key decisions made
+
+1. **Settings as overlay (Variant B), not modal (Variant A).** Chose absolutely-positioned overlay over CrateCreateDialog-style centered modal because (a) Settings is a longer-interaction panel than a short form dialog, (b) we wanted to preserve existing UX while fixing the bug, and (c) a true modal with backdrop is a UX decision better made during Phase 6e's design pass.
+
+2. **Don't fix the dead config bug in this session.** Discovered during verification but kept out of scope. The fix is small but has decision branches (rename vs alias vs delete one; what about the analysis `confidence_threshold` that's also unused?). Better to scope properly next session than expand this one.
+
+3. **No frontend tests added.** No frontend testing infrastructure exists (no Vitest, no React Testing Library). Verified bugs manually in dev and packaged modes. Setting up frontend test infrastructure flagged as a potential Phase 6e prerequisite.
+
+### Things that surprised us
+
+- **Bug 8 was unverifiable without an env var workaround.** Session 25 couldn't reproduce bug 8 because the org pipeline produced zero needs-review tracks. Trying to force the issue via the UI's "Confidence Threshold" field also failed — for a different reason (the field is dead config). The env var override produced the expected needs-review tracks, confirming both the bug 8 fix worked AND that the UI threshold control is wired to nothing.
+
+- **The Settings overlay refactor was one-shot correct.** Despite being a structural change touching layout (an area we've had flexbox issues in before), the CC implementation worked first try in both dev and packaged modes. Prompt explicitly cited the CLAUDE.md "flexbox constraint propagation" known issue, which likely helped.
+
+### What's next — Phase 6c Part 8
+
+Strongest candidate: Consolidate the dead Confidence Threshold config. Either rename `organise_confidence_threshold` to `confidence_threshold` and consolidate, or surface `organise_confidence_threshold` in the UI under a clear name. Should also confirm whether the analysis-time `confidence_threshold` is genuinely unused (looks like it) and remove if so. Includes:
+- Settings field consolidation
+- UI label update for clarity
+- Test updates if any reference the old field name
+- Manual verification that changing the threshold via UI now produces the expected behaviour
+
+Also on the table: bitrate column schema work (deferred Sessions 26 & 27), cancel-revert feature design, and the remaining polish list from Session 25 (Tauri minWidth, drop zone wrap, Approve Auto count, review queue refresh post-approve, Track Detail proposed path, API key mask visibility, Alembic startup log line, stacked toast dismissal).
+
+### Final state
+- Branch: `feature/phase-6c-dogfooding`, 2 commits ahead of Session 26 HEAD (`51e48e1`) plus this docs update commit.
+- Tests: 1191 passing (unchanged from Session 26 — both bug fixes were UI-only).
+- All commits verified in packaged mode.
+- Ready to continue dogfooding or merge to `develop` when remaining bug list is addressed.
+
+---
+
+## Session 28 — 2026-05-17
+
+### What was worked on
+Phase 6c Part 8 — consolidating the dead Confidence Threshold config flagged at the end of Session 27. Two commits: one prettier-only formatting cleanup on a frontend file, one substantive change that removes a dead Settings field, exposes the live `organise_confidence_threshold` in the Settings UI, and updates the test suite. Verified end-to-end in packaged mode against a real 30-track library.
+
+### Summary
+
+**Investigation phase.** Read every plausible consumer of both `confidence_threshold` and `organise_confidence_threshold` across the backend services (`organiser.py`, `confidence_scorer.py`, `analysis.py`, `ai_tagger.py`, `bpm_detector.py`, `key_detector.py`), the settings route, the config manager, and the frontend SettingsPanel. Confirmed three separate identifiers existed:
+
+- **A:** `settings.organise_confidence_threshold` (default 0.7) — live consumer in `organiser.py`, but not in `CONFIGURABLE_FIELDS`, not in the Settings API schema, not in the UI. Only adjustable via the `REKORDBOT_ORGANISE_CONFIDENCE_THRESHOLD` env var.
+- **B:** `settings.confidence_threshold` (default 0.6) — fully exposed in `CONFIGURABLE_FIELDS`, in the API, in the UI, in the test fixtures. No consumer anywhere in the codebase. Pure dead config.
+- **C:** `OrganiseRequest.options.confidence_threshold` — per-request override on the organise route. Wired up but never sent by any frontend code. Left untouched (intentional API affordance).
+
+Also surfaced: `bpm_detector.py` and `key_detector.py` produce confidence values but those values are informational only — no threshold-based gating action.
+
+**Implementation phase.** One commit split into two:
+
+1. **Prettier formatting cleanup on `client.ts`.** Pre-existing prettier drift that surfaced when running `prettier --write` on the file being edited. Split into its own commit for a clean audit trail — confidence-threshold-substantive vs formatting-only. (`88e30a8`)
+
+2. **Substantive consolidation.** (`daac2a6`)
+   - Removed `confidence_threshold` from `backend/config.py`, `SettingsResponse`/`SettingsUpdate` in `routes/settings.py`, `CONFIGURABLE_FIELDS` in `services/config_manager.py`, `SettingsResponse`/`SettingsUpdateRequest` in `api/client.ts`.
+   - Added `organise_confidence_threshold` to all the same places, with `Field(default=None, ge=0.0, le=1.0)` on the update model to preserve range validation.
+   - Renamed `SettingsPanel.tsx` local state from `confidence` / `setConfidence` to `organiseConfidence` / `setOrganiseConfidence`. Changed default from 0.6 to 0.7. Updated label to "Organisation Confidence Threshold" with helper text: "Tracks scoring below this go to the review queue. Higher = more tracks need manual review."
+   - Test sweep across 5 files: `test_settings_routes.py`, `test_config_manager.py`, `test_phase6a_integration.py`, `test_error_handling.py`, `test_analysis.py`, `test_phase2_integration.py`. The last three needed updates beyond the initial scope (caught by CC during implementation) — fixtures constructing `Settings(confidence_threshold=...)` would have failed model instantiation, and validation tests using `confidence_threshold` as an out-of-range probe needed to point at the new field. Added one new test (`test_updates_organise_confidence_threshold`) for positive-path coverage of the new field.
+
+**Verification phase.** Built the .dmg, replaced the previous .app in `/Applications`, launched against the real 30-track library carried over from prior sessions. The pre-existing `config.json` had `confidence_threshold: 0.95` from Session 27's env-var-driven experimentation — a real test subject for the silent-drop migration behaviour.
+
+Preview Organisation at three thresholds:
+- **0.7** → 30 auto-approved, 0 needs-review
+- **0.95** → 15 auto-approved, 15 needs-review
+- **0.4** → 30 auto-approved, 0 needs-review
+
+The 0.7 → 0.95 transition demonstrably moved 15 tracks into the review queue — the moment that proved Session 27's diagnosis was correct and the fix actually worked. The 0.95 → 0.4 transition pulled them back out, symmetrically.
+
+Config.json on disk after saving at 0.4: contains `organise_confidence_threshold: 0.4`, old `confidence_threshold` key absent, other 9 keys intact. The silent-drop migration (via `CONFIGURABLE_FIELDS` filtering in `save_config`) worked as designed.
+
+### Key decisions made
+
+1. **Keep the verbose name `organise_confidence_threshold`, don't shorten to `confidence_threshold`.** Session 27's preferred path was the rename. Pushed back: a generic `confidence_threshold` invites "confidence in what?" confusion, the per-request route option already uses the short name in its own scope, and a verbose name future-proofs the namespace for any later analysis-time threshold.
+
+2. **No config.json migration code.** Old `confidence_threshold` keys in user configs are silently ignored on load (not in `CONFIGURABLE_FIELDS` anymore) and dropped on next save (filtered on write). No explicit migration step needed — the existing filter mechanism is the migration. Verified against a real config.
+
+3. **Split prettier-only churn into its own commit.** Two commits instead of one. The substantive diff stays focused on confidence-threshold semantics; reviewers (and future audits) see formatting-only changes clearly separated. CC's interleaved stash approach handled the split cleanly with no merge conflicts.
+
+4. **Leave the per-request `OrganiseRequest.options.confidence_threshold` alone.** Wired-up-but-unused API affordance. Could be removed or could be put to use (e.g. a "Lower the bar" button on an empty review queue). Not a Session 28 problem.
+
+5. **Close off the cancel-revert idea formally.** Decided not to pursue per-file output-provenance tracking and undo log for cancelled ingestions. Current behaviour (cancel stops further processing, leaves processed files in place) is acceptable — re-analysis is non-destructive and there is no recovery cost. Removing it from the future-work list rather than carrying it as a deferred item.
+
+### Things that surprised us
+
+- **CC's investigation surfaced three test files beyond the initial scope.** `test_analysis.py`, `test_phase2_integration.py`, and `test_error_handling.py` all referenced the dead field. The investigation prompt covered the obvious settings/config tests but missed these. CC extending scope to fix them (rather than letting the test suite break) was the right call, and the extension was clean and minimal.
+
+- **Verification corpus already in place.** Plan had been to ingest the Panorama Bar Playlist 02 folder for verification. On launching the fresh build, 30 tracks from a prior session were still in the library. Used those instead — verification was the goal, not ingestion, and 30 tracks gave us a healthy distribution (some scoring above 0.95, some between 0.7-0.95). Saved 15-30 minutes.
+
+- **The silent-drop migration was effortless to verify.** The pre-existing `confidence_threshold: 0.95` in config.json was the exact real-world artefact the migration needed to handle. One save in the UI dropped it cleanly. No code path needed for migration beyond the existing `CONFIGURABLE_FIELDS` filter on `save_config()`.
+
+### What's next — merge prep, then merge
+
+The substantive work for Phase 6c is done. The remaining items on the 6c list either belong in a separate scope (bitrate column needs an Alembic migration; frontend test infrastructure is its own setup task) or are small polish items that fit better in Phase 6e.
+
+Next session should:
+- Run `docs/phase-completion-checklist.md` against Phase 6c.
+- Sweep the pre-existing prettier/ruff-format drift across the codebase in a dedicated commit (7 files reported drift in this session's lint check — none of them touched).
+- Merge `feature/phase-6c-dogfooding` → `develop` with `--no-ff` and a phase tag.
+
+Deferred items being carried forward into post-merge work:
+- **Bitrate column** — schema design (output_bitrate column vs display-time computation), Alembic migration, backfill. Own branch.
+- **Frontend testing infrastructure** — Vitest, React Testing Library, mocking for SSE and Tauri APIs. Own scoped session.
+- **Cancel button "Cancelling..." feedback** — small UI polish, fits in Phase 6e.
+- **Polish list from Session 25** — Tauri minWidth, drop zone wrap, Approve Auto count, review queue refresh post-approve, Track Detail proposed path, API key mask visibility, Alembic startup log line, stacked toast dismissal. Phase 6e.
+
+### Final state
+- Branch: `feature/phase-6c-dogfooding`, 2 commits ahead of Session 27 HEAD (`df42ecb`), plus this docs update commit.
+- Tests: 1192 passing (was 1191, +1 new test for `test_updates_organise_confidence_threshold`).
+- Verified in packaged mode against a real 30-track library.
+- Old `confidence_threshold` keys in user configs silently drop on next save — verified against a real pre-existing config.
+- Ready for merge prep.
