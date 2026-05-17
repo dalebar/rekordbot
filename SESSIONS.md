@@ -1395,3 +1395,96 @@ Deferred items being carried forward into post-merge work:
 - Verified in packaged mode against a real 30-track library.
 - Old `confidence_threshold` keys in user configs silently drop on next save — verified against a real pre-existing config.
 - Ready for merge prep.
+
+---
+
+## Session 29 — 2026-05-17
+
+### What was worked on
+Phase 6c merge prep and merge to develop. Documentation and tooling housekeeping. Opening Phase 6d branch. Branch naming convention adopted.
+
+This entry covers two distinct working sessions on the same day — Session 28 wrap-up and merge-prep happened first; the Phase 6d branch was opened immediately after. Logged as one entry because the intervening time was minimal and the work is one coherent push from "Phase 6c done" to "Phase 6d ready to start".
+
+### Summary
+
+**Tag housekeeping (pre-merge).**
+- Deleted a junk `phase-N-complete` tag — created when the phase-completion-checklist command was run literally with `N` as a placeholder rather than substituted. Root cause fixed in commit `601e02a` (see below).
+- Retroactively tagged `phase-5a-complete` at `cc8bb076` (the feature/phase-5a-crate-builder merge commit on develop) and `phase-6b-complete` at `1ec6483` (the feature/phase-6b-dmg-packaging merge commit). Both as annotated tags with proper messages.
+- Phase tag sequence on develop now complete and coherent: 1, 2, 2b, 3, 4, 4b, 5a, 5b, 6a, 6b, 6c — all pointing at the corresponding merge commit.
+
+**Documentation cleanup (four atomic commits on feature/phase-6c-dogfooding before merge).**
+
+1. **`601e02a` — Tighten phase-completion-checklist.**
+   - Step 9 "Tag (optional but recommended)" → "Tag the merge commit" to codify the convention (the junk `phase-N-complete` tag would have been avoided if the instruction had been firm).
+   - Fixed `<N>` placeholder syntax in checklist examples to prevent literal-tag footguns.
+   - Added missing `git push origin <tag>` step.
+
+2. **`5bcd111` — Rename `docs/djapp-project-plan.md` → `docs/rekordbot-project-plan.md`.**
+   - `git mv` to preserve history.
+   - Updated stale references in `docs/research/tauri-python-backend-research.md` (crateai-server → rekordbot-server, 10 occurrences), `docs/features/phase-6b-dmg-packaging.md`, and `docs/reference/phase-completion-checklist.md`.
+   - SESSIONS.md historical references preserved verbatim — that's a log of what happened, not a live document.
+
+3. **`6eb8145` — Project plan rewrite.**
+   - Marked Phase 6b complete (final acceptance criterion validated through 6c dogfooding rather than separately).
+   - Rewrote Phase 6c section with delivered scope: 63 commits across Sessions 20–28, 1192 tests (+49 new vs Phase 6b's 1143).
+   - Updated Resolved Decisions table with the Alembic resolution.
+   - Updated branch list. Fixed stale references to docs paths under `docs/reference/`.
+
+4. **`6feb823` — Formatting drift cleanup.**
+   - 7 backend files via `ruff format`, 10 frontend files via `prettier --write`. Net -76 lines, mostly line-collapses where original multi-line layouts fit within current print widths.
+   - None of these files were touched by Phase 6c work — pure pre-existing drift. Split into its own commit so the audit trail stays clean.
+
+**Phase 6c merged to develop.**
+- `git merge feature/phase-6c-dogfooding --no-ff` → merge commit `b7dc4f4`.
+- Tagged `phase-6c-complete` as annotated tag at `b7dc4f4`, pushed to origin.
+
+**Phase 6d branch opened.**
+- `feature/phase-6d-performance` from `develop` (`b7dc4f4`).
+- Empty placeholder; upstream set to origin.
+- Working tree clean, no commits ahead of develop yet.
+
+### Key decisions made
+
+1. **Branch naming convention adopted.**
+   - `feature/` for phases and new user-facing features
+   - `fix/` for bug fixes, especially ones with schema or data implications
+   - `chore/` for tooling, infrastructure, and non-code-shipping work
+
+   Convention applies prospectively. Existing `feature/phase-*` branch names left as-is for historical record. The three captured-but-not-opened follow-ups (below) will use the new prefixes when opened.
+
+2. **Tag-the-merge-commit codified in the checklist, not just in practice.** Step 9 of `docs/reference/phase-completion-checklist.md` now reads "Tag the merge commit" with explicit `<phase-name>` substitution syntax. Reduces risk of future literal-tag mistakes and locks the "tag points at merge commit" invariant in writing.
+
+3. **Annotated tags, not lightweight.** All retroactive phase tags and `phase-6c-complete` were created as annotated tags with message bodies. Annotated tags carry tagger identity and timestamp independent of the commit they reference — useful for an audit trail when retroactively tagging months-old commits.
+
+### Four follow-up branches captured but not opened
+
+None blocking Phase 6d. Opening when the right session presents itself. New naming convention applied:
+
+- **`chore/prettier-pre-commit-hook`** — Add prettier (and consider ESLint) to `.pre-commit-config.yaml`. Root cause: the ruff-format hook covers Python but there's no equivalent for TypeScript/CSS/JSON, so frontend drift accumulates silently. The 10-file prettier drift in merge prep was the surfacing event.
+- **`fix/bitrate-column`** — `Track.bitrate` stores source bitrate. Needs a separate column for output bitrate, an Alembic migration, and backfill logic for existing rows. Schema-touching, hence `fix/` rather than `chore/`.
+- **`chore/frontend-test-infra`** — Vitest, React Testing Library, mocks for SSE and Tauri APIs. Closes the "frontend has no test safety net" gap. Pure infrastructure, hence `chore/`.
+- **`feature/dogfood-crates-and-sets`** — End-to-end validation of Phase 5a (Crate Builder) and Phase 5b (Set Planner) against the real library. Same shape as Phase 6c was for the earlier pipeline (ingest, analyse, AI tag, organise, export). Surface and fix functional bugs that have never come up because the modules haven't been exercised against real data. Substantive product validation likely to produce code changes — hence `feature/`. Prerequisite for any future performance work on these modules; Phase 6d explicitly excludes them on the basis that you can't meaningfully measure a system you haven't proven works.
+
+### Things that surprised us
+
+- **The pre-existing drift was larger than expected.** 17 files across backend and frontend, none touched by Phase 6c work. This is the silent kind of debt that a pre-commit hook for prettier would have prevented. The lack of a frontend formatter hook is the actual gap; the drift is the symptom. Logged as `chore/prettier-pre-commit-hook`.
+
+- **`SESSIONS.md` references kept verbatim during the project-plan rename.** Wasn't obviously the right call up-front. The reasoning that landed it: a session log records what happened at the time, not the current state of the world. Rewriting it post-hoc to reflect renames would erode its value as a historical record. Worth holding to in future renames.
+
+### What's next — Phase 6d
+
+Performance Optimisation. The 668-track real library from the Phase 6c dogfood is the profiling subject. Project plan deliverables:
+- Profile with real library data (import speed, analysis throughput, UI responsiveness)
+- Large XML handling optimisation
+- Targeted optimisation based on actual bottlenecks
+
+Phase 6d feature brief to be drafted next, as the second commit on `feature/phase-6d-performance`. Profile-first discipline: the brief commits to a measurement pass before any optimisation work, with an explicit acceptance path that closes the phase early if profiling shows nothing meaningfully slow.
+
+One named opportunity carried over from CLAUDE.md (line 475): re-enabling concurrent conversions, which was disabled during Phase 6c debugging. The stdout pipe buffer issue (CLAUDE.md line 473) would need solving first. To be measured, not assumed.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance`, at `b7dc4f4` (same as `develop` HEAD), upstream `origin/feature/phase-6d-performance`, working tree clean.
+- Tests: 1192 passing (unchanged — no code touched in merge prep).
+- Tags through `phase-6c-complete` all annotated, all pointing at merge commits, all pushed to origin.
+- Ready for Phase 6d feature brief.

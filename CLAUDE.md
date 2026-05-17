@@ -184,13 +184,15 @@ rekordbot/
 **Branch structure:**
 ```
 main        ← stable, always works, tagged releases
-develop     ← integration branch, all feature branches merge here
-feature/*   ← one branch per feature or phase (e.g. feature/phase-0-scaffold)
+develop     ← integration branch, all feature/fix/chore branches merge here
+feature/*   ← phases and new user-facing features (e.g. feature/phase-0-scaffold)
+fix/*       ← bug fixes, especially ones with schema or data implications
+chore/*     ← tooling, infrastructure, and non-code-shipping work
 ```
 
 **Rules:**
-- All work happens on feature branches, never directly on `main` or `develop`
-- Feature branches are created from `develop` and merge back into `develop`
+- All work happens on feature, fix, or chore branches — never directly on `main` or `develop`
+- Topic branches are created from `develop` and merge back into `develop`
 - `develop` merges to `main` only when a phase is complete and all acceptance criteria pass
 - Every commit should leave the codebase in a working state (tests pass)
 - Commit messages: imperative mood, concise but descriptive (e.g. "Add Track model with full Rekordbox-compatible schema", not "updated models")
@@ -395,10 +397,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6c — UI Review & Bug Fixing (in progress)
-**Branch:** `feature/phase-6c-dogfooding`
+**Phase:** 6d — Performance Optimisation (just started)
+**Branch:** `feature/phase-6d-performance`
 **Tests:** 1192 passing across all phases
-**Next step:** Phase 6c merge prep — phase-completion checklist sweep, prettier/ruff-format drift cleanup on untouched files, then merge `feature/phase-6c-dogfooding` → `develop` with `--no-ff` and a phase tag.
+**Next step:** Draft Phase 6d feature brief — profile-first measurement pass against the 668-track real library before any optimisation work.
 
 ### Phase Summary
 
@@ -416,6 +418,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
 | 6c — UI Review & Bug Fixing | 1192 | (dogfooding — no feature brief) |
+| 6d — Performance Optimisation | — | (to be drafted) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -497,7 +500,7 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 | **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
 | **4b** | Rekordbox XML Import | ✅ Done | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
 | **6b** | .dmg Packaging & Migration Setup | ✅ Done | Alembic baseline migration, automatic startup migration, .dmg packaging, post-build sidecar injection |
-| **6c** | UI Review & Bug Fixing | ⬅️ Current | Dogfooding phase — import real library, fix bugs and UX friction |
-| 6d | Performance Optimisation | Not started | Profile with real library data, targeted optimisation |
+| **6c** | UI Review & Bug Fixing | ✅ Done | Dogfooding phase — import real library, fix bugs and UX friction |
+| **6d** | Performance Optimisation | ⬅️ Current | Profile with real library data, targeted optimisation |
 | 6e | UI Polish & Design | Not started | Serious design pass, folder template editor, drag-and-drop, custom .dmg background |
 | 6f | Signing & Distribution | Not started | Code signing, notarisation, signed .dmg, onboarding docs |
