@@ -1264,3 +1264,54 @@ Phase 6c Part 6 — focused bug-fix session targeting the prioritised list catal
 - Tests: 1170 → 1191 passing (+21: parametrised template validation tests + 2 route tests, minus net 0 from the test isolation fix and AIFF rewrites since those replaced existing tests in place)
 - All commits verified in packaged mode via the manual smoke test (`docs/testing/manual-smoke-test.md`)
 - Ready to merge to `develop` once CLAUDE.md is updated and a final review pass is done
+
+---
+
+## Session 27 — 2026-05-17
+
+### What was worked on
+Phase 6c Part 7 — closing three Session 20 deferred bugs that had been carried for six prior sessions. Two commits resolved all three bugs. A separate finding (dead Confidence Threshold config) surfaced during verification and is logged for next session.
+
+### Summary
+
+**Bugs resolved:**
+
+1. **Bug 8: Review queue dark-on-dark text** — three instances of `text-gray-600` against `bg-gray-900` had contrast ratio ~2.4:1, below WCAG AA's 4.5:1 floor. Changed to `text-gray-400` (~6.4:1). Affected the proposed-path line, reasoning italic, and auto-approved track rows in `ReviewQueue.tsx`. Verified in packaged mode after forcing tracks into the review state via `REKORDBOT_ORGANISE_CONFIDENCE_THRESHOLD=0.95` env override. (`13f6e4b`)
+
+2. **Bugs 4 & 5: Analysis state lost on Settings navigation; restart blocked** — both caused by the same root cause: SettingsPanel was swap-mounted in App.tsx, which unmounted `<main>` and destroyed AnalysisControls's component-local state (analysing flag, progress, SSE connection reference). Refactored Settings to render as an absolutely-positioned overlay so `<main>` stays mounted throughout. Verified in dev and packaged modes — progress bar survives Settings round-trips, second analysis click works after batch completion. (`6c1c18b`)
+
+**New findings logged for next session:**
+
+1. **Confidence Threshold UI field is dead config.** The Settings UI exposes a `confidence_threshold` field that persists to `config.json` but has no consumer in the codebase. The organiser reads `organise_confidence_threshold`, a separate hardcoded field not in `CONFIGURABLE_FIELDS`. Confirmed during bug 8 verification — changing the UI value to 0.95 then 0.99 then back had no effect on organisation outcomes; only the env override produced needs-review tracks. Bug 8 was therefore unverifiable through the UI alone.
+
+2. **Cancel button no-feedback gap.** Both analysis and ingestion cancel paths have a 4-5 second window where the in-flight track finishes processing before cancellation registers. The button stays as "Cancel" during this time. Should display "Cancelling..." disabled. Out of scope for bug fix session; logged as polish for Phase 6e.
+
+### Key decisions made
+
+1. **Settings as overlay (Variant B), not modal (Variant A).** Chose absolutely-positioned overlay over CrateCreateDialog-style centered modal because (a) Settings is a longer-interaction panel than a short form dialog, (b) we wanted to preserve existing UX while fixing the bug, and (c) a true modal with backdrop is a UX decision better made during Phase 6e's design pass.
+
+2. **Don't fix the dead config bug in this session.** Discovered during verification but kept out of scope. The fix is small but has decision branches (rename vs alias vs delete one; what about the analysis `confidence_threshold` that's also unused?). Better to scope properly next session than expand this one.
+
+3. **No frontend tests added.** No frontend testing infrastructure exists (no Vitest, no React Testing Library). Verified bugs manually in dev and packaged modes. Setting up frontend test infrastructure flagged as a potential Phase 6e prerequisite.
+
+### Things that surprised us
+
+- **Bug 8 was unverifiable without an env var workaround.** Session 25 couldn't reproduce bug 8 because the org pipeline produced zero needs-review tracks. Trying to force the issue via the UI's "Confidence Threshold" field also failed — for a different reason (the field is dead config). The env var override produced the expected needs-review tracks, confirming both the bug 8 fix worked AND that the UI threshold control is wired to nothing.
+
+- **The Settings overlay refactor was one-shot correct.** Despite being a structural change touching layout (an area we've had flexbox issues in before), the CC implementation worked first try in both dev and packaged modes. Prompt explicitly cited the CLAUDE.md "flexbox constraint propagation" known issue, which likely helped.
+
+### What's next — Phase 6c Part 8
+
+Strongest candidate: Consolidate the dead Confidence Threshold config. Either rename `organise_confidence_threshold` to `confidence_threshold` and consolidate, or surface `organise_confidence_threshold` in the UI under a clear name. Should also confirm whether the analysis-time `confidence_threshold` is genuinely unused (looks like it) and remove if so. Includes:
+- Settings field consolidation
+- UI label update for clarity
+- Test updates if any reference the old field name
+- Manual verification that changing the threshold via UI now produces the expected behaviour
+
+Also on the table: bitrate column schema work (deferred Sessions 26 & 27), cancel-revert feature design, and the remaining polish list from Session 25 (Tauri minWidth, drop zone wrap, Approve Auto count, review queue refresh post-approve, Track Detail proposed path, API key mask visibility, Alembic startup log line, stacked toast dismissal).
+
+### Final state
+- Branch: `feature/phase-6c-dogfooding`, 2 commits ahead of Session 26 HEAD (`51e48e1`) plus this docs update commit.
+- Tests: 1191 passing (unchanged from Session 26 — both bug fixes were UI-only).
+- All commits verified in packaged mode.
+- Ready to continue dogfooding or merge to `develop` when remaining bug list is addressed.

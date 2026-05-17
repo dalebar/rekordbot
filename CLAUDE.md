@@ -398,7 +398,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
 **Tests:** 1191 passing across all phases
-**Next step:** Phase 6c Part 7 — bitrate column schema work, Session 20 deferred bugs (4, 5, 8), cancel-revert feature design, or polish list from Session 25
+**Next step:** Phase 6c Part 8 — strongest candidate is consolidating the dead Confidence Threshold config (the UI field has no consumer, the organiser uses a hardcoded value not exposed in UI). Also still on the table: bitrate column schema work, cancel-revert feature design, and the remaining polish list from Session 25.
 
 ### Phase Summary
 
@@ -432,6 +432,11 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - ✅ "Organise All" button label misleading — fixed (`b7f6a0d`)
 - ✅ Ingestion progress header doesn't dismiss — fixed (`0ad048b`)
 
+**Resolved in Session 27 (Phase 6c Part 7):**
+- ✅ Review queue dark-on-dark text — fixed (`13f6e4b`)
+- ✅ Analysis state lost on Settings navigation — fixed (`6c1c18b`)
+- ✅ Analysis restart blocked after Settings interruption — fixed (shared root cause with Bug 4, `6c1c18b`)
+
 **Deferred (require dedicated scoping):**
 - **Bitrate column shows source not output value** — Track.bitrate currently stores source bitrate; fix needs schema change (new output_bitrate column?) plus Alembic migration plus backfill logic. Deferred at start of Session 26.
 - **Cancel-revert for ingestion** — currently cancel stops further file processing but leaves already-processed files in place. A proper revert needs per-file output-provenance tracking (did rekordbot create this file?), an undo log, and a confirmation dialog. Captured during Session 26 bug #8 work.
@@ -445,11 +450,8 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - API key field renders as opaque dots (no `sk-ant-...XXXX` mask visible to user)
 - No startup log line confirming Alembic action (fresh DB? upgraded? no-op?)
 - Stacked toasts after invalid settings save then valid settings save — both persist visually until manually dismissed
-
-**Still untested (deferred deliberately):**
-- Session 20 Bug 4: Analysis state lost on Settings navigation
-- Session 20 Bug 5: Analysis restart blocked after Settings interruption
-- Session 20 Bug 8: Review queue dark-on-dark text (couldn't reproduce in Session 25; no needs-review tracks generated)
+- Cancel button (analysis and ingestion) shows no immediate feedback during pending cancellation — current-track finishes its work (~4-5s) before cancellation takes effect, but the button doesn't change state during the wait. Add "Cancelling..." disabled state.
+- Settings "Confidence Threshold" field is dead config — UI exposes `confidence_threshold` but the organiser reads `organise_confidence_threshold`. Either consolidate the two fields (preferred — the analysis-time `confidence_threshold` has no consumer either) or surface `organise_confidence_threshold` in the UI under a different label.
 
 ## Known Issues / Don't Touch
 
@@ -474,6 +476,7 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - Flexbox constraint chains: `min-h-0` and `min-w-0` only propagate through flex items if every intermediate wrapper is itself a flex container in the same axis. A non-flex wrapper between a parent flex column and a child with `flex-1` breaks the constraint chain — the child falls back to intrinsic content size. When adding `flex-1` to a component's outer wrapper, verify its parent in the consuming component is `flex flex-col` (or `flex flex-row`).
 - For 4xx error responses surfaced to the frontend, use the existing `RekordBotError` exception hierarchy (`backend/exceptions.py`) — never FastAPI's `HTTPException` with a structured `detail` dict. FastAPI wraps the detail under another `detail` key, producing `{"detail": {error, detail}}`, which doesn't match the documented `{error, detail}` schema (CLAUDE.md "Error Handling") and breaks the frontend's `ApiError` type. The global handler in `main.py` serialises `RekordBotError` correctly. Adding a new error class is one line; copy the pattern of `SettingsError`, `CrateError`, etc.
 - Text selection on Shift+click in a table: use `select-none` (CSS `user-select: none`) on the `<table>` element via Tailwind. Selection starts on `mousedown`, so `e.preventDefault()` in the click handler fires too late. Inline `<input>` elements inside the table are unaffected — browsers override parent `user-select` on form controls.
+- SettingsPanel renders as an absolutely-positioned overlay (`absolute inset-0 z-10 bg-gray-950`) inside a `relative` wrapper in App.tsx, NOT as a swap-mount. This is deliberate — preserving in-flight component state (analysis SSE connection, progress bar state, etc.) across Settings round-trips required keeping `<main>` mounted continuously. ConflictReviewPanel and SetPlannerView remain swap-mounted because they are full workflows where state-loss on entry is acceptable. The Settings overlay sits below the header (it shares a parent with `<main>`, not with the header). z-index `z-10` places it above the underlying view but below `CrateCreateDialog` and `SetCreateDialog` (which use `z-40` for true modal behaviour).
 
 ## Phased Build Plan
 
