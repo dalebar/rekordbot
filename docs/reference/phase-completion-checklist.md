@@ -87,7 +87,7 @@ Tags let you quickly check out known-good states and provide a visible audit tra
 
 ### 10. Review the project plan
 
-Before moving on, review `docs/djapp-project-plan.md` against the current state of the project. Check for:
+Before moving on, review `docs/rekordbot-project-plan.md` against the current state of the project. Check for:
 - Completed phases accurately reflected (deliverables, not unchecked boxes)
 - Tech stack and architecture still match reality
 - Feature map updated with anything built or changed during this phase
