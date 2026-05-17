@@ -164,58 +164,59 @@ function App() {
         </header>
 
         {/* Content area */}
-        {showSettings ? (
-          <SettingsPanel onClose={() => setShowSettings(false)} />
-        ) : showConflicts ? (
-          <ConflictReviewPanel
-            onClose={() => setShowConflicts(false)}
-            onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
-          />
-        ) : activeSetId ? (
-          <SetPlannerView setId={activeSetId} onBack={handleBackToLibrary} />
-        ) : (
-          <main className="flex flex-1 flex-col overflow-hidden p-6">
-            {/* Drop zone and import controls */}
-            <div className="mb-4 flex shrink-0 items-start gap-4">
-              <DropZone onBatchStarted={handleBatchStarted} />
-              <ImportControls
-                onRefresh={() => {
-                  setRefreshTrigger((prev) => prev + 1);
-                  setCrateRefreshTrigger((prev) => prev + 1);
-                }}
-                onConflicts={(count) => {
-                  setConflictCount(count);
-                  setShowConflicts(true);
-                }}
-              />
-              {conflictCount > 0 && !showConflicts && (
-                <button
-                  onClick={() => setShowConflicts(true)}
-                  className="rounded bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-600"
-                >
-                  Review Conflicts ({conflictCount})
-                </button>
-              )}
-            </div>
-
-            {/* Processing queue (shown when a batch is active) */}
-            {batch && batch.total_files > 0 && (
-              <div className="mb-4 shrink-0">
-                <ProcessingQueue
-                  batchId={batch.batch_id}
-                  totalFiles={batch.total_files}
-                  onComplete={handleBatchComplete}
-                  onDismiss={() => setBatch(null)}
+        <div className="relative flex flex-1 flex-col overflow-hidden">
+          {showConflicts ? (
+            <ConflictReviewPanel
+              onClose={() => setShowConflicts(false)}
+              onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+            />
+          ) : activeSetId ? (
+            <SetPlannerView setId={activeSetId} onBack={handleBackToLibrary} />
+          ) : (
+            <main className="flex flex-1 flex-col overflow-hidden p-6">
+              {/* Drop zone and import controls */}
+              <div className="mb-4 flex shrink-0 items-start gap-4">
+                <DropZone onBatchStarted={handleBatchStarted} />
+                <ImportControls
+                  onRefresh={() => {
+                    setRefreshTrigger((prev) => prev + 1);
+                    setCrateRefreshTrigger((prev) => prev + 1);
+                  }}
+                  onConflicts={(count) => {
+                    setConflictCount(count);
+                    setShowConflicts(true);
+                  }}
                 />
+                {conflictCount > 0 && !showConflicts && (
+                  <button
+                    onClick={() => setShowConflicts(true)}
+                    className="rounded bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-600"
+                  >
+                    Review Conflicts ({conflictCount})
+                  </button>
+                )}
               </div>
-            )}
 
-            {/* Track table */}
-            <div className="flex min-h-0 flex-1 flex-col">
-              <TrackTable refreshTrigger={refreshTrigger} crateId={selectedCrateId} />
-            </div>
-          </main>
-        )}
+              {/* Processing queue (shown when a batch is active) */}
+              {batch && batch.total_files > 0 && (
+                <div className="mb-4 shrink-0">
+                  <ProcessingQueue
+                    batchId={batch.batch_id}
+                    totalFiles={batch.total_files}
+                    onComplete={handleBatchComplete}
+                    onDismiss={() => setBatch(null)}
+                  />
+                </div>
+              )}
+
+              {/* Track table */}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <TrackTable refreshTrigger={refreshTrigger} crateId={selectedCrateId} />
+              </div>
+            </main>
+          )}
+          {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+        </div>
       </div>
 
       {/* Create crate dialog */}
