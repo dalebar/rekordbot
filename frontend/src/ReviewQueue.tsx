@@ -87,13 +87,13 @@ export default function ReviewQueue({ proposal, onClose, onRefresh }: ReviewQueu
                 <div className="text-gray-300">
                   {track.artist ?? "Unknown"} — {track.title ?? "Untitled"}
                 </div>
-                <div className="mt-0.5 text-gray-600" title={track.proposed_path ?? ""}>
+                <div className="mt-0.5 text-gray-400" title={track.proposed_path ?? ""}>
                   {track.proposed_path
                     ? truncatePath(track.proposed_path)
                     : "No proposed path"}
                 </div>
                 {track.reasoning && (
-                  <div className="mt-0.5 text-gray-600 italic">{track.reasoning}</div>
+                  <div className="mt-0.5 text-gray-400 italic">{track.reasoning}</div>
                 )}
                 {track.confidence !== null && (
                   <span
@@ -165,7 +165,7 @@ function AutoApprovedList({ tracks }: { tracks: ProposalTrack[] }) {
       {expanded && (
         <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
           {tracks.map((track) => (
-            <div key={track.track_id} className="flex gap-2 text-xs text-gray-600">
+            <div key={track.track_id} className="flex gap-2 text-xs text-gray-400">
               <span className="text-gray-400">
                 {track.artist ?? "?"} — {track.title ?? "?"}
               </span>
