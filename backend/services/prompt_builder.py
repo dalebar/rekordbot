@@ -132,8 +132,7 @@ TOOL_SCHEMA: dict[str, Any] = {
                         "genre": {
                             "type": "string",
                             "description": (
-                                "Primary genre (e.g. 'Tech House', "
-                                "'Melodic Techno', 'Liquid DnB')"
+                                "Primary genre (e.g. 'Tech House', 'Melodic Techno', 'Liquid DnB')"
                             ),
                         },
                         "subgenre": {

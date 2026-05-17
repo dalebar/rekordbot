@@ -79,9 +79,7 @@ export default function CrateCreateDialog({ onClose, onCreated }: CrateCreateDia
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">
-              Description
-            </label>
+            <label className="block text-sm font-medium text-gray-400 mb-1">Description</label>
             <textarea
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-gray-100 focus:outline-none focus:border-purple-500 h-24 resize-none"
               placeholder="Deep minimal house, 118-124 BPM, hypnotic and warm. Dubby vibes, suitable for late-night sets..."

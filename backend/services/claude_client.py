@@ -140,7 +140,7 @@ class ClaudeClient:
             return True
         except anthropic.AuthenticationError:
             raise AiTagError(
-                "Invalid Anthropic API key. Please check your key " "and try again.",
+                "Invalid Anthropic API key. Please check your key and try again.",
                 status_code=401,
             ) from None
         except anthropic.APIError as e:
@@ -197,7 +197,7 @@ class ClaudeClient:
         results = self._extract_tool_results(response, batch_track_ids)
 
         logger.info(
-            "Claude API call: %d input, %d output tokens, %.1fs, " "%d tracks tagged, model=%s",
+            "Claude API call: %d input, %d output tokens, %.1fs, %d tracks tagged, model=%s",
             input_tokens,
             output_tokens,
             duration,
@@ -252,7 +252,7 @@ class ClaudeClient:
             except anthropic.RateLimitError:
                 if attempt == MAX_RETRIES:
                     raise AiTagError(
-                        "Anthropic rate limit exceeded after " f"{MAX_RETRIES} retries.",
+                        f"Anthropic rate limit exceeded after {MAX_RETRIES} retries.",
                         status_code=429,
                     ) from None
                 backoff = INITIAL_BACKOFF * (2**attempt)
@@ -273,7 +273,7 @@ class ClaudeClient:
                         ) from e
                     backoff = INITIAL_BACKOFF * (2**attempt)
                     logger.warning(
-                        "API error %d, retrying in %.1fs " "(attempt %d/%d)",
+                        "API error %d, retrying in %.1fs (attempt %d/%d)",
                         e.status_code,
                         backoff,
                         attempt + 1,
@@ -313,7 +313,7 @@ class ClaudeClient:
                 return parse_tool_result(block.input, batch_track_ids)
 
         logger.warning(
-            "No tag_tracks tool use found in Claude response " "(stop_reason=%s)",
+            "No tag_tracks tool use found in Claude response (stop_reason=%s)",
             response.stop_reason,
         )
         return []

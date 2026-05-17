@@ -492,9 +492,7 @@ def build_reorder_prompt(
         params.append("- Harmonic mixing: enabled")
     params_text = "\n".join(params) if params else ""
 
-    user_message = (
-        f'## Set Description\n"{description}"\n\n' f"## Current Sequence\n{seq_text}\n\n"
-    )
+    user_message = f'## Set Description\n"{description}"\n\n## Current Sequence\n{seq_text}\n\n'
     if params_text:
         user_message += f"## Parameters\n{params_text}\n\n"
     user_message += (

@@ -208,7 +208,7 @@ class TestImportMatchStrategies:
         loc = encode_location(str(audio))
         xml_file = _write_xml(
             tmp_path,
-            f'<TRACK TrackID="1" Name="Original Title" Artist="New Artist" ' f'Location="{loc}"/>',
+            f'<TRACK TrackID="1" Name="Original Title" Artist="New Artist" Location="{loc}"/>',
         )
 
         summary = run_import(xml_file, db_session)

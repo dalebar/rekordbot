@@ -1,9 +1,5 @@
 import { useCallback, useState } from "react";
-import {
-  updateSettings,
-  validateApiKey,
-  validateDirectory,
-} from "./api/client";
+import { updateSettings, validateApiKey, validateDirectory } from "./api/client";
 import { useToast } from "./ToastProvider";
 
 interface SetupWizardProps {
@@ -125,9 +121,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-100">
         <div className="text-center max-w-md">
           <h1 className="text-2xl font-bold mb-2">You&apos;re ready to go</h1>
-          <p className="text-gray-400 mb-8">
-            Drop some files in to get started.
-          </p>
+          <p className="text-gray-400 mb-8">Drop some files in to get started.</p>
           <div className="flex gap-3 justify-center">
             <button
               className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 rounded font-medium"
@@ -172,9 +166,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               Browse
             </button>
           </div>
-          {dirValid === true && (
-            <p className="text-xs text-emerald-400 mt-1">Directory is valid</p>
-          )}
+          {dirValid === true && <p className="text-xs text-emerald-400 mt-1">Directory is valid</p>}
           {dirError && <p className="text-xs text-red-400 mt-1">{dirError}</p>}
           <p className="text-xs text-gray-500 mt-1">
             Where rekordbot will store your converted and organised files
@@ -183,9 +175,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {/* API Key */}
         <div className="mb-8">
-          <label className="block text-sm font-medium text-gray-300 mb-1">
-            Anthropic API Key
-          </label>
+          <label className="block text-sm font-medium text-gray-300 mb-1">Anthropic API Key</label>
           <div className="flex gap-2">
             <input
               type="password"
@@ -208,7 +198,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             {keyValid === false && <span className="self-center text-red-400">✗</span>}
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Required for AI tagging, crate building, and set planning. You can add this later in Settings.
+            Required for AI tagging, crate building, and set planning. You can add this later in
+            Settings.
           </p>
         </div>
 

@@ -219,7 +219,7 @@ async def validate_api_key() -> ValidateKeyResponse:
     if not settings.anthropic_api_key:
         return ValidateKeyResponse(
             valid=False,
-            error="No API key configured. " "Set REKORDBOT_ANTHROPIC_API_KEY in your .env file.",
+            error="No API key configured. Set REKORDBOT_ANTHROPIC_API_KEY in your .env file.",
         )
 
     try:

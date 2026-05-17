@@ -1,9 +1,5 @@
 import { useCallback, useState } from "react";
-import {
-  postOrganiseResolve,
-  type ProposalResponse,
-  type ProposalTrack,
-} from "./api/client";
+import { postOrganiseResolve, type ProposalResponse, type ProposalTrack } from "./api/client";
 
 interface ReviewQueueProps {
   proposal: ProposalResponse;
@@ -65,9 +61,7 @@ export default function ReviewQueue({ proposal, onClose, onRefresh }: ReviewQueu
 
       {/* Summary */}
       <div className="mb-3 flex gap-4 text-xs text-gray-500">
-        <span className="text-emerald-400">
-          {proposal.summary.auto_approved} auto-approved
-        </span>
+        <span className="text-emerald-400">{proposal.summary.auto_approved} auto-approved</span>
         <span className="text-amber-400">{proposal.summary.needs_review} need review</span>
         {proposal.summary.failed > 0 && (
           <span className="text-red-400">{proposal.summary.failed} failed</span>
@@ -88,17 +82,13 @@ export default function ReviewQueue({ proposal, onClose, onRefresh }: ReviewQueu
                   {track.artist ?? "Unknown"} — {track.title ?? "Untitled"}
                 </div>
                 <div className="mt-0.5 text-gray-400" title={track.proposed_path ?? ""}>
-                  {track.proposed_path
-                    ? truncatePath(track.proposed_path)
-                    : "No proposed path"}
+                  {track.proposed_path ? truncatePath(track.proposed_path) : "No proposed path"}
                 </div>
                 {track.reasoning && (
                   <div className="mt-0.5 text-gray-400 italic">{track.reasoning}</div>
                 )}
                 {track.confidence !== null && (
-                  <span
-                    className={`${track.confidence < 0.5 ? "text-red-400" : "text-amber-400"}`}
-                  >
+                  <span className={`${track.confidence < 0.5 ? "text-red-400" : "text-amber-400"}`}>
                     Confidence: {(track.confidence * 100).toFixed(0)}%
                   </span>
                 )}
@@ -144,9 +134,7 @@ export default function ReviewQueue({ proposal, onClose, onRefresh }: ReviewQueu
       )}
 
       {/* Auto-approved list (collapsed by default) */}
-      {proposal.auto_approved.length > 0 && (
-        <AutoApprovedList tracks={proposal.auto_approved} />
-      )}
+      {proposal.auto_approved.length > 0 && <AutoApprovedList tracks={proposal.auto_approved} />}
     </div>
   );
 }

@@ -251,7 +251,7 @@ class Organiser:
                 suggestion = suggestion_map.get(track.id)
                 if suggestion:
                     track.organisation_reasoning = (
-                        f"{track.organisation_reasoning}; " f"Claude: {suggestion.reasoning}"
+                        f"{track.organisation_reasoning}; Claude: {suggestion.reasoning}"
                     )
 
         except Exception:

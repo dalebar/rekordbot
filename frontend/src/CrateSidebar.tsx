@@ -58,13 +58,10 @@ export default function CrateSidebar({
     loadSets();
   }, [loadSets, setRefreshTrigger]);
 
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, crateId: number) => {
-      e.preventDefault();
-      setContextMenu({ crateId, x: e.clientX, y: e.clientY });
-    },
-    [],
-  );
+  const handleContextMenu = useCallback((e: React.MouseEvent, crateId: number) => {
+    e.preventDefault();
+    setContextMenu({ crateId, x: e.clientX, y: e.clientY });
+  }, []);
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -129,13 +126,8 @@ export default function CrateSidebar({
 
       {/* Crates section */}
       <div className="mt-4 px-4 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Crates
-        </span>
-        <button
-          className="text-xs text-purple-400 hover:text-purple-300"
-          onClick={onNewCrate}
-        >
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Crates</span>
+        <button className="text-xs text-purple-400 hover:text-purple-300" onClick={onNewCrate}>
           + New
         </button>
       </div>
@@ -157,9 +149,7 @@ export default function CrateSidebar({
           </button>
         ))}
 
-        {crates.length === 0 && (
-          <p className="px-4 py-2 text-xs text-gray-600">No crates yet</p>
-        )}
+        {crates.length === 0 && <p className="px-4 py-2 text-xs text-gray-600">No crates yet</p>}
       </div>
 
       {/* Sets section */}
@@ -170,10 +160,7 @@ export default function CrateSidebar({
               Sets
             </span>
             {onNewSet && (
-              <button
-                className="text-xs text-blue-400 hover:text-blue-300"
-                onClick={onNewSet}
-              >
+              <button className="text-xs text-blue-400 hover:text-blue-300" onClick={onNewSet}>
                 + New
               </button>
             )}
@@ -190,9 +177,7 @@ export default function CrateSidebar({
                 <span className="ml-2 text-xs text-gray-600">{set.track_count}</span>
               </button>
             ))}
-            {sets.length === 0 && (
-              <p className="px-4 py-2 text-xs text-gray-600">No sets yet</p>
-            )}
+            {sets.length === 0 && <p className="px-4 py-2 text-xs text-gray-600">No sets yet</p>}
           </div>
         </>
       )}
