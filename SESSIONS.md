@@ -1315,3 +1315,83 @@ Also on the table: bitrate column schema work (deferred Sessions 26 & 27), cance
 - Tests: 1191 passing (unchanged from Session 26 — both bug fixes were UI-only).
 - All commits verified in packaged mode.
 - Ready to continue dogfooding or merge to `develop` when remaining bug list is addressed.
+
+---
+
+## Session 28 — 2026-05-17
+
+### What was worked on
+Phase 6c Part 8 — consolidating the dead Confidence Threshold config flagged at the end of Session 27. Two commits: one prettier-only formatting cleanup on a frontend file, one substantive change that removes a dead Settings field, exposes the live `organise_confidence_threshold` in the Settings UI, and updates the test suite. Verified end-to-end in packaged mode against a real 30-track library.
+
+### Summary
+
+**Investigation phase.** Read every plausible consumer of both `confidence_threshold` and `organise_confidence_threshold` across the backend services (`organiser.py`, `confidence_scorer.py`, `analysis.py`, `ai_tagger.py`, `bpm_detector.py`, `key_detector.py`), the settings route, the config manager, and the frontend SettingsPanel. Confirmed three separate identifiers existed:
+
+- **A:** `settings.organise_confidence_threshold` (default 0.7) — live consumer in `organiser.py`, but not in `CONFIGURABLE_FIELDS`, not in the Settings API schema, not in the UI. Only adjustable via the `REKORDBOT_ORGANISE_CONFIDENCE_THRESHOLD` env var.
+- **B:** `settings.confidence_threshold` (default 0.6) — fully exposed in `CONFIGURABLE_FIELDS`, in the API, in the UI, in the test fixtures. No consumer anywhere in the codebase. Pure dead config.
+- **C:** `OrganiseRequest.options.confidence_threshold` — per-request override on the organise route. Wired up but never sent by any frontend code. Left untouched (intentional API affordance).
+
+Also surfaced: `bpm_detector.py` and `key_detector.py` produce confidence values but those values are informational only — no threshold-based gating action.
+
+**Implementation phase.** One commit split into two:
+
+1. **Prettier formatting cleanup on `client.ts`.** Pre-existing prettier drift that surfaced when running `prettier --write` on the file being edited. Split into its own commit for a clean audit trail — confidence-threshold-substantive vs formatting-only. (`88e30a8`)
+
+2. **Substantive consolidation.** (`daac2a6`)
+   - Removed `confidence_threshold` from `backend/config.py`, `SettingsResponse`/`SettingsUpdate` in `routes/settings.py`, `CONFIGURABLE_FIELDS` in `services/config_manager.py`, `SettingsResponse`/`SettingsUpdateRequest` in `api/client.ts`.
+   - Added `organise_confidence_threshold` to all the same places, with `Field(default=None, ge=0.0, le=1.0)` on the update model to preserve range validation.
+   - Renamed `SettingsPanel.tsx` local state from `confidence` / `setConfidence` to `organiseConfidence` / `setOrganiseConfidence`. Changed default from 0.6 to 0.7. Updated label to "Organisation Confidence Threshold" with helper text: "Tracks scoring below this go to the review queue. Higher = more tracks need manual review."
+   - Test sweep across 5 files: `test_settings_routes.py`, `test_config_manager.py`, `test_phase6a_integration.py`, `test_error_handling.py`, `test_analysis.py`, `test_phase2_integration.py`. The last three needed updates beyond the initial scope (caught by CC during implementation) — fixtures constructing `Settings(confidence_threshold=...)` would have failed model instantiation, and validation tests using `confidence_threshold` as an out-of-range probe needed to point at the new field. Added one new test (`test_updates_organise_confidence_threshold`) for positive-path coverage of the new field.
+
+**Verification phase.** Built the .dmg, replaced the previous .app in `/Applications`, launched against the real 30-track library carried over from prior sessions. The pre-existing `config.json` had `confidence_threshold: 0.95` from Session 27's env-var-driven experimentation — a real test subject for the silent-drop migration behaviour.
+
+Preview Organisation at three thresholds:
+- **0.7** → 30 auto-approved, 0 needs-review
+- **0.95** → 15 auto-approved, 15 needs-review
+- **0.4** → 30 auto-approved, 0 needs-review
+
+The 0.7 → 0.95 transition demonstrably moved 15 tracks into the review queue — the moment that proved Session 27's diagnosis was correct and the fix actually worked. The 0.95 → 0.4 transition pulled them back out, symmetrically.
+
+Config.json on disk after saving at 0.4: contains `organise_confidence_threshold: 0.4`, old `confidence_threshold` key absent, other 9 keys intact. The silent-drop migration (via `CONFIGURABLE_FIELDS` filtering in `save_config`) worked as designed.
+
+### Key decisions made
+
+1. **Keep the verbose name `organise_confidence_threshold`, don't shorten to `confidence_threshold`.** Session 27's preferred path was the rename. Pushed back: a generic `confidence_threshold` invites "confidence in what?" confusion, the per-request route option already uses the short name in its own scope, and a verbose name future-proofs the namespace for any later analysis-time threshold.
+
+2. **No config.json migration code.** Old `confidence_threshold` keys in user configs are silently ignored on load (not in `CONFIGURABLE_FIELDS` anymore) and dropped on next save (filtered on write). No explicit migration step needed — the existing filter mechanism is the migration. Verified against a real config.
+
+3. **Split prettier-only churn into its own commit.** Two commits instead of one. The substantive diff stays focused on confidence-threshold semantics; reviewers (and future audits) see formatting-only changes clearly separated. CC's interleaved stash approach handled the split cleanly with no merge conflicts.
+
+4. **Leave the per-request `OrganiseRequest.options.confidence_threshold` alone.** Wired-up-but-unused API affordance. Could be removed or could be put to use (e.g. a "Lower the bar" button on an empty review queue). Not a Session 28 problem.
+
+5. **Close off the cancel-revert idea formally.** Decided not to pursue per-file output-provenance tracking and undo log for cancelled ingestions. Current behaviour (cancel stops further processing, leaves processed files in place) is acceptable — re-analysis is non-destructive and there is no recovery cost. Removing it from the future-work list rather than carrying it as a deferred item.
+
+### Things that surprised us
+
+- **CC's investigation surfaced three test files beyond the initial scope.** `test_analysis.py`, `test_phase2_integration.py`, and `test_error_handling.py` all referenced the dead field. The investigation prompt covered the obvious settings/config tests but missed these. CC extending scope to fix them (rather than letting the test suite break) was the right call, and the extension was clean and minimal.
+
+- **Verification corpus already in place.** Plan had been to ingest the Panorama Bar Playlist 02 folder for verification. On launching the fresh build, 30 tracks from a prior session were still in the library. Used those instead — verification was the goal, not ingestion, and 30 tracks gave us a healthy distribution (some scoring above 0.95, some between 0.7-0.95). Saved 15-30 minutes.
+
+- **The silent-drop migration was effortless to verify.** The pre-existing `confidence_threshold: 0.95` in config.json was the exact real-world artefact the migration needed to handle. One save in the UI dropped it cleanly. No code path needed for migration beyond the existing `CONFIGURABLE_FIELDS` filter on `save_config()`.
+
+### What's next — merge prep, then merge
+
+The substantive work for Phase 6c is done. The remaining items on the 6c list either belong in a separate scope (bitrate column needs an Alembic migration; frontend test infrastructure is its own setup task) or are small polish items that fit better in Phase 6e.
+
+Next session should:
+- Run `docs/phase-completion-checklist.md` against Phase 6c.
+- Sweep the pre-existing prettier/ruff-format drift across the codebase in a dedicated commit (7 files reported drift in this session's lint check — none of them touched).
+- Merge `feature/phase-6c-dogfooding` → `develop` with `--no-ff` and a phase tag.
+
+Deferred items being carried forward into post-merge work:
+- **Bitrate column** — schema design (output_bitrate column vs display-time computation), Alembic migration, backfill. Own branch.
+- **Frontend testing infrastructure** — Vitest, React Testing Library, mocking for SSE and Tauri APIs. Own scoped session.
+- **Cancel button "Cancelling..." feedback** — small UI polish, fits in Phase 6e.
+- **Polish list from Session 25** — Tauri minWidth, drop zone wrap, Approve Auto count, review queue refresh post-approve, Track Detail proposed path, API key mask visibility, Alembic startup log line, stacked toast dismissal. Phase 6e.
+
+### Final state
+- Branch: `feature/phase-6c-dogfooding`, 2 commits ahead of Session 27 HEAD (`df42ecb`), plus this docs update commit.
+- Tests: 1192 passing (was 1191, +1 new test for `test_updates_organise_confidence_threshold`).
+- Verified in packaged mode against a real 30-track library.
+- Old `confidence_threshold` keys in user configs silently drop on next save — verified against a real pre-existing config.
+- Ready for merge prep.

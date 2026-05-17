@@ -397,8 +397,8 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 **Phase:** 6c — UI Review & Bug Fixing (in progress)
 **Branch:** `feature/phase-6c-dogfooding`
-**Tests:** 1191 passing across all phases
-**Next step:** Phase 6c Part 8 — strongest candidate is consolidating the dead Confidence Threshold config (the UI field has no consumer, the organiser uses a hardcoded value not exposed in UI). Also still on the table: bitrate column schema work, cancel-revert feature design, and the remaining polish list from Session 25.
+**Tests:** 1192 passing across all phases
+**Next step:** Phase 6c merge prep — phase-completion checklist sweep, prettier/ruff-format drift cleanup on untouched files, then merge `feature/phase-6c-dogfooding` → `develop` with `--no-ff` and a phase tag.
 
 ### Phase Summary
 
@@ -415,7 +415,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
 | 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
-| 6c — UI Review & Bug Fixing | 1191 | (dogfooding — no feature brief) |
+| 6c — UI Review & Bug Fixing | 1192 | (dogfooding — no feature brief) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -437,6 +437,9 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - ✅ Analysis state lost on Settings navigation — fixed (`6c1c18b`)
 - ✅ Analysis restart blocked after Settings interruption — fixed (shared root cause with Bug 4, `6c1c18b`)
 
+**Resolved in Session 28 (Phase 6c Part 8):**
+- ✅ Dead `confidence_threshold` Settings field — consolidated into `organise_confidence_threshold` and surfaced in the Settings UI Advanced section with clear label and helper text. Verified in packaged mode against a real 30-track library. (`daac2a6`)
+
 **Deferred (require dedicated scoping):**
 - **Bitrate column shows source not output value** — Track.bitrate currently stores source bitrate; fix needs schema change (new output_bitrate column?) plus Alembic migration plus backfill logic. Deferred at start of Session 26.
 - **Cancel-revert for ingestion** — currently cancel stops further file processing but leaves already-processed files in place. A proper revert needs per-file output-provenance tracking (did rekordbot create this file?), an undo log, and a confirmation dialog. Captured during Session 26 bug #8 work.
@@ -451,7 +454,6 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - No startup log line confirming Alembic action (fresh DB? upgraded? no-op?)
 - Stacked toasts after invalid settings save then valid settings save — both persist visually until manually dismissed
 - Cancel button (analysis and ingestion) shows no immediate feedback during pending cancellation — current-track finishes its work (~4-5s) before cancellation takes effect, but the button doesn't change state during the wait. Add "Cancelling..." disabled state.
-- Settings "Confidence Threshold" field is dead config — UI exposes `confidence_threshold` but the organiser reads `organise_confidence_threshold`. Either consolidate the two fields (preferred — the analysis-time `confidence_threshold` has no consumer either) or surface `organise_confidence_threshold` in the UI under a different label.
 
 ## Known Issues / Don't Touch
 
@@ -476,6 +478,8 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - Flexbox constraint chains: `min-h-0` and `min-w-0` only propagate through flex items if every intermediate wrapper is itself a flex container in the same axis. A non-flex wrapper between a parent flex column and a child with `flex-1` breaks the constraint chain — the child falls back to intrinsic content size. When adding `flex-1` to a component's outer wrapper, verify its parent in the consuming component is `flex flex-col` (or `flex flex-row`).
 - For 4xx error responses surfaced to the frontend, use the existing `RekordBotError` exception hierarchy (`backend/exceptions.py`) — never FastAPI's `HTTPException` with a structured `detail` dict. FastAPI wraps the detail under another `detail` key, producing `{"detail": {error, detail}}`, which doesn't match the documented `{error, detail}` schema (CLAUDE.md "Error Handling") and breaks the frontend's `ApiError` type. The global handler in `main.py` serialises `RekordBotError` correctly. Adding a new error class is one line; copy the pattern of `SettingsError`, `CrateError`, etc.
 - Text selection on Shift+click in a table: use `select-none` (CSS `user-select: none`) on the `<table>` element via Tailwind. Selection starts on `mousedown`, so `e.preventDefault()` in the click handler fires too late. Inline `<input>` elements inside the table are unaffected — browsers override parent `user-select` on form controls.
+- `organise_confidence_threshold` is the live organisation threshold (default 0.7), exposed in Settings → Advanced. The short-named `confidence_threshold` field that previously appeared in `CONFIGURABLE_FIELDS` and the Settings UI was dead config and was removed in Session 28. Old user configs with the short name silently drop the key on next save via `CONFIGURABLE_FIELDS` filtering in `save_config()`. The per-request `OrganiseRequest.options.confidence_threshold` override on `/api/organise/propose` is wired-up-but-unused — intentional API affordance, not a bug.
+- BPM and key detection produce `BPMResult.confidence` and `KeyResult.confidence` values for informational display only. No threshold-based gating action consumes them anywhere in the pipeline. If a future feature wants to gate on these (e.g. "skip tag writing for low-confidence BPM"), it will need to introduce its own threshold field — not reuse the now-removed generic `confidence_threshold`.
 - SettingsPanel renders as an absolutely-positioned overlay (`absolute inset-0 z-10 bg-gray-950`) inside a `relative` wrapper in App.tsx, NOT as a swap-mount. This is deliberate — preserving in-flight component state (analysis SSE connection, progress bar state, etc.) across Settings round-trips required keeping `<main>` mounted continuously. ConflictReviewPanel and SetPlannerView remain swap-mounted because they are full workflows where state-loss on entry is acceptable. The Settings overlay sits below the header (it shares a parent with `<main>`, not with the header). z-index `z-10` places it above the underlying view but below `CrateCreateDialog` and `SetCreateDialog` (which use `z-40` for true modal behaviour).
 
 ## Phased Build Plan
