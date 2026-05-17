@@ -36,7 +36,7 @@ class TestGetSettings:
         assert "convert_aac_to_mp3" in data
         assert "bpm_range_min" in data
         assert "bpm_range_max" in data
-        assert "confidence_threshold" in data
+        assert "organise_confidence_threshold" in data
 
     @pytest.mark.asyncio
     async def test_api_key_is_masked(self, settings_client: AsyncClient) -> None:
@@ -196,6 +196,37 @@ class TestPutSettings:
             )
             assert resp.status_code == 200
             assert saved_config.get("anthropic_api_key") == valid_key
+
+    @pytest.mark.asyncio
+    async def test_updates_organise_confidence_threshold(
+        self, settings_client: AsyncClient, tmp_path: Path
+    ) -> None:
+        """Updating organise_confidence_threshold via PUT persists to
+        settings and config file."""
+        config_dir = tmp_path / "rekordbot"
+        config_dir.mkdir()
+        saved_config: dict = {}
+
+        def capture_save(config: dict) -> None:
+            saved_config.update(config)
+
+        with (
+            patch(
+                "backend.services.config_manager._get_app_data_dir",
+                return_value=config_dir,
+            ),
+            patch("backend.routes.settings.load_config", return_value={}),
+            patch(
+                "backend.routes.settings.save_config",
+                side_effect=capture_save,
+            ),
+        ):
+            resp = await settings_client.put(
+                "/api/settings",
+                json={"organise_confidence_threshold": 0.85},
+            )
+            assert resp.status_code == 200
+            assert saved_config.get("organise_confidence_threshold") == 0.85
 
 
 class TestPutSettingsFolderTemplate:

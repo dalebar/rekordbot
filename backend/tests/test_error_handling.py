@@ -28,7 +28,7 @@ class TestValidationErrorHandler:
         """Sending invalid body to a typed endpoint returns standard error JSON."""
         resp = await error_client.put(
             "/api/settings",
-            json={"confidence_threshold": "not_a_number"},
+            json={"organise_confidence_threshold": "not_a_number"},
         )
         assert resp.status_code == 422
         data = resp.json()
@@ -41,7 +41,7 @@ class TestValidationErrorHandler:
         """Sending out-of-range value returns validation error."""
         resp = await error_client.put(
             "/api/settings",
-            json={"confidence_threshold": 2.0},
+            json={"organise_confidence_threshold": 2.0},
         )
         assert resp.status_code == 422
         data = resp.json()

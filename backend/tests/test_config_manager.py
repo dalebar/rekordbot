@@ -108,7 +108,7 @@ class TestLoadConfig:
             "convert_aac_to_mp3": True,
             "bpm_range_min": 60,
             "bpm_range_max": 200,
-            "confidence_threshold": 0.8,
+            "organise_confidence_threshold": 0.8,
             "set_track_duration_minutes": 5,
             "set_max_tracks": 30,
         }
@@ -191,12 +191,12 @@ class TestApplyConfigToEnv:
     def test_converts_float_to_string(self) -> None:
         from backend.services.config_manager import apply_config_to_env
 
-        config = {"confidence_threshold": 0.8}
+        config = {"organise_confidence_threshold": 0.8}
         # Remove any pre-existing env vars (may leak from main.py import)
         env_clean = {k: v for k, v in os.environ.items() if not k.startswith("REKORDBOT_")}
         with patch.dict(os.environ, env_clean, clear=True):
             apply_config_to_env(config)
-            assert os.environ.get("REKORDBOT_CONFIDENCE_THRESHOLD") == "0.8"
+            assert os.environ.get("REKORDBOT_ORGANISE_CONFIDENCE_THRESHOLD") == "0.8"
 
     def test_does_not_override_existing_env_vars(self) -> None:
         from backend.services.config_manager import apply_config_to_env

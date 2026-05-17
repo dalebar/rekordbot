@@ -34,7 +34,7 @@ class SettingsResponse(BaseModel):
     convert_aac_to_mp3: bool = False
     bpm_range_min: int = 70
     bpm_range_max: int = 180
-    confidence_threshold: float = 0.6
+    organise_confidence_threshold: float = 0.7
     set_track_duration_minutes: int = 7
     set_max_tracks: int = 50
 
@@ -49,7 +49,7 @@ class SettingsUpdate(BaseModel):
     convert_aac_to_mp3: bool | None = None
     bpm_range_min: int | None = None
     bpm_range_max: int | None = None
-    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    organise_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     set_track_duration_minutes: int | None = Field(default=None, ge=1)
     set_max_tracks: int | None = Field(default=None, ge=1)
 
@@ -101,7 +101,7 @@ async def get_settings() -> SettingsResponse:
         convert_aac_to_mp3=settings.convert_aac_to_mp3,
         bpm_range_min=settings.bpm_range_min,
         bpm_range_max=settings.bpm_range_max,
-        confidence_threshold=settings.confidence_threshold,
+        organise_confidence_threshold=settings.organise_confidence_threshold,
         set_track_duration_minutes=settings.set_track_duration_minutes,
         set_max_tracks=settings.set_max_tracks,
     )

@@ -22,7 +22,6 @@ def test_settings():
         db_url="sqlite://",
         bpm_range_min=70,
         bpm_range_max=180,
-        confidence_threshold=0.6,
         max_concurrent_analyses=1,
     )
 

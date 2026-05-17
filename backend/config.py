@@ -46,7 +46,6 @@ class Settings(BaseSettings):
     # Phase 2: Analysis settings
     bpm_range_min: int = 70
     bpm_range_max: int = 180
-    confidence_threshold: float = 0.6
     max_concurrent_analyses: int = 1
     default_key_notation: str = "camelot"
 

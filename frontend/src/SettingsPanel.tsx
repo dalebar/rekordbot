@@ -27,7 +27,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [convertAac, setConvertAac] = useState(false);
   const [bpmMin, setBpmMin] = useState(70);
   const [bpmMax, setBpmMax] = useState(180);
-  const [confidence, setConfidence] = useState(0.6);
+  const [organiseConfidence, setOrganiseConfidence] = useState(0.7);
   const [trackDuration, setTrackDuration] = useState(7);
   const [maxTracks, setMaxTracks] = useState(50);
 
@@ -48,7 +48,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         setConvertAac(s.convert_aac_to_mp3);
         setBpmMin(s.bpm_range_min);
         setBpmMax(s.bpm_range_max);
-        setConfidence(s.confidence_threshold);
+        setOrganiseConfidence(s.organise_confidence_threshold);
         setTrackDuration(s.set_track_duration_minutes);
         setMaxTracks(s.set_max_tracks);
         setLoading(false);
@@ -126,7 +126,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         convert_aac_to_mp3: convertAac,
         bpm_range_min: bpmMin,
         bpm_range_max: bpmMax,
-        confidence_threshold: confidence,
+        organise_confidence_threshold: organiseConfidence,
         set_track_duration_minutes: trackDuration,
         set_max_tracks: maxTracks,
       });
@@ -143,7 +143,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     convertAac,
     bpmMin,
     bpmMax,
-    confidence,
+    organiseConfidence,
     trackDuration,
     maxTracks,
     addToast,
@@ -314,20 +314,24 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </div>
               </div>
 
-              {/* Confidence Threshold */}
+              {/* Organisation Confidence Threshold */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">
-                  Confidence Threshold (0.0–1.0)
+                  Organisation Confidence Threshold
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   min="0"
                   max="1"
-                  value={confidence}
-                  onChange={(e) => setConfidence(Number(e.target.value))}
+                  value={organiseConfidence}
+                  onChange={(e) => setOrganiseConfidence(Number(e.target.value))}
                   className="w-24 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Tracks scoring below this go to the review queue. Higher = more tracks need manual
+                  review.
+                </p>
               </div>
 
               {/* Track Duration */}

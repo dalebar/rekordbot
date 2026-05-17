@@ -1161,7 +1161,7 @@ export interface SettingsResponse {
   convert_aac_to_mp3: boolean;
   bpm_range_min: number;
   bpm_range_max: number;
-  confidence_threshold: number;
+  organise_confidence_threshold: number;
   set_track_duration_minutes: number;
   set_max_tracks: number;
 }
@@ -1175,7 +1175,7 @@ export interface SettingsUpdateRequest {
   convert_aac_to_mp3?: boolean;
   bpm_range_min?: number;
   bpm_range_max?: number;
-  confidence_threshold?: number;
+  organise_confidence_threshold?: number;
   set_track_duration_minutes?: number;
   set_max_tracks?: number;
 }
