@@ -10,14 +10,31 @@ Use this checklist at the end of every phase to ensure nothing is left undone be
 
 Go through every acceptance criterion in the phase's feature brief (`docs/features/<phase>.md`). Each one should be checked off. If any are not met, the phase is not complete.
 
-### 2. Confirm tests pass
+### 2. Confirm tests pass and lint state
 
 ```bash
 cd ~/Documents/projects/rekordbot
 source .venv/bin/activate
 pytest                                 # all tests green
-make lint                              # Ruff + mypy clean
+make lint                              # Ruff clean; mypy state assessed below
 ```
+
+**Ruff (both `check` and `format --check`)** must be clean. No exceptions.
+
+**mypy** must not regress against `develop`'s baseline. The codebase carries some pre-existing mypy debt (see CLAUDE.md Known Issues / Don't Touch for the current count and categorisation). The phase-close requirement is **"this phase introduces zero new mypy errors against `develop`'s baseline"** — not "mypy zero errors total." To verify when closing a phase:
+
+```bash
+# Capture this phase's mypy error count
+make lint 2>&1 | grep -c "^backend/.*error:" || true
+# Switch to develop, capture its baseline
+git checkout develop
+make lint 2>&1 | grep -c "^backend/.*error:" || true
+git checkout -
+```
+
+The two counts must match (or the phase's count must be lower if the phase incidentally reduced the debt, e.g. by retiring code that contained errors). If the phase's count is higher, the phase has introduced new errors and must address them before merging.
+
+When the project eventually clears the pre-existing mypy debt to zero, this criterion tightens back to "mypy zero errors" automatically.
 
 ### 3. Review for stale TODOs
 
