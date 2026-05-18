@@ -19,6 +19,7 @@ from backend.models.track import Track
 from backend.services.bpm_detector import BPMResult, detect_bpm
 from backend.services.key_detector import KeyResult, detect_key
 from backend.services.key_notation import parse_key_tag
+from backend.services.perf import Stage, get_recorder
 from backend.services.tag_reader import TagData, read_tags
 from backend.services.tag_writer import TagValues, TagWriteResult, write_tags
 
@@ -78,6 +79,7 @@ async def analyse_track(
     Returns:
         AnalysisResult with detection results.
     """
+    recorder = get_recorder()
     file_path = Path(track.file_path)
 
     if not file_path.exists():
@@ -91,99 +93,107 @@ async def analyse_track(
         )
 
     try:
-        # Step 1: Read existing tags
-        tag_data = await asyncio.to_thread(read_tags, file_path)
+        with recorder.stage(Stage.ANALYSIS_TRACK, payload={"track_id": track.id}):
+            # Step 1: Read existing tags
+            with recorder.stage(Stage.ANALYSIS_READ_TAGS):
+                tag_data = await asyncio.to_thread(read_tags, file_path)
 
-        if tag_data is not None:
-            # Populate tag fields in DB
-            if tag_data.title is not None:
-                track.title = tag_data.title
-            if tag_data.artist is not None:
-                track.artist = tag_data.artist
-            if tag_data.album is not None:
-                track.album = tag_data.album
-            if tag_data.genre is not None:
-                track.genre = tag_data.genre
-            if tag_data.year is not None:
-                track.year = tag_data.year
-            if tag_data.track_number is not None:
-                track.track_number = tag_data.track_number
-            if tag_data.comment is not None:
-                track.comment = tag_data.comment
-            if tag_data.label is not None:
-                track.label = tag_data.label
-            if tag_data.rating is not None:
-                track.rating = tag_data.rating
+            if tag_data is not None:
+                # Populate tag fields in DB
+                if tag_data.title is not None:
+                    track.title = tag_data.title
+                if tag_data.artist is not None:
+                    track.artist = tag_data.artist
+                if tag_data.album is not None:
+                    track.album = tag_data.album
+                if tag_data.genre is not None:
+                    track.genre = tag_data.genre
+                if tag_data.year is not None:
+                    track.year = tag_data.year
+                if tag_data.track_number is not None:
+                    track.track_number = tag_data.track_number
+                if tag_data.comment is not None:
+                    track.comment = tag_data.comment
+                if tag_data.label is not None:
+                    track.label = tag_data.label
+                if tag_data.rating is not None:
+                    track.rating = tag_data.rating
 
-            # Store source BPM from existing tags
-            if tag_data.bpm is not None:
-                track.source_bpm = tag_data.bpm
+                # Store source BPM from existing tags
+                if tag_data.bpm is not None:
+                    track.source_bpm = tag_data.bpm
 
-            # Store source key from existing tags (parse to internal int)
-            if tag_data.key is not None:
-                parsed_key = parse_key_tag(tag_data.key)
-                if parsed_key is not None:
-                    track.source_key = parsed_key
+                # Store source key from existing tags (parse to internal int)
+                if tag_data.key is not None:
+                    parsed_key = parse_key_tag(tag_data.key)
+                    if parsed_key is not None:
+                        track.source_key = parsed_key
 
-            # Duration from tags (fallback — librosa may provide better value)
-            if tag_data.duration is not None and track.duration is None:
-                track.duration = tag_data.duration
+                # Duration from tags (fallback — librosa may provide better value)
+                if tag_data.duration is not None and track.duration is None:
+                    track.duration = tag_data.duration
 
-        # Step 2: Load audio with librosa (once, shared between detectors)
-        import librosa  # type: ignore[import-not-found]
+            # Step 2: Load audio with librosa (once, shared between detectors)
+            import librosa  # type: ignore[import-not-found]
 
-        y, loaded_sr = await asyncio.to_thread(librosa.load, str(file_path), sr=22050, mono=True)
-        sr: int = int(loaded_sr)
+            with recorder.stage(Stage.ANALYSIS_LIBROSA_LOAD):
+                y, loaded_sr = await asyncio.to_thread(
+                    librosa.load, str(file_path), sr=22050, mono=True
+                )
+            sr: int = int(loaded_sr)
 
-        # Update duration from librosa (more reliable than tag-based)
-        track.duration = float(len(y)) / sr
+            # Update duration from librosa (more reliable than tag-based)
+            track.duration = float(len(y)) / sr
 
-        # Step 3: Detect BPM
-        bpm_result = await asyncio.to_thread(
-            detect_bpm,
-            file_path,
-            sr=22050,
-            bpm_range_min=settings.bpm_range_min,
-            bpm_range_max=settings.bpm_range_max,
-            y=y,
-            loaded_sr=sr,
-        )
+            # Step 3: Detect BPM
+            with recorder.stage(Stage.ANALYSIS_DETECT_BPM):
+                bpm_result = await asyncio.to_thread(
+                    detect_bpm,
+                    file_path,
+                    sr=22050,
+                    bpm_range_min=settings.bpm_range_min,
+                    bpm_range_max=settings.bpm_range_max,
+                    y=y,
+                    loaded_sr=sr,
+                )
 
-        if bpm_result is not None:
-            track.bpm = bpm_result.bpm
-            track.bpm_confidence = bpm_result.confidence
+            if bpm_result is not None:
+                track.bpm = bpm_result.bpm
+                track.bpm_confidence = bpm_result.confidence
 
-        # Step 4: Detect key
-        key_result = await asyncio.to_thread(
-            detect_key,
-            file_path,
-            y=y,
-            loaded_sr=sr,
-        )
+            # Step 4: Detect key
+            with recorder.stage(Stage.ANALYSIS_DETECT_KEY):
+                key_result = await asyncio.to_thread(
+                    detect_key,
+                    file_path,
+                    y=y,
+                    loaded_sr=sr,
+                )
 
-        if key_result is not None:
-            track.key = key_result.key
-            track.key_confidence = key_result.confidence
+            if key_result is not None:
+                track.key = key_result.key
+                track.key_confidence = key_result.confidence
 
-        # Step 5: Update analysis status
-        track.analysis_status = "analysed"
-        db_session.commit()
+            # Step 5: Update analysis status
+            with recorder.stage(Stage.ANALYSIS_DB_UPDATE):
+                track.analysis_status = "analysed"
+                db_session.commit()
 
-        logger.info(
-            "Analysis complete for track %d (%s): BPM=%.2f, Key=%s",
-            track.id,
-            file_path.name,
-            track.bpm or 0.0,
-            track.key or "unknown",
-        )
+            logger.info(
+                "Analysis complete for track %d (%s): BPM=%.2f, Key=%s",
+                track.id,
+                file_path.name,
+                track.bpm or 0.0,
+                track.key or "unknown",
+            )
 
-        return AnalysisResult(
-            track_id=track.id,
-            status="success",
-            bpm_result=bpm_result,
-            key_result=key_result,
-            tags_read=tag_data,
-        )
+            return AnalysisResult(
+                track_id=track.id,
+                status="success",
+                bpm_result=bpm_result,
+                key_result=key_result,
+                tags_read=tag_data,
+            )
 
     except Exception as e:
         logger.exception("Analysis failed for track %d (%s)", track.id, file_path)

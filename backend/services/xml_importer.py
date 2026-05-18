@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from backend.models.crate import Crate, CrateTrack
 from backend.models.track import Track
 from backend.services.converter import compute_file_hash
+from backend.services.perf import Stage, get_recorder
 from backend.services.track_matcher import find_match
 from backend.services.xml_parser import ParsedLibrary, ParsedTrack, parse_rekordbox_xml
 
@@ -350,41 +351,47 @@ def run_import(
     Raises:
         XmlImportError: If the XML file is invalid.
     """
-    logger.info("Starting XML import from %s", file_path)
+    recorder = get_recorder()
+    with recorder.stage(Stage.XML_IMPORT):
+        logger.info("Starting XML import from %s", file_path)
 
-    # Parse (validates internally)
-    library = parse_rekordbox_xml(file_path)
+        # Parse (validates internally)
+        with recorder.stage(Stage.XML_IMPORT_PARSE):
+            library = parse_rekordbox_xml(file_path)
 
-    logger.info(
-        "Parsed library: %s v%s, %d tracks, %d playlists",
-        library.product_name,
-        library.product_version,
-        len(library.tracks),
-        len(library.playlists),
-    )
+        logger.info(
+            "Parsed library: %s v%s, %d tracks, %d playlists",
+            library.product_name,
+            library.product_version,
+            len(library.tracks),
+            len(library.playlists),
+        )
 
-    # Import tracks
-    summary, location_to_track_id = import_tracks(
-        library,
-        db,
-        progress_callback=progress_callback,
-        cancel_check=cancel_check,
-    )
+        # Import tracks
+        with recorder.stage(Stage.XML_IMPORT_TRACKS):
+            summary, location_to_track_id = import_tracks(
+                library,
+                db,
+                progress_callback=progress_callback,
+                cancel_check=cancel_check,
+            )
 
-    # Import playlists
-    import_playlists(library, location_to_track_id, db, summary)
+        # Import playlists
+        with recorder.stage(Stage.XML_IMPORT_PLAYLISTS):
+            import_playlists(library, location_to_track_id, db, summary)
 
-    db.commit()
+        with recorder.stage(Stage.XML_IMPORT_COMMIT):
+            db.commit()
 
-    logger.info(
-        "Import complete: %d imported, %d matched, %d conflicts, %d skipped, "
-        "%d playlists imported, %d playlists skipped",
-        summary.tracks_imported,
-        summary.tracks_matched,
-        summary.tracks_conflict,
-        summary.tracks_skipped,
-        summary.playlists_imported,
-        summary.playlists_skipped,
-    )
+        logger.info(
+            "Import complete: %d imported, %d matched, %d conflicts, %d skipped, "
+            "%d playlists imported, %d playlists skipped",
+            summary.tracks_imported,
+            summary.tracks_matched,
+            summary.tracks_conflict,
+            summary.tracks_skipped,
+            summary.playlists_imported,
+            summary.playlists_skipped,
+        )
 
-    return summary
+        return summary

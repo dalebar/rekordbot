@@ -1,0 +1,7 @@
+{"session_id": "11111111111111111111111111111111", "pipeline": "ingestion", "stage": "ingestion_inspect", "start_ts": 1779065100.05, "duration_s": 0.05, "pid": 12345, "payload": null, "error": null}
+{"session_id": "11111111111111111111111111111111", "pipeline": "ingestion", "stage": "ingestion_hash", "start_ts": 1779065100.11, "duration_s": 0.04, "pid": 12345, "payload": null, "error": null}
+{"session_id": "11111111111111111111111111111111", "pipeline": "ingestion", "stage": "ingestion_file", "start_ts": 1779065100.0, "duration_s": 0.2, "pid": 12345, "payload": {"source_path": "/test/library/a.flac", "size_bytes": 1048576}, "error": null}
+{"session_id": "11111111111111111111111111111111", "pipeline": "ingestion", "stage": "ingestion_inspect", "start_ts": 1779065100.25, "duration_s": 0.06, "pid": 12345, "payload": null, "error": null}
+{"session_id": "11111111111111111111111111111111", "pipeline": "ingestion", "stage": "ingestion_file", "start_ts": 1779065100.2, "duration_s": 0.22, "pid": 12345, "payload": {"source_path": "/test/library/b.flac", "size_bytes": 2097152}, "error": null}
+{"session_id": "11111111111111111111111111111111", "pipeline": "analysis", "stage": "analysis_detect_bpm", "start_ts": 1779065101.0, "duration_s": 5.0, "pid": 12345, "payload": null, "error": null}
+{"session_id": "11111111111111111111111111111111", "pipeline": "analysis", "stage": "analysis_track", "start_ts": 1779065100.5, "duration_s": 13.0, "pid": 12345, "payload": {"track_id": 1}, "error": null}

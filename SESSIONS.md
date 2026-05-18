@@ -1395,3 +1395,1333 @@ Deferred items being carried forward into post-merge work:
 - Verified in packaged mode against a real 30-track library.
 - Old `confidence_threshold` keys in user configs silently drop on next save — verified against a real pre-existing config.
 - Ready for merge prep.
+
+---
+
+## Session 29 — 2026-05-17
+
+### What was worked on
+Phase 6c merge prep and merge to develop. Documentation and tooling housekeeping. Opening Phase 6d branch. Branch naming convention adopted.
+
+This entry covers two distinct working sessions on the same day — Session 28 wrap-up and merge-prep happened first; the Phase 6d branch was opened immediately after. Logged as one entry because the intervening time was minimal and the work is one coherent push from "Phase 6c done" to "Phase 6d ready to start".
+
+### Summary
+
+**Tag housekeeping (pre-merge).**
+- Deleted a junk `phase-N-complete` tag — created when the phase-completion-checklist command was run literally with `N` as a placeholder rather than substituted. Root cause fixed in commit `601e02a` (see below).
+- Retroactively tagged `phase-5a-complete` at `cc8bb076` (the feature/phase-5a-crate-builder merge commit on develop) and `phase-6b-complete` at `1ec6483` (the feature/phase-6b-dmg-packaging merge commit). Both as annotated tags with proper messages.
+- Phase tag sequence on develop now complete and coherent: 1, 2, 2b, 3, 4, 4b, 5a, 5b, 6a, 6b, 6c — all pointing at the corresponding merge commit.
+
+**Documentation cleanup (four atomic commits on feature/phase-6c-dogfooding before merge).**
+
+1. **`601e02a` — Tighten phase-completion-checklist.**
+   - Step 9 "Tag (optional but recommended)" → "Tag the merge commit" to codify the convention (the junk `phase-N-complete` tag would have been avoided if the instruction had been firm).
+   - Fixed `<N>` placeholder syntax in checklist examples to prevent literal-tag footguns.
+   - Added missing `git push origin <tag>` step.
+
+2. **`5bcd111` — Rename `docs/djapp-project-plan.md` → `docs/rekordbot-project-plan.md`.**
+   - `git mv` to preserve history.
+   - Updated stale references in `docs/research/tauri-python-backend-research.md` (crateai-server → rekordbot-server, 10 occurrences), `docs/features/phase-6b-dmg-packaging.md`, and `docs/reference/phase-completion-checklist.md`.
+   - SESSIONS.md historical references preserved verbatim — that's a log of what happened, not a live document.
+
+3. **`6eb8145` — Project plan rewrite.**
+   - Marked Phase 6b complete (final acceptance criterion validated through 6c dogfooding rather than separately).
+   - Rewrote Phase 6c section with delivered scope: 63 commits across Sessions 20–28, 1192 tests (+49 new vs Phase 6b's 1143).
+   - Updated Resolved Decisions table with the Alembic resolution.
+   - Updated branch list. Fixed stale references to docs paths under `docs/reference/`.
+
+4. **`6feb823` — Formatting drift cleanup.**
+   - 7 backend files via `ruff format`, 10 frontend files via `prettier --write`. Net -76 lines, mostly line-collapses where original multi-line layouts fit within current print widths.
+   - None of these files were touched by Phase 6c work — pure pre-existing drift. Split into its own commit so the audit trail stays clean.
+
+**Phase 6c merged to develop.**
+- `git merge feature/phase-6c-dogfooding --no-ff` → merge commit `b7dc4f4`.
+- Tagged `phase-6c-complete` as annotated tag at `b7dc4f4`, pushed to origin.
+
+**Phase 6d branch opened.**
+- `feature/phase-6d-performance` from `develop` (`b7dc4f4`).
+- Empty placeholder; upstream set to origin.
+- Working tree clean, no commits ahead of develop yet.
+
+### Key decisions made
+
+1. **Branch naming convention adopted.**
+   - `feature/` for phases and new user-facing features
+   - `fix/` for bug fixes, especially ones with schema or data implications
+   - `chore/` for tooling, infrastructure, and non-code-shipping work
+
+   Convention applies prospectively. Existing `feature/phase-*` branch names left as-is for historical record. The three captured-but-not-opened follow-ups (below) will use the new prefixes when opened.
+
+2. **Tag-the-merge-commit codified in the checklist, not just in practice.** Step 9 of `docs/reference/phase-completion-checklist.md` now reads "Tag the merge commit" with explicit `<phase-name>` substitution syntax. Reduces risk of future literal-tag mistakes and locks the "tag points at merge commit" invariant in writing.
+
+3. **Annotated tags, not lightweight.** All retroactive phase tags and `phase-6c-complete` were created as annotated tags with message bodies. Annotated tags carry tagger identity and timestamp independent of the commit they reference — useful for an audit trail when retroactively tagging months-old commits.
+
+### Four follow-up branches captured but not opened
+
+None blocking Phase 6d. Opening when the right session presents itself. New naming convention applied:
+
+- **`chore/prettier-pre-commit-hook`** — Add prettier (and consider ESLint) to `.pre-commit-config.yaml`. Root cause: the ruff-format hook covers Python but there's no equivalent for TypeScript/CSS/JSON, so frontend drift accumulates silently. The 10-file prettier drift in merge prep was the surfacing event.
+- **`fix/bitrate-column`** — `Track.bitrate` stores source bitrate. Needs a separate column for output bitrate, an Alembic migration, and backfill logic for existing rows. Schema-touching, hence `fix/` rather than `chore/`.
+- **`chore/frontend-test-infra`** — Vitest, React Testing Library, mocks for SSE and Tauri APIs. Closes the "frontend has no test safety net" gap. Pure infrastructure, hence `chore/`.
+- **`feature/dogfood-crates-and-sets`** — End-to-end validation of Phase 5a (Crate Builder) and Phase 5b (Set Planner) against the real library. Same shape as Phase 6c was for the earlier pipeline (ingest, analyse, AI tag, organise, export). Surface and fix functional bugs that have never come up because the modules haven't been exercised against real data. Substantive product validation likely to produce code changes — hence `feature/`. Prerequisite for any future performance work on these modules; Phase 6d explicitly excludes them on the basis that you can't meaningfully measure a system you haven't proven works.
+
+### Things that surprised us
+
+- **The pre-existing drift was larger than expected.** 17 files across backend and frontend, none touched by Phase 6c work. This is the silent kind of debt that a pre-commit hook for prettier would have prevented. The lack of a frontend formatter hook is the actual gap; the drift is the symptom. Logged as `chore/prettier-pre-commit-hook`.
+
+- **`SESSIONS.md` references kept verbatim during the project-plan rename.** Wasn't obviously the right call up-front. The reasoning that landed it: a session log records what happened at the time, not the current state of the world. Rewriting it post-hoc to reflect renames would erode its value as a historical record. Worth holding to in future renames.
+
+### What's next — Phase 6d
+
+Performance Optimisation. The 668-track real library from the Phase 6c dogfood is the profiling subject. Project plan deliverables:
+- Profile with real library data (import speed, analysis throughput, UI responsiveness)
+- Large XML handling optimisation
+- Targeted optimisation based on actual bottlenecks
+
+Phase 6d feature brief to be drafted next, as the second commit on `feature/phase-6d-performance`. Profile-first discipline: the brief commits to a measurement pass before any optimisation work, with an explicit acceptance path that closes the phase early if profiling shows nothing meaningfully slow.
+
+One named opportunity carried over from CLAUDE.md (line 475): re-enabling concurrent conversions, which was disabled during Phase 6c debugging. The stdout pipe buffer issue (CLAUDE.md line 473) would need solving first. To be measured, not assumed.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance`, at `b7dc4f4` (same as `develop` HEAD), upstream `origin/feature/phase-6d-performance`, working tree clean.
+- Tests: 1192 passing (unchanged — no code touched in merge prep).
+- Tags through `phase-6c-complete` all annotated, all pointing at merge commits, all pushed to origin.
+- Ready for Phase 6d feature brief.
+
+---
+
+## Session 30 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 1 — profiling harness scaffolding. Plus the two commits
+that should have been logged at the time but weren't: the Phase 6d
+feature brief (`d4e85ac`) and the Session 29 docs update
+(`cdd3f5b`), both written in earlier work and pushed to origin before
+this session began.
+
+### Summary
+
+**Two commits inherited from the run-up to this session (logged here for
+the audit trail):**
+
+1. `cdd3f5b` — Session 29 entry + CLAUDE.md Phase 6d kickoff updates.
+2. `d4e85ac` — Phase 6d feature brief at `docs/features/phase-6d-performance.md`.
+   Profile-first measurement-then-decide phase. Primary optimisation target:
+   analysis stage (librosa BPM + key). Secondary deliverable:
+   re-enable concurrent conversion. Crate Builder and Set Planner explicitly
+   out of scope (captured as `feature/dogfood-crates-and-sets`). AI tagging
+   profiled but not optimised. UI responsiveness deferred to Phase 6e. Five-step
+   build order locked: harness → instrument → reporting → baseline → decision
+   point. Early-close path if baselines show nothing meaningfully slow.
+
+**One commit landed in this session:**
+
+3. `13e5fe0` — Phase 6d Step 1: profiling harness scaffolding.
+   New files: `backend/services/perf.py`, `backend/tests/test_perf.py`. No
+   existing files modified.
+
+   Harness API:
+   - `PerfRecorder` class — opt-in via `REKORDBOT_PERF_RECORD` env var.
+     JSONL output to `~/Library/Application Support/rekordbot/perf/run-<ts>.jsonl`.
+     Thread-safe writes (lock around write+flush).
+   - `NoOpPerfRecorder` — zero-cost no-op when env var unset or falsy.
+     `contextlib.nullcontext()` for `stage()`, no I/O, no allocations.
+   - `Stage` StrEnum — 28 stage identifiers grouped by pipeline.
+   - `Pipeline` StrEnum + `STAGE_TO_PIPELINE` mapping. Belt-and-braces test
+     catches future drift if a Stage is added without a Pipeline mapping.
+   - `PerfRecord` dataclass — 8 fields: session_id, pipeline, stage,
+     start_ts, duration_s, pid, payload, error.
+   - `get_recorder()` singleton with double-checked locking.
+   - `_reset_for_tests()` private hook for test isolation.
+
+   Tests: 23 new in `test_perf.py`, TDD-first (test file created 1m53s
+   before impl file per filesystem timestamps).
+   - Env var truthy/falsy parsing (parametrised across "1"/"true"/"yes"
+     case-insensitive vs "0"/"false"/"no"/""/"anything-else")
+   - JSONL file creation, ISO timestamp filename format
+   - Full record schema verification (every field, value bounds, types)
+   - Stage→Pipeline mapping coverage
+   - Nested stages (inner record emitted first, time bounds checked)
+   - Exception inside stage block (propagates; record emitted with
+     `error="ValueError"`)
+   - Session ID stability across multiple stages
+   - Thread safety: 4 threads × 50 writes = 200 records, no JSONL
+     corruption, every (thread, iter) pair unique
+   - Singleton thread safety under contention (10 threads, same instance
+     returned)
+   - NoOpPerfRecorder makes no disk writes
+   - `close()` idempotency
+   - `payload=None` serialised as null (not omitted)
+
+   Test count: 1192 → 1215 (+23). mypy clean on new files (21 pre-existing
+   errors in 8 files unchanged — verified by temporarily moving new files
+   aside). Ruff clean.
+
+### Key decisions made
+
+1. **Recorder is opt-in, no-op by default.** When `REKORDBOT_PERF_RECORD`
+   is unset or falsy, `get_recorder()` returns a `NoOpPerfRecorder` that
+   performs no I/O and allocates nothing per stage block beyond the
+   `contextlib.nullcontext()` itself. Same public API as the real
+   recorder so call sites in Step 2 don't need to branch.
+
+2. **Env var read directly via `os.getenv`, not added to pydantic-settings.**
+   `REKORDBOT_PERF_RECORD` is an internal developer instrumentation toggle,
+   not user-facing configuration. Keeping it out of `Settings` means it
+   isn't surfaced in the Settings UI, doesn't appear in `.env.example`,
+   and isn't read at app startup (so it can in principle be toggled
+   mid-process for tests). The brief allows either the
+   config-manager → env-var bridge or a CLI-prepended env var; the bridge
+   wiring is deferred to Step 4 if/when we run the first measurement
+   against a packaged app.
+
+3. **Single file at `backend/services/perf.py`, not a package.** Step 1
+   deliverables fit in ~270 lines. Every other service in the codebase is
+   a single file. Promoting to a package later is mechanical
+   (`git mv perf.py perf/__init__.py`) if Step 2 reveals the API has
+   grown unwieldy.
+
+4. **Stage constants defined upfront for all five pipelines** (28
+   constants total), even though Step 1 instruments none of them. Forces
+   naming and scope decisions before instrumentation; means Step 2
+   prompts can reference `Stage.X` rather than negotiating new strings
+   per pipeline.
+
+5. **One JSONL file per process run** (`run-<timestamp>.jsonl`), not an
+   append-only file across runs. Simplifies the reporting script: read
+   one file, get one run's data. No file rotation needed. Comparing runs
+   is a reporting concern, not a recorder concern.
+
+6. **Thread-safe writes via a single `threading.Lock`.** Both the
+   asyncio loop thread and the ingestion worker thread (and any future
+   concurrent-conversion workers) will call `recorder.stage()`
+   independently. Stress-tested with 200 concurrent writes across 4
+   threads — all 200 records distinct and parseable.
+
+7. **Two minor deviations from spec, both approved:**
+   - `# noqa: SIM115` on the long-lived file handle in `__init__`. The
+     handle is owned for the recorder's lifetime and closed in `close()`
+     — a `with` block doesn't fit the lifetime. Same pattern as stdlib
+     `logging.FileHandler`.
+   - `__exit__` return type annotated `Literal[False]` instead of `bool`
+     for mypy precision. Behaviour unchanged (still doesn't suppress
+     exceptions).
+
+### Things that surprised us
+
+- **TDD order verifiable from filesystem timestamps.** The test file
+  was created at 00:15:03 BST, the impl file at 00:16:56 BST — 1m53s
+  apart. Not something we set out to use as evidence, but a useful
+  side-channel for confirming CC's "tests first" claim. Worth knowing
+  for future TDD review passes.
+
+- **Repo Structure tree in `CLAUDE.md` had pre-existing indentation
+  drift** in the `docs/features/` block — entries for phase-5b through
+  phase-6b were indented one level too shallow. Pre-existing,
+  orthogonal to Phase 6d, fixed inline in this session's docs update
+  while the file was being edited anyway.
+
+### Unresolved questions / blockers
+
+None. The harness is reviewable, committed, pushed. No surprises for
+Step 2 that aren't already documented in the brief.
+
+Two architectural notes carried forward to Step 2 prompts but not
+blocking:
+
+- `NoOpPerfRecorder` inherits from `PerfRecorder` and skips
+  `super().__init__()`. Today safe; if anyone adds a method to
+  `PerfRecorder` that touches `self._path` without overriding it on
+  `NoOpPerfRecorder`, the no-op would `AttributeError`. Structural
+  footgun, not a bug. Considered switching to a Protocol/sibling-class
+  pattern but rejected as overkill for Step 1's surface area.
+
+- `_StageContext._recorder._write(record)` reaches across a private
+  underscore prefix between sibling classes in the same module. Fine
+  in Python, slightly awkward stylistically. Cosmetic.
+
+### What's next — Phase 6d Step 2
+
+Instrument the five in-scope pipelines with `with recorder.stage(...)`
+blocks. From the brief's Build Order: one commit per pipeline,
+~5 commits, ordered ingestion → analysis → AI tagging → XML export →
+XML import. No business-logic changes; each commit verifies the
+existing test suite still passes; no new tests required for
+instrumentation itself (the harness has its own tests).
+
+Step 2 to be opened in a fresh chat session for clean context. Step 1
+review and merge prep belong to this session and stop here.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `13e5fe0`, in sync with
+  `origin/feature/phase-6d-performance`. Working tree clean.
+- Three commits ahead of `develop` (at `b7dc4f4`, `phase-6c-complete`).
+- Tests: 1215 passing (+23 new in `test_perf.py`).
+- CLAUDE.md and SESSIONS.md updated this session (this commit).
+- Phase 6d Step 1 complete per acceptance: harness exists, has unit
+  tests, opt-in via env var, verified no-op when disabled. Step 2 not
+  started.
+
+## Session 31 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 2 — pipeline instrumentation. All five in-scope pipelines
+wrapped with `recorder.stage(...)` blocks per the brief. One commit per
+pipeline; mechanical reverts available; no business-logic changes; test
+count unchanged at 1215 across all five commits.
+
+### Summary
+
+Five commits landed in this session:
+
+1. `ce8db3e` — ingestion pipeline instrumentation. 8 stage blocks in
+   `backend/services/converter.py::convert_file`: `INGESTION_FILE` outer
+   wrapper (with payload `{source_path, size_bytes}`), plus inner
+   wrappers `INGESTION_INSPECT`, `INGESTION_DECIDE`, `INGESTION_HASH`,
+   `INGESTION_DUP_CHECK` (including the orphaned-record cleanup branch),
+   mutually-exclusive `INGESTION_CONVERT_FFMPEG` / `INGESTION_COPY`, and
+   `INGESTION_DB_INSERT` around Track construction + commit. `queue.py`
+   untouched — the worker thread calls `convert_file()` which carries
+   its own instrumentation.
+
+2. `10c0841` — analysis pipeline instrumentation. 6 stage blocks in
+   `backend/services/analysis.py::analyse_track`: `ANALYSIS_TRACK` outer
+   wrapper (with payload `{track_id}`), plus inner wrappers
+   `ANALYSIS_READ_TAGS`, `ANALYSIS_LIBROSA_LOAD` (the primary Phase 6d
+   optimisation target), `ANALYSIS_DETECT_BPM`, `ANALYSIS_DETECT_KEY`,
+   and `ANALYSIS_DB_UPDATE` around the success-path status update +
+   commit. Failure-path commits (file-missing early return, exception
+   handler) intentionally unwrapped — they persist a "failed" status
+   rather than completing analysis.
+
+3. `a375d7d` — AI tagging pipeline instrumentation. 5 stage blocks split
+   across TWO files: `backend/services/ai_tagger.py::_process_batch`
+   carries `AI_TAG_BATCH` (payload `{batch_number, batch_size}`),
+   `AI_TAG_BUILD_MESSAGE`, and `AI_TAG_DB_UPDATE`;
+   `backend/services/claude_client.py::tag_batch` carries
+   `AI_TAG_API_CALL` and `AI_TAG_PARSE_RESPONSE`. The cross-file split
+   was the right call — putting the API and parse stages where they
+   actually run, rather than bending stage names to fit a single-file
+   constraint.
+
+4. `2b5def3` — XML export pipeline instrumentation. 6 stage blocks in
+   `backend/services/xml_exporter.py::export_library`: `XML_EXPORT`
+   outer wrapper, plus inner wrappers `XML_EXPORT_LOAD_TRACKS` (around
+   `query.all()` only — query-builder lines and the file-path filter
+   loop deliberately outside), `XML_EXPORT_LOAD_CRATES`,
+   `XML_EXPORT_LOAD_SETS`, `XML_EXPORT_BUILD` (`build_xml` call +
+   playlist-count walk), `XML_EXPORT_WRITE`. No payloads — outer counts
+   are deferred to reporting via JOINs on `session_id`.
+
+5. `a5d2e5a` — XML import pipeline instrumentation. 5 stage blocks in
+   `backend/services/xml_importer.py::run_import`: `XML_IMPORT` outer
+   wrapper, `XML_IMPORT_PARSE`, `XML_IMPORT_TRACKS`,
+   `XML_IMPORT_PLAYLISTS`, `XML_IMPORT_COMMIT` (broken out separately
+   because SQLite fsync at end-of-transaction can be slow on large
+   imports).
+
+Diff sizes per commit (insertions / deletions / file-changed line
+count): ingestion 108/89/197; analysis 101/91/192; AI tagging 69/57/126
+across two files; XML export 84/76/160; XML import 43/36/79. Bulk in all
+cases is indentation churn from re-indenting wrapped blocks; real
+logical change is ~10–15 lines per commit. Total stage blocks added:
+30 across 5 commits, covering all 30 `Stage` constants defined in
+Step 1.
+
+### Key decisions made
+
+1. **One commit per pipeline, all stages added at once.** Considered
+   splitting outer-from-nested in separate commits; rejected — a stage
+   that times the outer block but not its nested children is a
+   meaningless intermediate state. Five commits is also what the brief
+   specified.
+
+2. **Stage wrappers placed inside `try:` blocks where the function has
+   one** (ingestion, analysis, AI tagging). This puts
+   `_StageContext.__exit__` before the `except` clause in the unwinding
+   order, so the exception name is captured on the `PerfRecord` before
+   the `except` clause catches it. XML export and XML import have no
+   `try:` block — exceptions propagate to the caller — so the wrapper
+   sits directly in the function body.
+
+3. **`recorder = get_recorder()` is function-local, per-call** (Pattern
+   1 from the planning pass). Module-level capture-at-import would
+   break `_reset_for_tests()` for any module that imports `perf`. The
+   lock overhead on each `get_recorder()` call is negligible — single
+   dict lookup + no-contention lock.
+
+4. **Payloads kept minimal, all attached at context-manager entry.**
+   The recorder API supplies payload at `__enter__`, not `__exit__`, so
+   counts like "number of tracks exported" (only known after the work
+   runs) cannot be attached to the outer stage. Two approaches
+   considered: extend the harness API to support exit-time payloads
+   (Option Y); or accept simpler payloads at entry and reconstruct
+   counts in reporting (Option X). Chose X — keeps Step 2
+   instrumentation-only as the brief required; revisit in Step 4 if
+   reporting needs richer payloads. Locked payloads: `INGESTION_FILE`
+   gets `{source_path, size_bytes}`, `ANALYSIS_TRACK` gets
+   `{track_id}`, `AI_TAG_BATCH` gets `{batch_number, batch_size}`. All
+   other stages (inner stages, `XML_EXPORT` outer, `XML_IMPORT` outer)
+   attach no payload.
+
+5. **Cross-file commit for AI tagging accepted as one commit, two
+   files.** The brief says "one commit per pipeline keeps the audit
+   trail clean and reverts cheap" — touching two files in one commit
+   still satisfies that. Splitting would have created an intermediate
+   state where `ai_tagger.py` was instrumented but its
+   `claude_client.py` callees were not, which is meaningless to look
+   at. Two files, called out explicitly in the prompt.
+
+6. **`AI_TAG_API_CALL` covers retry wall-clock including backoff
+   sleep.** Considered timing individual retry attempts; rejected — the
+   report wants total time the user waits, which includes backoff.
+   Per-attempt detail can come from logs.
+
+7. **`AI_TAG_API_CALL` does NOT cover rate-limiter `acquire()` time.**
+   Rate-limit waits are a guard, not a stage. If they become
+   significant in real runs, a separate `AI_TAG_RATE_LIMIT_WAIT` stage
+   can be added in a later step. Captured in the prompt and the commit
+   message.
+
+8. **`INGESTION_DB_INSERT` tightened to exclude
+   `output_path.stat().st_size`.** First CC report wrapped the
+   filesystem stat inside the DB-insert stage; we narrowed it. A stage
+   named "DB insert" should measure DB work, not filesystem syscalls.
+   Microsecond difference in the timing data; meaningful difference in
+   honest stage naming.
+
+9. **Pre-existing mypy errors in `claude_client.py` and
+   `xml_exporter.py` left untouched.** Verified pre-existing via stash
+   round-trip in CC's verification reports. Two errors in
+   `claude_client.py` (`asyncio.to_thread` overload resolution against
+   the Anthropic SDK at lines 136 and 243); one in `xml_exporter.py`
+   (`Element | None` `.find` narrowing at line 126). Not introduced by
+   Step 2 and unrelated to instrumentation.
+
+### Things that surprised us
+
+- **Stage count was 30, not 28.** Session 30 logged "28 stage
+  identifiers" but `perf.py` actually defines 30. The discrepancy was
+  in the SESSIONS.md log, not the code — manual recount in Step 2
+  confirmed 8 + 6 + 5 + 6 + 5 = 30. All 30 are now instrumented.
+  Corrected in this entry.
+
+- **Indentation churn dominated every diff.** Each commit's `git diff`
+  line count was 80–220 lines, but the actual logical change in every
+  commit was 8–15 lines (one import + one recorder acquisition + N
+  `with` statements). Git counts re-indentation of wrapped blocks as
+  delete+insert. Not a red flag once you know the shape; useful
+  baseline for reviewing future instrumentation diffs (if a future
+  "instrumentation" commit has many non-indentation changes, that's
+  the real signal).
+
+- **Comments stayed with the code they label, not with the wrapper.**
+  CC consistently kept section comments (e.g. `# Step 7: Get output
+  file size`, `# Build XML`, `# Count playlists`) directly above the
+  code they describe, even when that means a comment sometimes ends up
+  inside a wrapper (heading a wrapped block) and sometimes outside
+  (heading an unwrapped block adjacent to the wrapper). Consistent and
+  correct — the alternative would have detached comments from their
+  code.
+
+### Unresolved questions / blockers
+
+None blocking Step 3.
+
+Two notes carried forward for Step 4 consideration (not action items
+now):
+
+- **Exit-time payloads** (Option Y from the planning pass) would let
+  outer stages carry summary counts. If Step 3's reporting reveals
+  it's awkward to reconstruct outer counts from inner-stage records,
+  consider revisiting the harness API at the start of Step 4.
+
+- **Rate-limiter `acquire()` time is currently untimed.** If profiling
+  reveals significant wait time, add an `AI_TAG_RATE_LIMIT_WAIT`
+  stage. Mentioned in Step 2's AI tagging commit message and
+  verifiable from the absence of timing in `AI_TAG_BATCH` minus the
+  sum of its nested stages.
+
+### What's next — Phase 6d Step 3
+
+Reporting: build a script that reads the JSONL files in
+`~/Library/Application Support/rekordbot/perf/` and emits
+human-readable summaries (per-pipeline rollups, per-stage averages and
+percentiles, slow-stage callouts). Before Step 3 begins, run the app
+with `REKORDBOT_PERF_RECORD=1` against a small real workload — even
+just ingestion of 5–10 tracks plus one analysis batch — to produce
+real JSONL data the reporting script can be developed against.
+Reporting written against synthetic JSONL is reporting written against
+a hypothesis; reporting written against real data catches the messy
+cases.
+
+Step 3 to be opened in a fresh chat session for clean context. Step 2
+instrumentation review and merge prep belong to this session and stop
+here.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at the XML import
+  instrumentation commit (`a5d2e5a`), in sync with
+  `origin/feature/phase-6d-performance` after Dale's push. Working
+  tree clean before the docs commit.
+- Five commits ahead of the Step 1 close (`cf5d9dc`), nine commits
+  ahead of `develop` (at `b7dc4f4`, `phase-6c-complete`) after this
+  docs commit lands.
+- Tests: 1215 passing (unchanged across all five Step 2 commits).
+- All 30 `Stage` constants instrumented.
+- CLAUDE.md and SESSIONS.md updated this session (this commit).
+- Phase 6d Step 2 complete per acceptance: every named stage in
+  `perf.py` wraps real code; pytest passes unchanged; recorder is
+  opt-in via `REKORDBOT_PERF_RECORD`; no business-logic changes
+  anywhere. Step 3 not started.
+
+---
+
+## Session 32 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 3 — reporting script. One commit landed (`9561877`,
+amended once from `271942f`). The script reads JSONL profile records
+produced by the harness from Step 2 and emits a markdown summary
+suitable for committing to `docs/perf/`.
+
+Pre-implementation work for the session: a workspace-isolated data
+generation run to produce real JSONL records to develop the reporter
+against (per the agreed "don't write the reporter against a hypothesis"
+principle from Session 31).
+
+### Summary
+
+The session ran in four phases:
+
+1. **Plan alignment against the brief.** The Phase 6d brief was not in
+   project knowledge at session start — only the CLAUDE.md summary and
+   the Session 31 close-out were. Dale uploaded the brief mid-session.
+   This is worth flagging: future phase sessions should start with the
+   feature brief already in project knowledge so the plan can be
+   anchored against it from message 1.
+
+2. **Real JSONL generation.** Workspace-isolated dev-mode run.
+   Sacrificial DB at `/tmp/rekordbot-perf-test.db`, sacrificial output
+   at `/tmp/rekordbot-perf-output/`, JSONL sink in the normal
+   `~/Library/Application Support/rekordbot/perf/` location (only the
+   DB and output dir needed isolation). Ingested 7 FLACs from
+   `Panorama_Bar_Playlist_02_Lakuti/`, analysed all 7, exported XML.
+   Produced `run-20260518T015022.jsonl` with 97 records across 19
+   distinct stages — 7 ingestion (of 8 instrumented; `ingestion_copy`
+   was absent because the all-FLAC corpus didn't exercise the lossy
+   passthrough path) + 6 analysis + 6 xml_export.
+
+3. **Step 3 implementation.** One CC pass, scoped tight per the brief.
+   Pure logic in `backend/services/perf_report.py` (440 lines), thin
+   CLI in `scripts/perf-report.py` (58 lines), TDD-driven tests in
+   `backend/tests/test_perf_report.py` (517 lines), two hand-written
+   JSONL fixtures with paired golden markdown files. Implementation
+   landed at `271942f`.
+
+4. **Fixture audit and amend.** Audit before push surfaced that the
+   `compute_rate_limit_wait` clamp-to-zero branch was unit-tested but
+   not golden-tested. Extended the full fixture with a third
+   ai_tag_batch designed to clamp (inner sum 5.5s vs batch duration
+   5.0s → wait clamps to 0.0), regenerated the golden via the
+   `--update-golden` flag, amended the commit. Final commit at
+   `9561877`. Stage stats elsewhere in the golden were unchanged
+   (verified via diff).
+
+The real-data eyeball check at the end of implementation surfaced a
+strong signal for Step 5 — see "Things that surprised us" below.
+
+### Key decisions made
+
+1. **Hybrid stage-share view in the report.** The brief calls for
+   "per-pipeline aggregate (total wall-clock, per-stage breakdown,
+   percentiles)" without specifying nesting. Chose to render per-stage
+   stats as the core (the brief's explicit ask) plus a "Share of outer
+   mean" column for the three pipelines that have an outer wrapper
+   (`ingestion`, `analysis`, `ai_tagging`). The xml_export and
+   xml_import pipelines don't have an outer-vs-inner relationship in
+   the same way — their outer stage IS the pipeline — so the share
+   column renders "—" for those.
+
+2. **Pure logic in `backend/services/perf_report.py`, thin CLI at
+   `scripts/perf-report.py`.** Brief literal said the script lives at
+   `scripts/perf-report.py` (hyphenated). Kept that for the CLI entry
+   point and put the testable logic in a normal module under
+   `backend/services/` so it imports cleanly into pytest. Cleaner
+   than a hyphenated single-file script with `importlib.util` tricks
+   in the tests.
+
+3. **Filename: `perf-report.py` (hyphen).** Per brief literal. Other
+   Python in the repo uses underscores; the brief's call wins because
+   it's an entry-point script invoked as `uv run scripts/perf-report.py`,
+   not a module imported elsewhere.
+
+4. **N ≥ 10 threshold for percentile computation.** Below 10 records,
+   `StageStats.p50_s` and `StageStats.p95_s` are `None` and render
+   "—" in the table with a `_Percentiles omitted for stages with
+   count < 10._` footnote. Concrete and verifiable.
+
+5. **`statistics.quantiles(durations, n=100, method="inclusive")`.**
+   CC's call. The brief was silent on the method choice. Inclusive
+   cuts at min/max rather than extrapolating outside the data, which
+   is what most readers expect from "p50/p95 of a measured
+   distribution." Pinned in the function docstring.
+
+6. **Rate-limit wait derived metric included even though the brief
+   doesn't mandate it.** Session 31 carry-forward identified this as
+   worth surfacing. Trivial to compute (`AI_TAG_BATCH duration −
+   sum(inner stages within window)`, clamped to 0). Negligible cost,
+   real value if AI tagging ever gets profiled at scale. Rendered as
+   a separate table after the per-pipeline sections.
+
+7. **Two hand-written fixtures, not one.** `sample-run-small.jsonl`
+   exercises the percentiles-omitted branch and the missing-stages
+   case. `sample-run-full.jsonl` exercises the N ≥ 10 branch, the
+   rate-limit-wait computation, and the clamp-to-zero rendering
+   (after fixture extension). Two fixtures kept each test's intent
+   clear without one over-stuffed test.
+
+8. **Hand-write fixtures, accept transient-script generation.** CC
+   used a one-shot stdin Python block to produce `sample-run-full.jsonl`
+   rather than typing 72 lines by hand. The committed artifact is
+   static JSON; no builder lives in the repo. Spirit of "don't commit
+   a fixture-builder" preserved.
+
+9. **Clamp-to-zero branch covered at the golden layer, not just the
+   unit-test layer.** The audit surfaced that
+   `test_negative_result_clamps_to_zero` covered the dict-value logic
+   but the rendering of a `0.0000` row was never asserted. Extended
+   the fixture with batch 3 to render a real clamp row in the golden.
+   Cost: 5 JSONL lines, 1 golden table row. Logic the unit test
+   wouldn't catch (rendering as `0` vs `0.0000`, accidental filtering
+   of zero rows from output) is now covered.
+
+10. **Thread-origin not added to `PerfRecord` in Step 3.** Session 31's
+    expectation was that the ingestion worker thread and asyncio loop
+    would produce distinct PIDs in records. They don't — threads
+    share PID via `os.getpid()`. To distinguish thread origin we'd
+    need `threading.get_ident()` or `threading.current_thread().name`.
+    Not added in Step 3 (instrumentation already shipped without it,
+    and report doesn't currently need it). Deferred to Step 4 if
+    concurrent conversion lands and re-enabling needs to be
+    verified.
+
+### Things that surprised us
+
+1. **`analysis_detect_key` is 94.4% of `analysis_track` wall-clock in
+   the 7-track exploratory run.** 12.56s mean per track for key
+   detection alone, out of a 13.30s analysis-per-track total. BPM
+   detection is 2.0%. Librosa audio loading is 3.5%. DB update is
+   rounding error.
+
+   This is not what the brief assumed. The brief named
+   load-once-decode-twice (Step 6 — Targeted optimisations, option (c))
+   as a likely first optimisation target — sharing the librosa decode
+   between BPM and key. That optimisation, executed perfectly, saves
+   `analysis_librosa_load`: best case 3.5% improvement in
+   analysis-per-track wall-clock. The real bottleneck is inside
+   `key_detector.py`'s chroma extraction + Krumhansl-Schmuckler
+   correlation pass.
+
+   This is from a single exploratory run, not a baseline. The Step 4
+   baselines (Lakuti and Martyn, 24 tracks each, packaged mode) will
+   confirm the relative shape at higher N. But percentages of this
+   magnitude don't typically invert with more data.
+
+2. **Exit-order emission, not start-order.** Records emit on
+   `_StageContext.__exit__`, so inner stages land in the JSONL before
+   the outer wrapper that contains them. The reporter must rely on
+   `start_ts` (and the `OUTER_STAGE_FOR_PIPELINE` mapping for share
+   computation), not file order. Naive line-order grouping would get
+   nesting wrong. Captured in the spec; the implementation handles it
+   via the stage-to-pipeline map.
+
+3. **Browser-mode drag-and-drop doesn't work.** The Vite dev server
+   runs at `http://localhost:1420`, but `DropZone.tsx` relies on
+   Tauri's path-injection for file drops. In a regular browser
+   `file.path` is undefined, the component falls back to `file.name`,
+   and the backend correctly rejects bare filenames. The "Select
+   Folder…" button uses the Tauri dialog plugin and errors out
+   cleanly. Not a blocker — switched to direct API calls via curl
+   for the data-gen run.
+
+4. **Two task-prompt errors caught by CC during data-gen:**
+   - `REKORDBOT_OUTPUT_DIRECTORY` is the correct env var, not
+     `REKORDBOT_OUTPUT_DIR`. The wrong name would have silently
+     routed output to the real library directory.
+   - `uv run uvicorn main:app` from `backend/` doesn't work because
+     of absolute imports in `main.py`. Correct invocation is
+     `uv run uvicorn backend.main:app` from repo root.
+
+   Both worth remembering for future re-use of the data-gen prompt
+   (which is likely — Step 4 baseline runs will use a near-identical
+   pattern, just against the Panorama Bar folders and in packaged
+   mode).
+
+### Unresolved questions / blockers
+
+None blocking Step 4.
+
+Carry-forward notes for future steps:
+
+- **Step 5 decision input.** Once Step 4 baselines land, Step 5's
+  decision should weight Session 32's finding heavily:
+  `analysis_detect_key` is the dominant cost. The brief named
+  load-once-decode-twice; the data suggests internals of
+  `key_detector.py` (chroma method, HPSS, K-S correlation) deserve
+  the real optimisation budget. Worth checking whether librosa's
+  default chroma method is `chroma_cqt` (slower, more accurate) vs
+  `chroma_stft` (faster) — the choice may already lean toward the
+  slower one and trading accuracy for speed could be the cleanest
+  intervention. To be confirmed by reading `key_detector.py` at
+  Step 5, not now.
+
+- **Thread origin in `PerfRecord`.** Not needed in Step 3, may be
+  needed in Step 4/6 if concurrent conversion or concurrent analysis
+  lands. One field addition to the harness; reporter learns to use
+  it at the same time. Cheap when it's needed.
+
+- **Exit-time payloads** (Session 31 carry-forward, still open). Not
+  needed for Step 3 reporting — outer counts reconstruct cleanly
+  from inner records via `session_id`. Revisit only if Step 4 or
+  Step 6 needs richer outer payloads.
+
+- **AI tagging fixture window boundary.** Current fixture has all
+  inner records with `start_ts` strictly inside the batch window.
+  Boundary case `start_ts == batch.start_ts + batch.duration_s` is
+  not exercised. The clamp-to-zero branch covers logic robustness,
+  but the boundary inclusivity check is implicit. Note for if/when
+  `compute_rate_limit_wait` gets revisited.
+
+- **`xml_export` table rendering.** The outer `xml_export` stage
+  renders in the same table as its five inner sub-phases with a `—`
+  in the Share column. The relationship isn't strict parent/child —
+  the inner stages are sequential sub-phases that sum to roughly the
+  outer wall-clock, not nested calls — but visually they sit
+  side-by-side in one table without that distinction made clear.
+  Cosmetic; the data is correct. Leave for now.
+
+### What's next — Phase 6d Step 4
+
+Baseline measurement pass. Two runs:
+
+1. `Panorama_Bar_Playlist_02_Lakuti/` — packaged mode, against the
+   real DB and real library output. Generate JSONL, run the reporter
+   over it, commit the markdown to `docs/perf/baseline-02-lakuti.md`.
+
+2. `Panorama_Bar_Playlist_03_Martyn/` — same, output to
+   `docs/perf/baseline-03-martyn.md`.
+
+Plus `docs/perf/README.md` with the methodology, test corpus, and
+reproduction instructions.
+
+Two operational concerns to bake into the Step 4 prompts:
+
+- **Packaged mode, not dev mode.** Step 4 measures the actual
+  performance characteristics rekordbot ships with. The harness has
+  to work in the bundled `.app` — verified during Step 1, but worth
+  reconfirming.
+
+- **Real DB / real library = side effect.** Baselines 1 and 2 advance
+  Dale's real library state. This is intentional per the brief
+  (real-state measurement matters) but flagged here for the audit
+  trail.
+
+Step 4 to be opened in a fresh chat session for clean context.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `9561877` (Step 3
+  reporting commit) after push. A docs commit lands on top of this
+  at session close.
+- Commits added by this session (Session 32): 1 Step 3 reporting
+  commit (`9561877`, amended once from `271942f`) + 1 docs commit
+  (this commit). The branch's full distance ahead of `develop`
+  (at `b7dc4f4`, `phase-6c-complete`) includes those plus everything
+  added by Sessions 30 and 31 (Step 1 scaffolding, Step 2's five
+  instrumentation commits, and the docs commits closing each).
+  Verify the exact count with `git log b7dc4f4..HEAD --oneline | wc -l`
+  if needed.
+- Tests: 1245 passing (1215 baseline + 30 new in Step 3).
+- 30 stage constants instrumented (Step 2 close).
+- `backend/services/perf_report.py`, `scripts/perf-report.py`,
+  `backend/tests/test_perf_report.py`, and 4 fixture/golden files
+  committed (Step 3 close).
+- Phase 6d Step 3 complete per acceptance: reporting script exists,
+  has unit and golden tests, pure logic separated from CLI, mypy
+  clean, ruff clean, pre-commit clean.
+- CLAUDE.md and SESSIONS.md updated this session (this commit).
+
+## Session 33 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 4 (Baseline Measurement Pass) — Baseline 1 (Lakuti corpus)
+committed as `docs/perf/baseline-02-lakuti.md` at `8d6a54e`. Session
+also surfaced and resolved a stale-`/Applications/`-binary trap that
+made the harness appear silently broken in packaged mode for ~90 minutes.
+Baseline 2 (Martyn) and `docs/perf/README.md` deferred to Session 34.
+
+### Summary
+
+Session 33 ran in four distinct phases:
+
+1. **Plan alignment.** Walked through Step 4 plan: three commits (not
+   one as the brief implies — one per baseline plus README), direct
+   binary invocation as the packaged-mode launch pattern, DB-and-output
+   snapshot pattern before the run. Read Rust `lib.rs` sidecar spawn to
+   confirm env var propagation works via `std::process::Command` default
+   environment inheritance. Confirmed corpus sizes (Lakuti 26, Martyn
+   52) and AI tagging in-scope for measurement.
+
+2. **First Lakuti run, ~03:25.** Pre-flight snapshots taken cleanly.
+   App launched with `REKORDBOT_PERF_RECORD=1` prefix against
+   `/Applications/rekordbot.app`. Ingestion (24/26 — 2 corrupted source
+   FLACs failed), AI tagging (31 tracks, $0.0631 spent), XML export
+   (54 tracks). **No JSONL produced.** Real library state advanced for
+   zero measurement value. Apparent harness failure in packaged mode.
+
+3. **Diagnostic phase, ~03:30 to ~04:00.** Initially suspected env var
+   propagation through Tauri → sidecar; confirmed via `ps eww` that
+   the var was present in the sidecar's environment. Suspected
+   PyInstaller stripping; added single-line diagnostic to
+   `from_env()` logging the env state at invocation; rebuilt; ran test
+   against the freshly-built binary at
+   `target/release/bundle/macos/rekordbot.app/...` — harness fired
+   correctly. Compared file timestamps: `/Applications/rekordbot.app`
+   sidecar was dated May 17 19:05, the fresh build May 18 03:55. The
+   `/Applications/` install pre-dated Session 32's Step 2 instrumentation
+   commits entirely. **Not a harness bug — a stale-install bug.** No
+   harness has ever been "broken in packaged mode"; the binary in
+   `/Applications/` simply didn't contain the harness code.
+
+4. **Recovery and Baseline 1 (attempt 2), ~04:00 to ~04:30.** Reverted
+   the diagnostic line in `perf.py` (single-line revert), rebuilt
+   cleanly, dragged the new `.dmg` install into `/Applications/`,
+   verified the canonical install path fires the harness via a small
+   curl-driven export test. Restored DB from `rekordbot.db.pre-baseline-02`
+   snapshot, deleted `imports/2026-05-18/` (24 AIFFs from the failed
+   run), preserved `rekordbox.xml.post-failed-baseline-02` and
+   `rekordbot.db.post-failed-baseline-02` as evidence. Re-launched and
+   ran Lakuti: 24 ingested, 24 analysed, XML exported. Operator skipped
+   the AI Tag click — coverage deferred to Baseline 2. JSONL: 330
+   records across ingestion (180), analysis (144), and xml_export (6).
+   Reporter run cleanly; report committed at `8d6a54e`.
+
+### Key decisions made
+
+1. **Three commits for Step 4, not one.** Brief implied one. In practice
+   Step 4 is Baseline 1, Baseline 2, and README — three independent
+   evidence artefacts that should land as discrete commits. Session 33
+   produced Baseline 1; Sessions 34 (and possibly 35) produce the rest.
+
+2. **Direct binary invocation as the packaged-mode launch pattern.**
+   `REKORDBOT_PERF_RECORD=1 /Applications/rekordbot.app/Contents/MacOS/rekordbot`
+   reliably propagates the env var via shell exec inheritance through
+   Rust's `std::process::Command` (which uses `.env()` additively, not
+   `.env_clear()`-then-`.env()`). Confirmed via `ps eww` of the sidecar
+   PID showing the env var present. macOS `open` and Finder double-click
+   are both LaunchServices-intermediated and may not propagate env vars;
+   the direct-binary path bypasses that.
+
+3. **Snapshot pattern for state-advancing baselines.** Before each
+   real-library run: snapshot DB (`cp rekordbot.db rekordbot.db.pre-baseline-XX`),
+   snapshot output-dir listing (`ls -la ... > /tmp/output-dir-pre-baseline-XX.txt`),
+   record build SHA. This is the same pattern proposed at the start of
+   Session 33 and proven valuable when the first Lakuti run needed
+   rolling back. The snapshots remained as forensic evidence — not
+   deleted post-recovery, since their value is in being a clean
+   pre-run anchor for future reference.
+
+4. **Polluted DB and XML preserved, not deleted.** After Lakuti's
+   failed first run, the polluted DB was renamed
+   `rekordbot.db.post-failed-baseline-02` and the polluted XML renamed
+   `rekordbox.xml.post-failed-baseline-02`. Two states preserved for
+   forensic comparison without blocking the recovery.
+
+5. **AI tagging skip documented as deferred-to-Baseline-2, not as
+   operator error.** The report's "Pipelines exercised" table records
+   the literal truth ("Operator did not click...") while making the
+   forward-looking case for why this is fine (Martyn brings 52 fresh
+   untagged tracks; AI tagging gets full coverage there).
+
+6. **Hardware string in report.** Apple Silicon arm64, macOS 26.4.1.
+   Pulled from PyInstaller log line. Specific Mac model and RAM not
+   included — can be added retrospectively if any baseline becomes a
+   reference point for comparison against future hardware.
+
+### Things that surprised us
+
+1. **The harness was never broken; the install was stale.** This is
+   exactly the lesson from Session 25 ("Rebuild before debugging") at
+   smaller magnitude. The pre-flight check we did at session open
+   ("`make build-dmg` finished cleanly") verified the build, not the
+   install. `make build-dmg` produces a `.app` and `.dmg` in
+   `target/release/bundle/`; it does NOT copy to `/Applications/`.
+   Installing requires manually opening the `.dmg` and dragging.
+   Worth capturing for future Phase 6d (and post-6d) sessions: the
+   correct pre-flight is "the binary in `/Applications/` was modified
+   after the last instrumentation commit." File `ls -la` timestamp is
+   the cheap audit.
+
+2. **`analysis_detect_key` at 94.4% replicated exactly at N=24.**
+   Session 32's 7-track exploratory finding was 94.4%; the Lakuti 24-track
+   real baseline is also 94.4%. The relative shape didn't shift — the
+   bottleneck is in `key_detector.py` internals (chroma extraction +
+   Krumhansl-Schmuckler), not the librosa decode that the brief named
+   as candidate (c). The Step 5 Decision Point is effectively pre-answered
+   pending Baseline 2 confirmation.
+
+3. **Packaged-mode analysis is only marginally faster than dev mode.**
+   Session 32 noted 13s/track per-track analysis in dev mode; Baseline 1
+   packaged showed 13.78s mean. So the previous "is packaged faster?"
+   open question is answered: no, not meaningfully. The 6m42s vs 5m31s
+   gap is operator interaction time, not pipeline difference.
+
+4. **One analysis_librosa_load outlier at 6.24s (vs. median 0.22s).**
+   ~28× the median. Captured in JSONL but not yet correlated to a
+   specific source file. Worth a follow-up curiosity once Baseline 2
+   data is in — if Martyn shows similar outliers, the load path may
+   have a real edge case.
+
+### Unresolved questions / blockers
+
+Nothing blocking Step 4 completion. Open items for Session 34:
+
+- **Baseline 2 (Martyn) run.** 52 tracks; ~12 minutes of analysis time;
+  full pipeline (including AI tagging) since none of the 54 already-DB
+  tracks need re-tagging but the 52 new ones will. Estimated $0.10-0.15
+  in Anthropic credit.
+
+- **`docs/perf/README.md`.** Methodology, harness, corpus, reproduction
+  instructions. Best written after both baselines exist so it can
+  reference real numbers and note both runs as concrete examples.
+
+- **Step 5 Decision Point.** Effectively pre-answered by Session 32 +
+  Baseline 1, but the formal commitment to Path A (optimisation) vs
+  Path B (close phase) happens after Baseline 2 lands. The Step 5
+  rationale will go in the README's "Decision point" section.
+
+Carry-forward not blocking but worth tracking:
+
+- **The librosa_load 6.24s outlier.** Single-run anomaly — Baseline 2
+  data will tell us if it's a pattern.
+- **Thread origin in `PerfRecord`.** Still not added (Session 31
+  carry-forward, Session 32 carry-forward). Will matter when concurrent
+  conversion is re-enabled (Phase 6d secondary deliverable) but not
+  before then.
+- **Concurrent conversion re-enable.** Brief-level commitment for Phase
+  6d; not in Session 33's scope. Could be done in Session 34 alongside
+  Baseline 2, or as a standalone commit after the Decision Point.
+
+### What's next — Session 34
+
+1. Baseline 2 — Martyn corpus. Same pattern: pre-flight snapshots,
+   direct binary invocation, full pipeline including AI tagging. Commit
+   as `docs/perf/baseline-03-martyn.md`.
+
+2. `docs/perf/README.md`. Methodology, harness, corpus, reproduction,
+   decision-point placeholder. Commit independently.
+
+3. Step 5 — Decision Point. Read both baselines, formally commit to
+   Path A (optimisation work) or Path B (close phase). Record rationale
+   in README's "Decision point" section.
+
+Likely path: A — optimise `key_detector.py` internals. Possibly also
+re-enable concurrent conversion (brief's secondary deliverable). Steps
+6+ to follow.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `8d6a54e`, pushed to origin.
+- Commits added this session: 1 (Baseline 1 report).
+- Tests: still 1245 passing (no test changes this session; pytest run
+  on `test_perf.py` during diagnostic phase confirmed 23/23 still green
+  with the temporary diagnostic).
+- `docs/perf/baseline-02-lakuti.md` exists (7273 bytes, 122 lines).
+- `/Applications/rekordbot.app` now contains today's build (modified
+  04:00 area), correctly instrumented, harness verified.
+- Snapshots retained:
+  - `~/Library/Application Support/rekordbot/rekordbot.db.pre-baseline-02`
+    (original pre-Lakuti snapshot, 30 tracks)
+  - `~/Library/Application Support/rekordbot/rekordbot.db.post-failed-baseline-02`
+    (state after first failed Lakuti run, 54 tracks, AI-tagged)
+  - `~/Library/Application Support/rekordbot/rekordbot.db.pre-baseline-02-attempt-2`
+    (post-restore, pre-Baseline-1-attempt-2, 30 tracks)
+  - `/Volumes/collection/REKORDBOT/rekordbox.xml.post-failed-baseline-02`
+  - `/tmp/output-dir-pre-baseline-02.txt`
+  - `/tmp/output-dir-pre-baseline-02-attempt-2.txt`
+  - `/tmp/imports-dir-pre-baseline-02-attempt-2.txt`
+- 4 perf JSONL files in `~/Library/Application Support/rekordbot/perf/`:
+  - `run-20260518T015022.jsonl` (Session 32 exploratory, 22440 bytes)
+  - `run-20260518T035630.jsonl` (Session 33 diagnostic export, 1326 bytes)
+  - `run-20260518T040407.jsonl` (Session 33 post-install verification, 1328 bytes)
+  - `run-20260518T041044.jsonl` (Baseline 1 — Lakuti, 76976 bytes)
+  - The latter is the one cited in the committed report.
+- CLAUDE.md updated this session: Phase 6d Step 4 partial state, new
+  install-vs-build lesson recorded.
+- SESSIONS.md updated this session (this commit).
+
+---
+
+## Session 34 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 4 completed (Baseline 2 — Martyn, README), Step 5
+Decision Point recorded, Phase 6d closed. The Decision Point
+outcome was neither Path A (in-scope optimisation of `key_detector.py`)
+nor Path B (close phase, no work) but a third path that emerged
+from an empirical Crate Builder trial during the session: **scope
+reduction.** Phase 6d.1 (next phase) will retire Crate Builder
+(Phase 5a) and Set Planner (Phase 5b) via soft retirement, and
+remove key detection from the analysis pipeline. Production code
+is unchanged in Phase 6d itself; the phase delivered measurement,
+empirical validation, and a decision — the code change is
+scoped into 6d.1.
+
+### Summary
+
+Session 34 ran in five distinct phases:
+
+1. **Plan alignment, ~17:45.** Walked through Step 4 completion
+   plan: three commits (Baseline 2 report, README with placeholder
+   Decision Point, README with populated Decision Point), the
+   stale-`/Applications/`-binary pre-flight per Session 33 lesson,
+   and budget confirmation for AI tagging on the Martyn corpus
+   (~$0.10–$0.15). The cross-check via filesystem MCP found a
+   visual miscount (51 audio files) against the brief's 52; a `find`
+   command at session start ground-truthed 52, resolving the
+   discrepancy. Pre-flight checks passed cleanly: install timestamp
+   `May 18 04:01` (today's build), corpus 52 files, disk 1.1 TiB
+   free on collection.
+
+2. **Baseline 2 run, ~17:58 to ~18:18.** Snapshot pattern
+   followed exactly as Session 33: DB copy, output-dir listing,
+   imports-dir listing. App launched via direct binary invocation
+   with `REKORDBOT_PERF_RECORD=1`. Drag-and-drop still broken (a
+   known carry-forward bug, not 6d scope), so Select Folder… used.
+   52 files ingested with 0 failures (Martyn is a more recent
+   corpus than Lakuti, no source corruption). Analysis ran on 52
+   tracks. AI tagging caught up to 83 tracks total (the 31
+   pre-existing untagged Lakuti tracks plus the 52 fresh Martyn
+   tracks). XML export wrote 106 tracks. Clean Cmd-Q at 18:18.
+   JSONL: 707 records, 159.62 KB.
+
+3. **Baseline 2 reporter run and data review, ~18:20 to ~18:30.**
+   Reporter ran cleanly via uv. Headline finding: `analysis_detect_key`
+   at 96.0% of analysis-per-track wall-clock (vs Baseline 1's
+   94.4%), confirming the bottleneck shape across two independent
+   corpora. Other notable shifts vs Baseline 1: ingestion conversion
+   share rose to 73.7% (from 65.8%) reflecting larger average source
+   file size; AI tagging measured for first time (5 batches, 113s
+   total, $0.1667, ~22.6s mean batch wall-clock dominated entirely
+   by API call); `ingestion_copy` passthrough branch exercised
+   for the first time by the single AIFF file (`13 Mixing Room.aiff`).
+   The librosa_load outlier present but smaller (1.49s vs Baseline
+   1's 6.24s), confirming outliers are inconsistent in magnitude
+   rather than a recurring edge case.
+
+4. **Crate Builder empirical trial and scope-reduction
+   conversation, ~18:30 to ~19:30.** This is the consequential
+   stretch of the session. Per the brief, Step 5 is a joint
+   chat-side decision. Before drafting the Decision Point, Claude
+   raised the option of removing key detection entirely —
+   given the 96% dominance, removing the work is a 25× speedup
+   vs the 4–6× best case of optimising it. The user pushed
+   that proposal one step further: if key data's main consumers
+   are Crate Builder and Set Planner, and those features may not
+   be valued in practice, the right move is to retire the
+   features, not optimise their inputs. Claude pushed back with
+   pause-for-validation: open the Crate Builder in the running
+   app and try it before deciding. User did so. Crate Builder
+   produced no output after several minutes; user identified
+   the architectural mismatch (AI clustering assumes a
+   comprehensive analysed library to mine; realistic ingestion
+   is a few hundred new tracks at a time against a much larger
+   Rekordbox-managed library known through listening). Decision
+   crystallised: retire Crate Builder and Set Planner via soft
+   retirement (option b: routes/UI removed, code/models/tests/DB
+   preserved); remove key detection from the analysis pipeline;
+   keep BPM detection. User initially considered dropping BPM
+   too; Claude argued BPM is consumed by AI tagging prompts and
+   has an excellent cost-vs-value ratio at ~0.24s/track. BPM
+   stays.
+
+5. **Three commits + phase close, ~19:30 onward.** Baseline 2
+   report (`28a2766`), README with placeholder Decision Point
+   (`26d7e08`), README with populated Decision Point (`2d9c3bd`),
+   then CLAUDE.md update for phase close (`25d602e`), and this
+   SESSIONS.md update. Merge to develop and tag `phase-6d-complete`
+   pending after this commit lands.
+
+### Key decisions made
+
+1. **The Decision Point is a third path, not Path A or Path B.**
+   The brief committed to one or the other, but the actual
+   conclusion is closer to Path B in shape (no in-scope
+   optimisation work performed) with substantial follow-on work
+   in a separate phase. Recorded explicitly as a "third path"
+   in `docs/perf/README.md` so future audits do not misread
+   it as "no bottleneck found."
+
+2. **Soft-retire (option b), not hard-delete (option a).** The
+   Phase 5a + 5b code remains in git and in the codebase
+   post-6d.1, but is unreachable from the UI and unused by
+   routes. DB tables preserved. Tests preserved. The case for
+   soft-retire over hard-delete: same wall-clock savings, much
+   smaller change radius, optionality preserved if the features
+   ever turn out to be desirable, no multi-table DB migration
+   risk. The case for hard-delete ("dormant code that'll
+   silently break a year from now") is real but addressed by
+   documenting the retired state in CLAUDE.md Known Issues and
+   accepting that revival is a scoped revival session, not
+   automatic.
+
+3. **Keep BPM detection, drop key detection.** This was a
+   distinct sub-decision. The user initially proposed dropping
+   both on "Rekordbox does it anyway" grounds. Claude argued
+   BPM has different cost-vs-value:
+   - BPM ~0.24s/track vs key ~11.4s/track (47× differential)
+   - BPM consumed by AI tagging prompts (genre/mood/energy
+     inference is BPM-aware)
+   - BPM displayed and sorted in the track table UI
+   - BPM written to TBPM tag, which Rekordbox uses as a hint
+     for its own beat-grid analysis
+   None of those apply to key in the post-Phase-6d.1 world.
+   The user accepted the reasoning. BPM stays in the analysis
+   pipeline.
+
+4. **The Crate Builder empirical trial was the load-bearing
+   evidence for the scope reduction.** Without it, the
+   conversation would have rested on abstract reasoning about
+   what features are valuable. With it, the user could speak
+   from direct interaction: "it took several minutes and
+   produced nothing." Claude's pushback ("open it and try it
+   before deciding") prevented committing to a major scope
+   reversal on theoretical grounds alone. This is a pattern
+   worth preserving: empirical validation before major
+   reversal, even when reasoning seems strong.
+
+5. **Concurrent conversion re-enable indefinitely deferred.**
+   The Phase 6d brief named it as a secondary deliverable.
+   Without action on it, Phase 6d technically does not meet
+   the original brief's acceptance criterion as written. But
+   the criterion explicitly allows "explicitly deferred with
+   reason documented" — which is what we've done. On a
+   post-Phase-6d.1 analysis pipeline at ~0.5s/track, concurrent
+   conversion savings are small (single-digit seconds on a
+   52-track corpus). The architectural fix may still matter
+   eventually but it's no longer urgent.
+
+6. **Project Overview deliberately not updated in the Phase
+   6d close commit.** The Project Overview at the top of
+   CLAUDE.md still describes Crate Builder and Set Planner as
+   core features. That description is accurate for the
+   currently-running code. The update belongs with Phase 6d.1's
+   code change, not with the Phase 6d documentation. Avoids a
+   commit that says "feature is retired" while the feature is
+   still running.
+
+7. **Phase numbering: 6d.1 not 6e.** Keeps the audit trail
+   explicit (6d directly led to it). Avoids reshuffling 6e and
+   6f. Indented visually in the Phased Build Plan.
+
+8. **Decision Point recorded in `docs/perf/README.md`, not in a
+   standalone document.** The README is the source of truth for
+   the methodology and harness; the Decision Point is the
+   intellectual conclusion of the measurement work; both belong
+   in the same document. Future-Claude and future-Dale will
+   find the decision in the same place they find the
+   reproduction instructions.
+
+9. **Install-vs-build pre-flight check made durable in CLAUDE.md
+   Known Issues.** Previously lived in a standalone paragraph
+   under Current Status referring specifically to Phase 6d. Now
+   a durable entry that applies to any packaged-mode work —
+   manual smoke tests, dogfooding, performance measurement.
+   The Session 33 lesson now outlives its session.
+
+### Things that surprised us
+
+1. **Crate Builder validated as not-valuable by direct
+   interaction in under five minutes.** The empirical case
+   came together faster than expected. The architectural
+   mismatch (assumes comprehensive analysed library; realistic
+   workflow is incremental ingestion) was visible immediately
+   once the user tried to use it on the actual library state.
+   Theoretical reasoning would have taken much longer to reach
+   the same conclusion with less confidence.
+
+2. **The BPM-vs-key cost differential is 47×.** Easy to
+   under-appreciate from the brief, which lists them together
+   as "BPM/key detection." In wall-clock terms they're nothing
+   alike: BPM is a rounding-error tax, key is the bottleneck.
+   The cost-vs-value ratio analysis was only possible once the
+   per-stage breakdown was in front of us — the brief's named
+   candidate (c) "share the librosa decode between BPM and key
+   detection" assumed they were roughly comparable inner stages,
+   which they aren't.
+
+3. **The `ingestion_copy` passthrough branch never ran until
+   Baseline 2.** Baseline 1 was 100% FLAC; Martyn's single AIFF
+   exercised the alternate code path for the first time in any
+   committed measurement. Useful incidental pipeline coverage.
+
+4. **AI tagging cost was almost exactly on the operator
+   projection.** $0.1667 actual vs $0.10–$0.15 projected; the
+   overrun came from the AI tagger catching up the 31 untagged
+   Lakuti tracks alongside the 52 fresh Martyn tracks, not from
+   per-track cost being higher. Per-track cost was ~$0.0020.
+
+5. **Reading the data overturned both Path A and Path B.** Going
+   into Session 34, the strong expectation was Path A
+   (algorithmic improvements inside `key_detector.py`). The
+   weak fallback was Path B (close phase, no work). Neither
+   path matched the actual conclusion. The brief's framing
+   assumed the consumers of analysis output were stable; once
+   that assumption was revisited, scope reduction emerged as
+   the dominant option. Worth remembering that the brief is
+   never the last word on what a measurement phase will
+   conclude.
+
+6. **Two baselines closely agreed but not identically.** Baseline
+   1 `analysis_detect_key` mean 13.01s, Baseline 2 11.40s
+   (-12%). The shape (% share of outer) reproduced cleanly
+   (94.4% → 96.0%) but the absolute timing did not. External-
+   drive I/O variability is the most likely cause. The shape
+   is what's load-bearing for the decision; the absolute
+   timing being slightly different across runs doesn't change
+   anything.
+
+### Unresolved questions / blockers
+
+1. **The Phase 6d.1 feature brief is not yet drafted.** Session
+   35 opens with this work. The Decision Point in
+   `docs/perf/README.md` defines the scope (~8 in-scope items);
+   the brief turns that into TDD candidates, build order,
+   acceptance criteria, risks. Likely a focused single-session
+   brief-drafting exercise before any code work starts.
+
+2. **Does the AI tagging prompt actually consume key as input?**
+   The Phase 6d.1 plan includes "verify the AI tagging prompt
+   does not consume key as input. If it does, remove the field
+   from the prompt builder." This needs reading `prompt_builder.py`
+   in Session 35 before the brief can finalise the scope of the
+   prompt-builder change. If key is in the prompt, removing it
+   is a measured change with possible accuracy implications;
+   if it isn't, the line in the brief is a no-op verification.
+
+3. **Migration of existing key data in the DB.** Post-Phase-6d.1,
+   the `key` column on the Track model will retain its existing
+   data (the 30 historical tracks have key data; the Baseline
+   1 and 2 additions have key data populated by today's runs).
+   The column won't be populated for new tracks (no detection),
+   won't be displayed (UI column removed), won't be written
+   (Tonality removed from XML). Drop the column or keep it? Lean
+   is keep — dropping requires an Alembic migration, the
+   column is cheap, and preserving data preserves optionality.
+   Decision deferred to the 6d.1 brief.
+
+4. **Test impact of soft retirement.** Phase 5a contributed 108
+   tests, Phase 5b contributed 116 tests (cumulative counts:
+   706 → 814 → 930). After soft retirement, most of those
+   tests should still pass (the code paths still exist; they're
+   just unreachable from the UI). Some integration tests that
+   exercise full ingest → analyse → crate-assign flows may
+   need updating. The brief needs an audit of the test surface
+   to scope the test-change work realistically.
+
+Carry-forward, not blocking:
+
+- **Drag-and-drop still broken** in the current build. Known
+  from Session 32 / 33. Not 6d scope. Likely a 6e issue once
+  UI polish phase opens.
+- **Thread origin in `PerfRecord`.** Still not added. Will only
+  matter if a future phase re-enables concurrent conversion or
+  concurrent analysis. Currently neither.
+- **`Panorama_Bar_Playlist_04_Josey_Rebelle/`** is the corpus
+  reserved for post-Phase-6d.1 re-baseline. Confirmed accessible
+  earlier this session via filesystem MCP.
+
+### What's next — Session 35
+
+1. Open `feature/scope-reduction` branch from develop.
+
+2. Draft the Phase 6d.1 feature brief in `docs/features/phase-6d.1-scope-reduction.md`.
+   The brief lands as its own commit before any code change. Per
+   the project's "explain before you implement" principle, the
+   brief gets the same care every other phase brief got — TDD
+   candidates, build order, acceptance criteria, risks. Source
+   of truth for scope is the Decision Point in
+   `docs/perf/README.md`.
+
+3. Before drafting the brief, read `prompt_builder.py` to
+   resolve the open question about whether the AI tagging
+   prompt consumes key as input. This decides the scope of
+   the prompt-builder changes in the brief.
+
+4. After brief lands and is reviewed, execute it: probably 4–6
+   commits across UI removal, route removal, pipeline change,
+   AI prompt verification, test update, and re-baseline
+   measurement.
+
+5. Phase 6d.1 closes with a re-baseline against
+   `Panorama_Bar_Playlist_04_Josey_Rebelle/` (committed as
+   `docs/perf/post-scope-reduction-04-josey-rebelle.md`) and a
+   `delta.md` documenting the before/after wall-clock change.
+   Expected ~25× analysis speedup vs Baselines 1 + 2.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `25d602e` (post-CLAUDE.md
+  update), 4 commits ahead of origin (this SESSIONS.md commit
+  will make it 5).
+  Commits added this session:
+  - `28a2766` — docs(perf): add Phase 6d baseline 2 report for Martyn corpus
+  - `26d7e08` — docs(perf): add README — methodology, harness, reproduction
+  - `2d9c3bd` — docs(perf): record Step 5 decision point — scope reduction
+  - `25d602e` — chore: update CLAUDE.md for Phase 6d close
+  - (this commit) — chore: SESSIONS.md Session 34 entry
+- Tests: still 1245 passing. Production code unchanged this
+  session.
+- `docs/perf/` contains 3 files: README.md (11.96 KB),
+  baseline-02-lakuti.md (7.10 KB), baseline-03-martyn.md (9.41 KB).
+- 5 perf JSONL files in `~/Library/Application Support/rekordbot/perf/`:
+  - `run-20260518T015022.jsonl` (Session 32 exploratory, 22440 bytes)
+  - `run-20260518T035630.jsonl` (Session 33 diagnostic export, 1326 bytes)
+  - `run-20260518T040407.jsonl` (Session 33 post-install verification, 1328 bytes)
+  - `run-20260518T041044.jsonl` (Baseline 1 — Lakuti, 76976 bytes)
+  - `run-20260518T185959.jsonl` (Baseline 2 — Martyn, 159620 bytes)
+- Snapshots retained from this session:
+  - `~/Library/Application Support/rekordbot/rekordbot.db.pre-baseline-03`
+    (30+24 = 54 tracks, pre-Martyn state)
+  - `/tmp/output-dir-pre-baseline-03.txt`
+  - `/tmp/imports-dir-pre-baseline-03.txt`
+- `/Applications/rekordbot.app` install timestamp: `May 18 04:01`,
+  unchanged from Session 33's recovery-phase install. The same
+  install ran both baselines. Source-tree commits advanced between
+  Baseline 1 (run against `45fd218` source state) and Baseline 2
+  (run against `18d74a0` source state), but no instrumentation
+  code changed in those intervening commits (Session 33's only
+  code change was a single-line diagnostic that was reverted
+  before commit; the Session 33 report commit was docs-only), so
+  re-installing wasn't required.
+- CLAUDE.md updated this session: Current Status reset to 6d.1,
+  Phase Summary row added, Phased Build Plan 6d → Done +
+  6d.1 added, 4 new Known Issues entries (install timestamp
+  pre-flight, `analysis_detect_key` as known-but-not-target,
+  Crate/Set retirement flag, concurrent conversion deferral).
+  Project Overview deliberately not updated — belongs with
+  6d.1 code change.
+- SESSIONS.md updated this session (this commit).
+- Phase 6d feature brief still to be marked complete (next
+  commit, Commit C).
+- Merge to develop and tag `phase-6d-complete` pending after
+  Commit C lands.

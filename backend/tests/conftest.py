@@ -9,6 +9,23 @@ from sqlalchemy.orm import sessionmaker
 from backend.models.database import Base
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register custom CLI options for pytest."""
+    parser.addoption(
+        "--update-golden",
+        action="store_true",
+        default=False,
+        help="Overwrite golden expected output files with actual rendered output. "
+        "For developer use only — never run in CI.",
+    )
+
+
+@pytest.fixture
+def update_golden(request: pytest.FixtureRequest) -> bool:
+    """Whether the test should overwrite its golden file instead of comparing."""
+    return bool(request.config.getoption("--update-golden"))
+
+
 @pytest.fixture(scope="session")
 def engine():
     """Create an in-memory SQLite engine for the test session."""

@@ -103,7 +103,9 @@ rekordbot/
 │   │   ├── conflict_resolver.py  ← Import conflict resolution (per-track and bulk) (Phase 4b)
 │   │   ├── xml_importer.py       ← XML import pipeline orchestrator with SSE progress (Phase 4b)
 │   │   ├── config_manager.py    ← JSON config persistence and env var integration (Phase 6a)
-│   │   └── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
+│   │   ├── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
+│   │   ├── perf.py              ← Opt-in profiling harness: PerfRecorder, Stage enum, JSONL sink (Phase 6d)
+│   │   └── perf_report.py       ← Reporter pure logic: load JSONL, aggregate, render markdown (Phase 6d)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
@@ -115,8 +117,12 @@ rekordbot/
 │   │   ├── settings.py          ← Settings CRUD, validation, first-run status (Phase 6a)
 │   │   └── import_xml.py        ← Rekordbox XML import, conflicts, SSE progress (Phase 4b)
 │   └── tests/
-│       ├── conftest.py           ← Shared fixtures (test DB, API client)
-│       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
+│       ├── conftest.py           ← Shared fixtures (test DB, API client, --update-golden flag)
+│       ├── test_perf.py          ← PerfRecorder + harness unit tests (Phase 6d)
+│       ├── test_perf_report.py   ← Reporter unit + golden-file tests (Phase 6d)
+│       └── fixtures/
+│           ├── audio/            ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
+│           └── perf/             ← Synthetic JSONL fixtures + golden .expected.md files (Phase 6d)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx               ← Main layout with drop zone, queue, track table
@@ -159,7 +165,9 @@ rekordbot/
 ├── scripts/
 │   ├── build-backend.sh          ← PyInstaller build (includes Alembic data files)
 │   ├── build-dmg.sh              ← Full .dmg pipeline (PyInstaller → Tauri → inject sidecar → hdiutil)
-│   └── dev-setup.sh
+│   ├── dev-setup.sh
+│   ├── generate-test-fixtures.sh ← Regenerate the test audio fixtures under backend/tests/fixtures/audio/
+│   └── perf-report.py            ← CLI for the Phase 6d performance reporter (thin wrapper over perf_report.py)
 └── docs/
     ├── features/
     │   ├── phase-0-scaffold.md
@@ -169,14 +177,23 @@ rekordbot/
     │   ├── phase-3-claude-integration.md
     │   ├── phase-4-rekordbox-xml-export.md
     │   ├── phase-5a-crate-builder.md
-│   ├── phase-5b-set-planner.md
-│   ├── phase-6a-app-shell.md
-│   ├── phase-4b-xml-import.md
-│   └── phase-6b-dmg-packaging.md
-    └── research/
-        ├── rekordbox-xml-cdj-compatibility.md
-        ├── tauri-python-backend.md
-        └── pyinstaller-onedir-tauri-bundling.md
+    │   ├── phase-5b-set-planner.md
+    │   ├── phase-6a-app-shell.md
+    │   ├── phase-4b-rekordbox-xml-import.md
+    │   ├── phase-6b-dmg-packaging.md
+    │   ├── phase-6c-dogfooding.md
+    │   └── phase-6d-performance.md
+    ├── reference/
+    │   ├── claude-code-session-checklist.md
+    │   ├── phase-completion-checklist.md
+    │   └── rekordbox-import-test-guide.md
+    ├── research/
+    │   ├── rekordbox-xml-cdj-compatibility-research.md
+    │   ├── tauri-python-backend-research.md
+    │   └── pyinstaller-onedir-tauri-bundling.md
+    ├── testing/
+    │   └── manual-smoke-test.md
+    └── rekordbot-project-plan.md
 ```
 
 ## Git Workflow
@@ -184,13 +201,15 @@ rekordbot/
 **Branch structure:**
 ```
 main        ← stable, always works, tagged releases
-develop     ← integration branch, all feature branches merge here
-feature/*   ← one branch per feature or phase (e.g. feature/phase-0-scaffold)
+develop     ← integration branch, all feature/fix/chore branches merge here
+feature/*   ← phases and new user-facing features (e.g. feature/phase-0-scaffold)
+fix/*       ← bug fixes, especially ones with schema or data implications
+chore/*     ← tooling, infrastructure, and non-code-shipping work
 ```
 
 **Rules:**
-- All work happens on feature branches, never directly on `main` or `develop`
-- Feature branches are created from `develop` and merge back into `develop`
+- All work happens on feature, fix, or chore branches — never directly on `main` or `develop`
+- Topic branches are created from `develop` and merge back into `develop`
 - `develop` merges to `main` only when a phase is complete and all acceptance criteria pass
 - Every commit should leave the codebase in a working state (tests pass)
 - Commit messages: imperative mood, concise but descriptive (e.g. "Add Track model with full Rekordbox-compatible schema", not "updated models")
@@ -395,10 +414,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6c — UI Review & Bug Fixing (in progress)
-**Branch:** `feature/phase-6c-dogfooding`
-**Tests:** 1192 passing across all phases
-**Next step:** Phase 6c merge prep — phase-completion checklist sweep, prettier/ruff-format drift cleanup on untouched files, then merge `feature/phase-6c-dogfooding` → `develop` with `--no-ff` and a phase tag.
+**Phase:** 6d.1 — Scope Reduction (next; brief not yet drafted)
+**Branch:** to be opened as `feature/scope-reduction` from `develop` at next session start
+**Tests:** 1245 passing across all phases (Phase 6d complete, no production code changes during 6d — measurement and documentation only)
+**Next step:** Open Session 35 by drafting the Phase 6d.1 feature brief. The Phase 6d Decision Point (`docs/perf/README.md` — Decision point section) is the source of truth for what 6d.1 must deliver: soft-retire Crate Builder (Phase 5a) and Set Planner (Phase 5b), remove key detection from the analysis pipeline, remove the key column from the track table UI, remove the `Tonality` attribute from XML export, verify AI tagging prompt does not consume key as input, and re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/` to confirm the expected ~25× analysis speedup.
 
 ### Phase Summary
 
@@ -413,9 +432,11 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 5a — Crate Builder | 814 | `docs/features/phase-5a-crate-builder.md` |
 | 5b — Set Planner | 930 | `docs/features/phase-5b-set-planner.md` |
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
-| 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
+| 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-rekordbox-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
-| 6c — UI Review & Bug Fixing | 1192 | (dogfooding — no feature brief) |
+| 6c — UI Review & Bug Fixing | 1192 | `docs/features/phase-6c-dogfooding.md` |
+| 6d — Performance Optimisation | 1245 | `docs/features/phase-6d-performance.md` |
+| 6d.1 — Scope Reduction | TBD | TBD (brief to be drafted Session 35) |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -471,8 +492,8 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
 - AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
 - Ingestion worker runs in a plain `threading.Thread` (not asyncio) because PyInstaller-bundled stdout is piped to Tauri, and after ~64KB the pipe buffer fills, blocking any thread that writes to stdout via Python's logging StreamHandler. The StreamHandler is removed from the root logger in packaged mode. The worker thread communicates SSE events to the asyncio event loop via `loop.call_soon_threadsafe`. This architecture was validated with 668-file batch ingestion.
-- `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore in Phase 6d if concurrent conversion is re-enabled.
-- `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. Re-enabling requires solving the stdout pipe buffer issue first (Phase 6d).
+- `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore alongside the Phase 6d secondary deliverable when concurrent conversion is re-enabled.
+- `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. The underlying stdout pipe deadlock was fixed in Phase 6c via the StreamHandler-removal-in-packaged-mode mitigation (validated with 668-file batch ingestion); re-enabling concurrent conversion is the brief-level secondary deliverable for Phase 6d.
 - uvloop is bundled by PyInstaller (transitive uvicorn dependency) and is explicitly bypassed via `loop="asyncio"` in `uvicorn.run()`. uvloop's libuv event loop had GIL interaction issues with worker threads on macOS.
 - Settings API key validation: structural guard rejects values that don't start with `sk-` or are under 20 chars. Error messages from the validate endpoint are sanitised (no raw Python exceptions). Credit/billing errors return `valid=True` since the key itself is valid.
 - Flexbox constraint chains: `min-h-0` and `min-w-0` only propagate through flex items if every intermediate wrapper is itself a flex container in the same axis. A non-flex wrapper between a parent flex column and a child with `flex-1` breaks the constraint chain — the child falls back to intrinsic content size. When adding `flex-1` to a component's outer wrapper, verify its parent in the consuming component is `flex flex-col` (or `flex flex-row`).
@@ -481,6 +502,21 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - `organise_confidence_threshold` is the live organisation threshold (default 0.7), exposed in Settings → Advanced. The short-named `confidence_threshold` field that previously appeared in `CONFIGURABLE_FIELDS` and the Settings UI was dead config and was removed in Session 28. Old user configs with the short name silently drop the key on next save via `CONFIGURABLE_FIELDS` filtering in `save_config()`. The per-request `OrganiseRequest.options.confidence_threshold` override on `/api/organise/propose` is wired-up-but-unused — intentional API affordance, not a bug.
 - BPM and key detection produce `BPMResult.confidence` and `KeyResult.confidence` values for informational display only. No threshold-based gating action consumes them anywhere in the pipeline. If a future feature wants to gate on these (e.g. "skip tag writing for low-confidence BPM"), it will need to introduce its own threshold field — not reuse the now-removed generic `confidence_threshold`.
 - SettingsPanel renders as an absolutely-positioned overlay (`absolute inset-0 z-10 bg-gray-950`) inside a `relative` wrapper in App.tsx, NOT as a swap-mount. This is deliberate — preserving in-flight component state (analysis SSE connection, progress bar state, etc.) across Settings round-trips required keeping `<main>` mounted continuously. ConflictReviewPanel and SetPlannerView remain swap-mounted because they are full workflows where state-loss on entry is acceptable. The Settings overlay sits below the header (it shares a parent with `<main>`, not with the header). z-index `z-10` places it above the underlying view but below `CrateCreateDialog` and `SetCreateDialog` (which use `z-40` for true modal behaviour).
+- `REKORDBOT_PERF_RECORD=1` enables the opt-in profiling harness. When set, every named pipeline stage (30 stages across ingestion / analysis / AI tagging / XML export / XML import) emits a JSONL timing record to `~/Library/Application Support/rekordbot/perf/run-<timestamp>.jsonl`. When unset (default), the harness is a strict no-op — no I/O, no allocations beyond `contextlib.nullcontext()`. Stage constants are defined in `backend/services/perf.py::Stage`; the wrappers live in each pipeline's orchestrator service (`converter.py`, `analysis.py`, `ai_tagger.py` + `claude_client.py`, `xml_exporter.py`, `xml_importer.py`).
+- `scripts/perf-report.py` is the CLI for the Phase 6d performance reporter, with pure logic in `backend/services/perf_report.py` and golden-file tests in `backend/tests/test_perf_report.py`. Invocation: `uv run scripts/perf-report.py --input <jsonl> --output <md>`. Percentiles (p50/p95) are computed only when `count >= 10` per stage; below that they render as "—" with a footnote. For pipelines with an outer wrapper stage (`ingestion_file`, `analysis_track`, `ai_tag_batch`), inner stages also show a "Share of outer mean" percentage. The AI tagging rate-limit wait is derived as `AI_TAG_BATCH duration − sum(inner stage durations within window)`, clamped to 0 to absorb measurement noise. Records emit in exit-order (inner stages emit before their containing outer), so the reporter relies on `start_ts` and `OUTER_STAGE_FOR_PIPELINE` for nesting awareness — never file order. Golden fixtures regenerated via `pytest --update-golden` (flag wired in `conftest.py`). PerfRecord does not currently capture thread origin (PID is per-process, threads share it); if Step 4+ work re-enables concurrent conversion or concurrent analysis, add `threading.get_ident()` to the harness at that point.
+- Browser dev mode is effectively unusable for ingestion. The Vite dev server (`npm run dev`, `http://localhost:1420`) loads the React app in a regular browser, but `DropZone.tsx` relies on Tauri's path-injection for drag-and-drop and the "Select Folder…" button uses the Tauri dialog plugin. In a plain browser `file.path` is undefined (the component falls back to `file.name` and the backend correctly rejects bare filenames), and the folder dialog errors out cleanly. Two workarounds for any dev-mode session that needs to exercise ingestion: (a) use `npm run tauri dev` to get the full Tauri shell, or (b) hit the backend API directly via curl. Confirmed in Session 32 data-gen run.
+- Dev-mode backend invocation: from the repo root, run `uv run uvicorn backend.main:app --host 127.0.0.1 --port 8420 --reload`. The absolute imports in `backend/main.py` require `backend.main:app` (module path), not `main:app`, and the working directory must be the repo root, not `backend/`. The output directory env var is `REKORDBOT_OUTPUT_DIRECTORY` (NOT `REKORDBOT_OUTPUT_DIR`) — the wrong name silently does nothing and routes output to the default (real) library directory. For any workspace-isolated run (e.g. perf profiling), set both `REKORDBOT_DB_URL="sqlite:////tmp/some-test.db"` and `REKORDBOT_OUTPUT_DIRECTORY="/tmp/some-test-output"` explicitly.
+- **Packaged-mode pre-flight — install timestamp.** `make build-dmg` produces a `.app` in `target/release/bundle/macos/` and a `.dmg` in `target/release/bundle/dmg/` but does NOT install to `/Applications/`. Installation requires manually opening the `.dmg` and dragging. Before any packaged-mode measurement, manual smoke test, or dogfooding session: confirm `/Applications/rekordbot.app/Contents/MacOS/sidecar/rekordbot-server` modification timestamp is after the latest relevant commit (`ls -la`). Session 33 lost ~90 minutes diagnosing an apparent harness bug that was actually a stale `/Applications/` install predating the harness code. This is the cheap audit; the cheapest correct check before any packaged-mode work.
+- **`analysis_detect_key` is a known 94–96% dominant stage and not an optimisation target.** Two independent Phase 6d baselines (76 tracks total: Lakuti N=24 at 94.4%, Martyn N=52 at 96.0%) confirmed key detection dominates `analysis_track` wall-clock. The Phase 6d Step 5 Decision Point retired the downstream consumers of key data rather than optimising the detector. Do not re-open key detection as a speed-optimisation target without first reading `docs/perf/README.md` Decision point. The `KeyDetector` service remains in the codebase as dormant code post-Phase-6d.1 (reachable by direct call but not invoked by any pipeline).
+- **Crate Builder (Phase 5a) and Set Planner (Phase 5b) are being soft-retired in Phase 6d.1.** Their UI entry points and routes will be removed; code, models, tests, and DB tables preserved for potential future revival. Empirical trial during Session 34 confirmed architectural mismatch with realistic DJ workflow (AI clustering assumes a comprehensive analysed library; realistic ingestion is a few hundred new tracks at a time against a much larger Rekordbox-managed library known through listening, not algorithmic mining). Do not modify, extend, or fix bugs in Phase 5a/5b code unless working specifically in Phase 6d.1 or a future revival phase.
+- **Concurrent conversion re-enable indefinitely deferred.** The Phase 6d brief named it as a secondary deliverable. Phase 6d closed without action on it: on a post-Phase-6d.1 analysis pipeline running at ~0.5s/track instead of ~11.9s/track, the absolute savings from concurrent conversion become small (single-digit seconds on a 52-track corpus). The architectural fix may still be worth doing eventually — single-worker is a regression from pre-Phase-6c capability — but it now ranks below several other candidates and gets revisited only if profiling against a post-scope-reduction baseline shows it matters.
+- **Pre-existing mypy debt: 21 errors across 8 files** (state at Phase 6d close, baseline on `develop`). Categorised by location:
+  - **11 in Phase 5a/5b code** (`crate_assigner.py` 1, `crate_manager.py` 1, `set_planner.py` 3, `test_crate_integration.py` 3, `test_set_integration.py` 3) — these will **persist after Phase 6d.1**, because soft retirement preserves code and tests. Only hard deletion would clear them. They are dormant code's debt.
+  - **8 in old XML code** (`test_xml_builder.py` 7, `xml_exporter.py` 1) — mypy can't narrow `ElementTree.find()` return type (`Optional[Element]`). Tests pass at runtime because the elements are always present in well-formed XML fixtures. Real fix: add `assert element is not None` narrowing or use `cast`. Mechanical, no design risk.
+  - **2 in `claude_client.py`** — mypy false positives on `asyncio.to_thread` overload resolution when called with `partial()`-wrapped SDK methods. Safe at runtime; addressable with a localised `cast` or by inverting how the partial is constructed.
+  - All 21 errors were present in `develop` at the start of Phase 6d. Phase 6d added 4 new files (`perf.py`, `perf_report.py`, `test_perf.py`, `test_perf_report.py`); none of them are in the error list.
+  - The phase-completion checklist's mypy criterion (`docs/reference/phase-completion-checklist.md` section 2) is now **"no new errors against develop's baseline"** rather than "mypy zero errors total." The pre-existing debt won't clear incidentally; it needs a dedicated cleanup pass when scheduled. When that lands, the criterion automatically tightens back to zero.
+  - **Do not casually add `type: ignore` comments to silence these.** Each error type has a correct fix; `# type: ignore` should be reserved for the missing-stub cases already documented above in this section, not for working around correctly-flagged Optional access.
 
 ## Phased Build Plan
 
@@ -497,7 +533,8 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 | **6a** | App Shell & Packaging | ✅ Done | Settings persistence, settings UI, first-run wizard, toast errors, watchdog, BitRate fix, .app bundle |
 | **4b** | Rekordbox XML Import | ✅ Done | Parse Rekordbox XML, track matching, conflict resolution, playlist-to-crate import |
 | **6b** | .dmg Packaging & Migration Setup | ✅ Done | Alembic baseline migration, automatic startup migration, .dmg packaging, post-build sidecar injection |
-| **6c** | UI Review & Bug Fixing | ⬅️ Current | Dogfooding phase — import real library, fix bugs and UX friction |
-| 6d | Performance Optimisation | Not started | Profile with real library data, targeted optimisation |
+| **6c** | UI Review & Bug Fixing | ✅ Done | Dogfooding phase — import real library, fix bugs and UX friction |
+| **6d** | Performance Optimisation | ✅ Done | Profiling harness, two real-corpus baselines (Lakuti, Martyn), measure-then-decide outcome → scope reduction |
+| **6d.1** | Scope Reduction | ⬅️ Current | Retire Crate Builder + Set Planner (soft); remove key detection from analysis pipeline; refocus app on ingest → analyse (BPM only) → AI tag → organise → export |
 | 6e | UI Polish & Design | Not started | Serious design pass, folder template editor, drag-and-drop, custom .dmg background |
 | 6f | Signing & Distribution | Not started | Code signing, notarisation, signed .dmg, onboarding docs |

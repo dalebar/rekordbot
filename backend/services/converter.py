@@ -18,6 +18,7 @@ from backend.models.track import Track
 from backend.services.conversion import ConversionAction, decide_conversion
 from backend.services.format_inspector import FileInfo, inspect_file
 from backend.services.naming import generate_output_path
+from backend.services.perf import Stage, get_recorder
 
 logger = logging.getLogger(__name__)
 
@@ -135,101 +136,119 @@ def convert_file(
     Returns:
         TrackResult with success status and created Track (or error details).
     """
+    recorder = get_recorder()
     try:
-        # Step 1: Inspect
-        file_info = inspect_file(path)
-        logger.info(
-            "Inspected %s: %s/%s, %d kbps, %s",
-            path.name,
-            file_info.container,
-            file_info.codec,
-            file_info.bitrate,
-            "lossless" if file_info.is_lossless else "lossy",
-        )
+        with recorder.stage(
+            Stage.INGESTION_FILE,
+            payload={"source_path": str(path), "size_bytes": path.stat().st_size},
+        ):
+            # Step 1: Inspect
+            with recorder.stage(Stage.INGESTION_INSPECT):
+                file_info = inspect_file(path)
+            logger.info(
+                "Inspected %s: %s/%s, %d kbps, %s",
+                path.name,
+                file_info.container,
+                file_info.codec,
+                file_info.bitrate,
+                "lossless" if file_info.is_lossless else "lossy",
+            )
 
-        # Step 2: Decide
-        action = decide_conversion(file_info, settings.convert_aac_to_mp3)
-        logger.info("Decision for %s: %s — %s", path.name, action.action, action.reason)
+            # Step 2: Decide
+            with recorder.stage(Stage.INGESTION_DECIDE):
+                action = decide_conversion(file_info, settings.convert_aac_to_mp3)
+            logger.info("Decision for %s: %s — %s", path.name, action.action, action.reason)
 
-        # Step 3: Hash source file for duplicate detection
-        logger.debug("Hashing source file %s (%d bytes)...", path.name, path.stat().st_size)
-        file_hash = compute_file_hash(path)
-        logger.debug("Hash complete for %s: %s", path.name, file_hash[:12])
+            # Step 3: Hash source file for duplicate detection
+            logger.debug("Hashing source file %s (%d bytes)...", path.name, path.stat().st_size)
+            with recorder.stage(Stage.INGESTION_HASH):
+                file_hash = compute_file_hash(path)
+            logger.debug("Hash complete for %s: %s", path.name, file_hash[:12])
 
-        # Step 4: Check for duplicates
-        existing = db_session.query(Track).filter_by(file_hash=file_hash).first()
-        if existing:
-            if Path(existing.file_path).exists():
-                logger.info("Duplicate detected for %s (matches track %d)", path.name, existing.id)
-                return TrackResult(
-                    success=False,
-                    duplicate=True,
-                    file_path=str(path),
-                    action="skip_duplicate",
-                    error=f"Duplicate of existing track: {existing.file_path}",
+            # Step 4: Check for duplicates
+            with recorder.stage(Stage.INGESTION_DUP_CHECK):
+                existing = db_session.query(Track).filter_by(file_hash=file_hash).first()
+                if existing:
+                    if Path(existing.file_path).exists():
+                        logger.info(
+                            "Duplicate detected for %s (matches track %d)",
+                            path.name,
+                            existing.id,
+                        )
+                        return TrackResult(
+                            success=False,
+                            duplicate=True,
+                            file_path=str(path),
+                            action="skip_duplicate",
+                            error=f"Duplicate of existing track: {existing.file_path}",
+                        )
+                    else:
+                        # Output file is missing — clean up orphaned record and continue
+                        logger.warning(
+                            "Orphaned track %d (file missing: %s) — cleaning up",
+                            existing.id,
+                            existing.file_path,
+                        )
+                        db_session.query(CrateTrack).filter_by(track_id=existing.id).delete()
+                        db_session.query(SetTrack).filter_by(track_id=existing.id).delete()
+                        db_session.delete(existing)
+                        db_session.commit()
+
+            # Step 5: Generate output path
+            logger.debug("Generating output path for %s", path.name)
+            output_dir = Path(settings.output_directory).expanduser()
+            output_path = generate_output_path(path, output_dir, action.output_format)
+
+            # Step 6: Execute conversion or copy
+            logger.debug("Starting %s for %s", action.action, path.name)
+            if action.action in ("convert_to_aiff", "convert_to_mp3"):
+                cmd = build_ffmpeg_command(
+                    path, output_path, action, file_info, settings.ffmpeg_path
                 )
+                with recorder.stage(Stage.INGESTION_CONVERT_FFMPEG):
+                    _run_ffmpeg_sync(cmd)
             else:
-                # Output file is missing — clean up orphaned record and continue
-                logger.warning(
-                    "Orphaned track %d (file missing: %s) — cleaning up",
-                    existing.id,
-                    existing.file_path,
+                # copy_as_is
+                with recorder.stage(Stage.INGESTION_COPY):
+                    shutil.copy2(str(path), str(output_path))
+
+            logger.info("Output written to %s", output_path)
+
+            # Step 7: Get output file size
+            output_size = output_path.stat().st_size
+
+            # Step 8: Create Track record
+            with recorder.stage(Stage.INGESTION_DB_INSERT):
+                track = Track(
+                    file_path=str(output_path),
+                    file_hash=file_hash,
+                    source_path=str(path),
+                    source_format=file_info.container,
+                    source_codec=file_info.codec,
+                    source_bitrate=file_info.bitrate,
+                    source_bit_depth=file_info.bit_depth,
+                    output_format=action.output_format,
+                    sample_rate=file_info.sample_rate,
+                    bit_depth=action.output_bit_depth or file_info.bit_depth,
+                    duration=file_info.duration,
+                    file_size=output_size,
+                    channels=file_info.channels,
+                    is_lossy=not file_info.is_lossless,
+                    quality_warning=action.quality_warning,
+                    conversion_action=action.action,
+                    conversion_status="complete",
+                    imported_at=datetime.now(),
                 )
-                db_session.query(CrateTrack).filter_by(track_id=existing.id).delete()
-                db_session.query(SetTrack).filter_by(track_id=existing.id).delete()
-                db_session.delete(existing)
+                db_session.add(track)
                 db_session.commit()
 
-        # Step 5: Generate output path
-        logger.debug("Generating output path for %s", path.name)
-        output_dir = Path(settings.output_directory).expanduser()
-        output_path = generate_output_path(path, output_dir, action.output_format)
-
-        # Step 6: Execute conversion or copy
-        logger.debug("Starting %s for %s", action.action, path.name)
-        if action.action in ("convert_to_aiff", "convert_to_mp3"):
-            cmd = build_ffmpeg_command(path, output_path, action, file_info, settings.ffmpeg_path)
-            _run_ffmpeg_sync(cmd)
-        else:
-            # copy_as_is
-            shutil.copy2(str(path), str(output_path))
-
-        logger.info("Output written to %s", output_path)
-
-        # Step 7: Get output file size
-        output_size = output_path.stat().st_size
-
-        # Step 8: Create Track record
-        track = Track(
-            file_path=str(output_path),
-            file_hash=file_hash,
-            source_path=str(path),
-            source_format=file_info.container,
-            source_codec=file_info.codec,
-            source_bitrate=file_info.bitrate,
-            source_bit_depth=file_info.bit_depth,
-            output_format=action.output_format,
-            sample_rate=file_info.sample_rate,
-            bit_depth=action.output_bit_depth or file_info.bit_depth,
-            duration=file_info.duration,
-            file_size=output_size,
-            channels=file_info.channels,
-            is_lossy=not file_info.is_lossless,
-            quality_warning=action.quality_warning,
-            conversion_action=action.action,
-            conversion_status="complete",
-            imported_at=datetime.now(),
-        )
-        db_session.add(track)
-        db_session.commit()
-
-        logger.info("Track %d created for %s", track.id, path.name)
-        return TrackResult(
-            success=True,
-            track=track,
-            file_path=str(path),
-            action=action.action,
-        )
+            logger.info("Track %d created for %s", track.id, path.name)
+            return TrackResult(
+                success=True,
+                track=track,
+                file_path=str(path),
+                action=action.action,
+            )
 
     except DuplicateTrackError:
         raise
