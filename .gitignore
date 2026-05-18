@@ -35,3 +35,6 @@ Thumbs.db
 
 /screenshots
 /tmp
+
+# Session scratch directory (perf reporter output, temporary review artefacts, etc.)
+tmp/
