@@ -414,10 +414,12 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6d — Performance Optimisation (Steps 1, 2, and 3 complete; Step 4 next)
+**Phase:** 6d — Performance Optimisation (Steps 1, 2, 3 complete; Step 4 in progress — Baseline 1 committed)
 **Branch:** `feature/phase-6d-performance`
 **Tests:** 1245 passing across all phases
-**Next step:** Phase 6d Step 4 — baseline measurement pass. Run the harness in packaged mode against `Panorama_Bar_Playlist_02_Lakuti/` and `_03_Martyn/`, against the real DB and library. Generate JSONL, run the Step 3 reporter, commit the markdown to `docs/perf/baseline-02-lakuti.md` and `docs/perf/baseline-03-martyn.md`. Plus `docs/perf/README.md` with methodology, corpus, and reproduction instructions. Session 32's exploratory 7-track run (3 pipelines exercised, see Session 32 in SESSIONS.md) already strongly suggests Path A at the Step 5 decision point with `analysis_detect_key` dominating analysis-per-track wall-clock (~94%); Baselines 1 and 2 should confirm whether that shape holds at higher N before Step 5 commits.
+**Next step:** Complete Phase 6d Step 4. Baseline 1 (Lakuti) is committed at `8d6a54e` (`docs/perf/baseline-02-lakuti.md`). Outstanding: Baseline 2 (Martyn, 52 tracks, full pipeline including AI tagging) committed as `docs/perf/baseline-03-martyn.md`, then `docs/perf/README.md` (methodology, harness, corpus, reproduction, decision-point section), then Step 5 (Decision Point) committed as an append to the README. Baseline 1 confirmed Session 32's exploratory finding at higher N: `analysis_detect_key` is 94.4% of analysis-per-track wall-clock (identical across N=7 and N=24). Decision Point effectively pre-answered pending Baseline 2 confirmation — likely Path A (optimise `key_detector.py` internals).
+
+**Pre-flight check for any Phase 6d session (per Session 33 lesson):** `make build-dmg` produces a `.app` in `target/release/bundle/macos/` and a `.dmg` in `target/release/bundle/dmg/` but does NOT install to `/Applications/`. Installation requires manually opening the `.dmg` and dragging. Before any packaged-mode measurement: confirm `/Applications/rekordbot.app/Contents/MacOS/sidecar/rekordbot-server` timestamp is post the latest instrumentation commit. Session 33 lost ~90 minutes diagnosing an apparent harness bug that was actually a binary in `/Applications/` predating the harness code.
 
 ### Phase Summary
 

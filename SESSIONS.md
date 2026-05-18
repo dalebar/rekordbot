@@ -2157,3 +2157,213 @@ Step 4 to be opened in a fresh chat session for clean context.
   has unit and golden tests, pure logic separated from CLI, mypy
   clean, ruff clean, pre-commit clean.
 - CLAUDE.md and SESSIONS.md updated this session (this commit).
+
+## Session 33 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 4 (Baseline Measurement Pass) — Baseline 1 (Lakuti corpus)
+committed as `docs/perf/baseline-02-lakuti.md` at `8d6a54e`. Session
+also surfaced and resolved a stale-`/Applications/`-binary trap that
+made the harness appear silently broken in packaged mode for ~90 minutes.
+Baseline 2 (Martyn) and `docs/perf/README.md` deferred to Session 34.
+
+### Summary
+
+Session 33 ran in four distinct phases:
+
+1. **Plan alignment.** Walked through Step 4 plan: three commits (not
+   one as the brief implies — one per baseline plus README), direct
+   binary invocation as the packaged-mode launch pattern, DB-and-output
+   snapshot pattern before the run. Read Rust `lib.rs` sidecar spawn to
+   confirm env var propagation works via `std::process::Command` default
+   environment inheritance. Confirmed corpus sizes (Lakuti 26, Martyn
+   52) and AI tagging in-scope for measurement.
+
+2. **First Lakuti run, ~03:25.** Pre-flight snapshots taken cleanly.
+   App launched with `REKORDBOT_PERF_RECORD=1` prefix against
+   `/Applications/rekordbot.app`. Ingestion (24/26 — 2 corrupted source
+   FLACs failed), AI tagging (31 tracks, $0.0631 spent), XML export
+   (54 tracks). **No JSONL produced.** Real library state advanced for
+   zero measurement value. Apparent harness failure in packaged mode.
+
+3. **Diagnostic phase, ~03:30 to ~04:00.** Initially suspected env var
+   propagation through Tauri → sidecar; confirmed via `ps eww` that
+   the var was present in the sidecar's environment. Suspected
+   PyInstaller stripping; added single-line diagnostic to
+   `from_env()` logging the env state at invocation; rebuilt; ran test
+   against the freshly-built binary at
+   `target/release/bundle/macos/rekordbot.app/...` — harness fired
+   correctly. Compared file timestamps: `/Applications/rekordbot.app`
+   sidecar was dated May 17 19:05, the fresh build May 18 03:55. The
+   `/Applications/` install pre-dated Session 32's Step 2 instrumentation
+   commits entirely. **Not a harness bug — a stale-install bug.** No
+   harness has ever been "broken in packaged mode"; the binary in
+   `/Applications/` simply didn't contain the harness code.
+
+4. **Recovery and Baseline 1 (attempt 2), ~04:00 to ~04:30.** Reverted
+   the diagnostic line in `perf.py` (single-line revert), rebuilt
+   cleanly, dragged the new `.dmg` install into `/Applications/`,
+   verified the canonical install path fires the harness via a small
+   curl-driven export test. Restored DB from `rekordbot.db.pre-baseline-02`
+   snapshot, deleted `imports/2026-05-18/` (24 AIFFs from the failed
+   run), preserved `rekordbox.xml.post-failed-baseline-02` and
+   `rekordbot.db.post-failed-baseline-02` as evidence. Re-launched and
+   ran Lakuti: 24 ingested, 24 analysed, XML exported. Operator skipped
+   the AI Tag click — coverage deferred to Baseline 2. JSONL: 330
+   records across ingestion (180), analysis (144), and xml_export (6).
+   Reporter run cleanly; report committed at `8d6a54e`.
+
+### Key decisions made
+
+1. **Three commits for Step 4, not one.** Brief implied one. In practice
+   Step 4 is Baseline 1, Baseline 2, and README — three independent
+   evidence artefacts that should land as discrete commits. Session 33
+   produced Baseline 1; Sessions 34 (and possibly 35) produce the rest.
+
+2. **Direct binary invocation as the packaged-mode launch pattern.**
+   `REKORDBOT_PERF_RECORD=1 /Applications/rekordbot.app/Contents/MacOS/rekordbot`
+   reliably propagates the env var via shell exec inheritance through
+   Rust's `std::process::Command` (which uses `.env()` additively, not
+   `.env_clear()`-then-`.env()`). Confirmed via `ps eww` of the sidecar
+   PID showing the env var present. macOS `open` and Finder double-click
+   are both LaunchServices-intermediated and may not propagate env vars;
+   the direct-binary path bypasses that.
+
+3. **Snapshot pattern for state-advancing baselines.** Before each
+   real-library run: snapshot DB (`cp rekordbot.db rekordbot.db.pre-baseline-XX`),
+   snapshot output-dir listing (`ls -la ... > /tmp/output-dir-pre-baseline-XX.txt`),
+   record build SHA. This is the same pattern proposed at the start of
+   Session 33 and proven valuable when the first Lakuti run needed
+   rolling back. The snapshots remained as forensic evidence — not
+   deleted post-recovery, since their value is in being a clean
+   pre-run anchor for future reference.
+
+4. **Polluted DB and XML preserved, not deleted.** After Lakuti's
+   failed first run, the polluted DB was renamed
+   `rekordbot.db.post-failed-baseline-02` and the polluted XML renamed
+   `rekordbox.xml.post-failed-baseline-02`. Two states preserved for
+   forensic comparison without blocking the recovery.
+
+5. **AI tagging skip documented as deferred-to-Baseline-2, not as
+   operator error.** The report's "Pipelines exercised" table records
+   the literal truth ("Operator did not click...") while making the
+   forward-looking case for why this is fine (Martyn brings 52 fresh
+   untagged tracks; AI tagging gets full coverage there).
+
+6. **Hardware string in report.** Apple Silicon arm64, macOS 26.4.1.
+   Pulled from PyInstaller log line. Specific Mac model and RAM not
+   included — can be added retrospectively if any baseline becomes a
+   reference point for comparison against future hardware.
+
+### Things that surprised us
+
+1. **The harness was never broken; the install was stale.** This is
+   exactly the lesson from Session 25 ("Rebuild before debugging") at
+   smaller magnitude. The pre-flight check we did at session open
+   ("`make build-dmg` finished cleanly") verified the build, not the
+   install. `make build-dmg` produces a `.app` and `.dmg` in
+   `target/release/bundle/`; it does NOT copy to `/Applications/`.
+   Installing requires manually opening the `.dmg` and dragging.
+   Worth capturing for future Phase 6d (and post-6d) sessions: the
+   correct pre-flight is "the binary in `/Applications/` was modified
+   after the last instrumentation commit." File `ls -la` timestamp is
+   the cheap audit.
+
+2. **`analysis_detect_key` at 94.4% replicated exactly at N=24.**
+   Session 32's 7-track exploratory finding was 94.4%; the Lakuti 24-track
+   real baseline is also 94.4%. The relative shape didn't shift — the
+   bottleneck is in `key_detector.py` internals (chroma extraction +
+   Krumhansl-Schmuckler), not the librosa decode that the brief named
+   as candidate (c). The Step 5 Decision Point is effectively pre-answered
+   pending Baseline 2 confirmation.
+
+3. **Packaged-mode analysis is only marginally faster than dev mode.**
+   Session 32 noted 13s/track per-track analysis in dev mode; Baseline 1
+   packaged showed 13.78s mean. So the previous "is packaged faster?"
+   open question is answered: no, not meaningfully. The 6m42s vs 5m31s
+   gap is operator interaction time, not pipeline difference.
+
+4. **One analysis_librosa_load outlier at 6.24s (vs. median 0.22s).**
+   ~28× the median. Captured in JSONL but not yet correlated to a
+   specific source file. Worth a follow-up curiosity once Baseline 2
+   data is in — if Martyn shows similar outliers, the load path may
+   have a real edge case.
+
+### Unresolved questions / blockers
+
+Nothing blocking Step 4 completion. Open items for Session 34:
+
+- **Baseline 2 (Martyn) run.** 52 tracks; ~12 minutes of analysis time;
+  full pipeline (including AI tagging) since none of the 54 already-DB
+  tracks need re-tagging but the 52 new ones will. Estimated $0.10-0.15
+  in Anthropic credit.
+
+- **`docs/perf/README.md`.** Methodology, harness, corpus, reproduction
+  instructions. Best written after both baselines exist so it can
+  reference real numbers and note both runs as concrete examples.
+
+- **Step 5 Decision Point.** Effectively pre-answered by Session 32 +
+  Baseline 1, but the formal commitment to Path A (optimisation) vs
+  Path B (close phase) happens after Baseline 2 lands. The Step 5
+  rationale will go in the README's "Decision point" section.
+
+Carry-forward not blocking but worth tracking:
+
+- **The librosa_load 6.24s outlier.** Single-run anomaly — Baseline 2
+  data will tell us if it's a pattern.
+- **Thread origin in `PerfRecord`.** Still not added (Session 31
+  carry-forward, Session 32 carry-forward). Will matter when concurrent
+  conversion is re-enabled (Phase 6d secondary deliverable) but not
+  before then.
+- **Concurrent conversion re-enable.** Brief-level commitment for Phase
+  6d; not in Session 33's scope. Could be done in Session 34 alongside
+  Baseline 2, or as a standalone commit after the Decision Point.
+
+### What's next — Session 34
+
+1. Baseline 2 — Martyn corpus. Same pattern: pre-flight snapshots,
+   direct binary invocation, full pipeline including AI tagging. Commit
+   as `docs/perf/baseline-03-martyn.md`.
+
+2. `docs/perf/README.md`. Methodology, harness, corpus, reproduction,
+   decision-point placeholder. Commit independently.
+
+3. Step 5 — Decision Point. Read both baselines, formally commit to
+   Path A (optimisation work) or Path B (close phase). Record rationale
+   in README's "Decision point" section.
+
+Likely path: A — optimise `key_detector.py` internals. Possibly also
+re-enable concurrent conversion (brief's secondary deliverable). Steps
+6+ to follow.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `8d6a54e`, pushed to origin.
+- Commits added this session: 1 (Baseline 1 report).
+- Tests: still 1245 passing (no test changes this session; pytest run
+  on `test_perf.py` during diagnostic phase confirmed 23/23 still green
+  with the temporary diagnostic).
+- `docs/perf/baseline-02-lakuti.md` exists (7273 bytes, 122 lines).
+- `/Applications/rekordbot.app` now contains today's build (modified
+  04:00 area), correctly instrumented, harness verified.
+- Snapshots retained:
+  - `~/Library/Application Support/rekordbot/rekordbot.db.pre-baseline-02`
+    (original pre-Lakuti snapshot, 30 tracks)
+  - `~/Library/Application Support/rekordbot/rekordbot.db.post-failed-baseline-02`
+    (state after first failed Lakuti run, 54 tracks, AI-tagged)
+  - `~/Library/Application Support/rekordbot/rekordbot.db.pre-baseline-02-attempt-2`
+    (post-restore, pre-Baseline-1-attempt-2, 30 tracks)
+  - `/Volumes/collection/REKORDBOT/rekordbox.xml.post-failed-baseline-02`
+  - `/tmp/output-dir-pre-baseline-02.txt`
+  - `/tmp/output-dir-pre-baseline-02-attempt-2.txt`
+  - `/tmp/imports-dir-pre-baseline-02-attempt-2.txt`
+- 4 perf JSONL files in `~/Library/Application Support/rekordbot/perf/`:
+  - `run-20260518T015022.jsonl` (Session 32 exploratory, 22440 bytes)
+  - `run-20260518T035630.jsonl` (Session 33 diagnostic export, 1326 bytes)
+  - `run-20260518T040407.jsonl` (Session 33 post-install verification, 1328 bytes)
+  - `run-20260518T041044.jsonl` (Baseline 1 — Lakuti, 76976 bytes)
+  - The latter is the one cited in the committed report.
+- CLAUDE.md updated this session: Phase 6d Step 4 partial state, new
+  install-vs-build lesson recorded.
+- SESSIONS.md updated this session (this commit).
