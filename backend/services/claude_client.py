@@ -14,6 +14,7 @@ from typing import Any
 import anthropic  # type: ignore[import-not-found]
 
 from backend.exceptions import AiTagError
+from backend.services.perf import Stage, get_recorder
 from backend.services.prompt_builder import AiTagResult, parse_tool_result
 
 logger = logging.getLogger(__name__)
@@ -170,14 +171,16 @@ class ClaudeClient:
         Raises:
             AiTagError: If the API call fails after retries.
         """
+        recorder = get_recorder()
         await self.rate_limiter.acquire()
 
         start_time = time.time()
-        response = await self._call_with_retry(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            tool_schema=tool_schema,
-        )
+        with recorder.stage(Stage.AI_TAG_API_CALL):
+            response = await self._call_with_retry(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                tool_schema=tool_schema,
+            )
         duration = time.time() - start_time
 
         # Extract token usage
@@ -194,7 +197,8 @@ class ClaudeClient:
         )
 
         # Parse tool use response
-        results = self._extract_tool_results(response, batch_track_ids)
+        with recorder.stage(Stage.AI_TAG_PARSE_RESPONSE):
+            results = self._extract_tool_results(response, batch_track_ids)
 
         logger.info(
             "Claude API call: %d input, %d output tokens, %.1fs, %d tracks tagged, model=%s",

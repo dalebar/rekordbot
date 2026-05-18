@@ -17,6 +17,7 @@ from backend.config import Settings
 from backend.models.track import Track
 from backend.services.claude_client import ClaudeClient, ClaudeResponse
 from backend.services.key_notation import key_to_display
+from backend.services.perf import Stage, get_recorder
 from backend.services.prompt_builder import (
     build_batch_message,
     build_system_prompt,
@@ -221,61 +222,68 @@ class AiTagger:
         Returns:
             AiTagBatchResult for this batch.
         """
+        recorder = get_recorder()
         result = AiTagBatchResult(batch_number=batch_number)
         batch_track_ids = [t.id for t in batch]
 
         try:
-            # Build key displays for the batch
-            key_displays = {}
-            for track in batch:
-                if track.key is not None:
-                    display = key_to_display(track.key, self.settings.default_key_notation)
-                    if display:
-                        key_displays[track.id] = display
+            with recorder.stage(
+                Stage.AI_TAG_BATCH,
+                payload={"batch_number": batch_number, "batch_size": len(batch)},
+            ):
+                with recorder.stage(Stage.AI_TAG_BUILD_MESSAGE):
+                    # Build key displays for the batch
+                    key_displays = {}
+                    for track in batch:
+                        if track.key is not None:
+                            display = key_to_display(track.key, self.settings.default_key_notation)
+                            if display:
+                                key_displays[track.id] = display
 
-            user_message = build_batch_message(batch, key_displays)
+                    user_message = build_batch_message(batch, key_displays)
 
-            # Call Claude
-            response: ClaudeResponse = await claude_client.tag_batch(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                tool_schema=tool_schema,
-                batch_track_ids=batch_track_ids,
-            )
+                # Call Claude
+                response: ClaudeResponse = await claude_client.tag_batch(
+                    system_prompt=system_prompt,
+                    user_message=user_message,
+                    tool_schema=tool_schema,
+                    batch_track_ids=batch_track_ids,
+                )
 
-            result.input_tokens = response.input_tokens
-            result.output_tokens = response.output_tokens
+                result.input_tokens = response.input_tokens
+                result.output_tokens = response.output_tokens
 
-            # Apply results to DB
-            track_map = {t.id: t for t in batch}
-            for tag_result in response.results:
-                matched_track = track_map.get(tag_result.track_id)
-                if matched_track is None:
-                    continue
+                with recorder.stage(Stage.AI_TAG_DB_UPDATE):
+                    # Apply results to DB
+                    track_map = {t.id: t for t in batch}
+                    for tag_result in response.results:
+                        matched_track = track_map.get(tag_result.track_id)
+                        if matched_track is None:
+                            continue
 
-                # Preserve source genre before overwriting
-                if matched_track.genre and matched_track.source_genre is None:
-                    matched_track.source_genre = matched_track.genre
+                        # Preserve source genre before overwriting
+                        if matched_track.genre and matched_track.source_genre is None:
+                            matched_track.source_genre = matched_track.genre
 
-                matched_track.genre = tag_result.genre
-                matched_track.subgenre = tag_result.subgenre
-                matched_track.mood = tag_result.mood
-                matched_track.energy = tag_result.energy
-                matched_track.ai_confidence = tag_result.confidence
-                matched_track.ai_reasoning = tag_result.reasoning
-                matched_track.ai_status = "ai_tagged"
-                result.tracks_tagged += 1
+                        matched_track.genre = tag_result.genre
+                        matched_track.subgenre = tag_result.subgenre
+                        matched_track.mood = tag_result.mood
+                        matched_track.energy = tag_result.energy
+                        matched_track.ai_confidence = tag_result.confidence
+                        matched_track.ai_reasoning = tag_result.reasoning
+                        matched_track.ai_status = "ai_tagged"
+                        result.tracks_tagged += 1
 
-            # Mark tracks that weren't in the response as failed
-            tagged_ids = {r.track_id for r in response.results}
-            for track_id in batch_track_ids:
-                if track_id not in tagged_ids:
-                    matched_track = track_map.get(track_id)
-                    if matched_track:
-                        matched_track.ai_status = "ai_failed"
-                    result.tracks_failed += 1
+                    # Mark tracks that weren't in the response as failed
+                    tagged_ids = {r.track_id for r in response.results}
+                    for track_id in batch_track_ids:
+                        if track_id not in tagged_ids:
+                            matched_track = track_map.get(track_id)
+                            if matched_track:
+                                matched_track.ai_status = "ai_failed"
+                            result.tracks_failed += 1
 
-            db_session.commit()
+                    db_session.commit()
 
         except Exception as e:
             logger.exception("AI tagging batch %d/%d failed", batch_number, total_batches)
