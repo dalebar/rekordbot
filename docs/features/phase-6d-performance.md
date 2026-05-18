@@ -1,6 +1,6 @@
 # Feature: Performance Optimisation
 **Branch:** `feature/phase-6d-performance`
-**Status:** Brief written. Implementation not yet started.
+**Status:** Complete ✅ (closed 2026-05-18, Session 34. See note appended at end of brief.)
 **Phase:** 6d
 **Depends on:** Phase 6c (complete, merged at `b7dc4f4`, tagged `phase-6c-complete`)
 
@@ -249,3 +249,27 @@ A `docs/perf/` directory containing:
 - Optionally `post-opt-05-nick-hoppner.md` (reserve usage)
 
 Plus a working profiling harness that can be re-run against any future corpus by setting one env var. The harness outlives the phase — it's the tool for any future performance investigation.
+
+---
+
+## Closing note (added at phase close, 2026-05-18)
+
+This brief documents the **original intent** of Phase 6d, not the actual outcome. The phase delivered measurement and decision; the optimisation work the brief anticipated was not done, because the Decision Point (Step 5) concluded on a third path that the brief did not contemplate: **scope reduction**.
+
+For the actual outcome, see:
+- `docs/perf/README.md` — "Decision point (Phase 6d Step 5)" section
+- `SESSIONS.md` — Session 34 entry
+- `CLAUDE.md` — Known Issues / Don't Touch (entries on key detection, Crate Builder + Set Planner retirement, concurrent conversion deferral)
+
+What actually shipped under Phase 6d:
+- The profiling harness (Steps 1–3 — as briefed)
+- Two baseline reports: Lakuti (24 tracks) and Martyn (52 tracks) (Step 4 — as briefed)
+- A decision recorded in `docs/perf/README.md` (Step 5 — as briefed, but outcome differed)
+
+What the brief expected that did NOT happen:
+- Steps 6, 7, 8 (targeted optimisations, post-optimisation measurement, phase close on optimisation grounds)
+- `post-opt-04-josey-rebelle.md` and `delta.md` — not produced under 6d. A `post-scope-reduction-04-josey-rebelle.md` and `delta.md` are scoped into Phase 6d.1 as the equivalent measurements against a post-scope-reduction codebase.
+- Concurrent conversion re-enable (brief's secondary deliverable) — deferred indefinitely; rationale in CLAUDE.md Known Issues and `docs/perf/README.md` Decision point.
+- Path A optimisation work generally — the bottleneck is real, but its consumers are being retired (Phase 6d.1), making the optimisation work moot.
+
+The phase delivered what it could deliver well, and pointed forward to where the work actually needs to go. The brief stands as the historical record of what was intended; this note bridges the brief to the delivered state.
