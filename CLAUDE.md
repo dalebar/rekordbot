@@ -104,7 +104,8 @@ rekordbot/
 │   │   ├── xml_importer.py       ← XML import pipeline orchestrator with SSE progress (Phase 4b)
 │   │   ├── config_manager.py    ← JSON config persistence and env var integration (Phase 6a)
 │   │   ├── watchdog.py          ← Self-termination watchdog for sidecar lifecycle (Phase 6a)
-│   │   └── perf.py              ← Opt-in profiling harness: PerfRecorder, Stage enum, JSONL sink (Phase 6d)
+│   │   ├── perf.py              ← Opt-in profiling harness: PerfRecorder, Stage enum, JSONL sink (Phase 6d)
+│   │   └── perf_report.py       ← Reporter pure logic: load JSONL, aggregate, render markdown (Phase 6d)
 │   ├── routes/
 │   │   ├── ingest.py             ← POST /api/ingest, SSE progress
 │   │   ├── tagging.py            ← Analysis, tag editing, revert, write-tags, enhanced /tracks
@@ -116,9 +117,12 @@ rekordbot/
 │   │   ├── settings.py          ← Settings CRUD, validation, first-run status (Phase 6a)
 │   │   └── import_xml.py        ← Rekordbox XML import, conflicts, SSE progress (Phase 4b)
 │   └── tests/
-│       ├── conftest.py           ← Shared fixtures (test DB, API client)
+│       ├── conftest.py           ← Shared fixtures (test DB, API client, --update-golden flag)
 │       ├── test_perf.py          ← PerfRecorder + harness unit tests (Phase 6d)
-│       └── fixtures/audio/       ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
+│       ├── test_perf_report.py   ← Reporter unit + golden-file tests (Phase 6d)
+│       └── fixtures/
+│           ├── audio/            ← Test audio files (WAV, FLAC, AIFF, MP3, M4A)
+│           └── perf/             ← Synthetic JSONL fixtures + golden .expected.md files (Phase 6d)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx               ← Main layout with drop zone, queue, track table
@@ -161,7 +165,9 @@ rekordbot/
 ├── scripts/
 │   ├── build-backend.sh          ← PyInstaller build (includes Alembic data files)
 │   ├── build-dmg.sh              ← Full .dmg pipeline (PyInstaller → Tauri → inject sidecar → hdiutil)
-│   └── dev-setup.sh
+│   ├── dev-setup.sh
+│   ├── generate-test-fixtures.sh ← Regenerate the test audio fixtures under backend/tests/fixtures/audio/
+│   └── perf-report.py            ← CLI for the Phase 6d performance reporter (thin wrapper over perf_report.py)
 └── docs/
     ├── features/
     │   ├── phase-0-scaffold.md
@@ -173,13 +179,21 @@ rekordbot/
     │   ├── phase-5a-crate-builder.md
     │   ├── phase-5b-set-planner.md
     │   ├── phase-6a-app-shell.md
-    │   ├── phase-4b-xml-import.md
+    │   ├── phase-4b-rekordbox-xml-import.md
     │   ├── phase-6b-dmg-packaging.md
+    │   ├── phase-6c-dogfooding.md
     │   └── phase-6d-performance.md
-    └── research/
-        ├── rekordbox-xml-cdj-compatibility.md
-        ├── tauri-python-backend.md
-        └── pyinstaller-onedir-tauri-bundling.md
+    ├── reference/
+    │   ├── claude-code-session-checklist.md
+    │   ├── phase-completion-checklist.md
+    │   └── rekordbox-import-test-guide.md
+    ├── research/
+    │   ├── rekordbox-xml-cdj-compatibility-research.md
+    │   ├── tauri-python-backend-research.md
+    │   └── pyinstaller-onedir-tauri-bundling.md
+    ├── testing/
+    │   └── manual-smoke-test.md
+    └── rekordbot-project-plan.md
 ```
 
 ## Git Workflow
@@ -400,10 +414,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6d — Performance Optimisation (Steps 1 and 2 complete; Step 3 next)
+**Phase:** 6d — Performance Optimisation (Steps 1, 2, and 3 complete; Step 4 next)
 **Branch:** `feature/phase-6d-performance`
-**Tests:** 1215 passing across all phases
-**Next step:** Phase 6d Step 3 — build the reporting tool that reads JSONL profile records from `~/Library/Application Support/rekordbot/perf/` and emits per-pipeline / per-stage summaries. Run the app once with `REKORDBOT_PERF_RECORD=1` against a small real workload (5–10 tracks ingested + analysed) to produce real JSONL data the reporting tool can be developed against, before any reporting code is written.
+**Tests:** 1245 passing across all phases
+**Next step:** Phase 6d Step 4 — baseline measurement pass. Run the harness in packaged mode against `Panorama_Bar_Playlist_02_Lakuti/` and `_03_Martyn/`, against the real DB and library. Generate JSONL, run the Step 3 reporter, commit the markdown to `docs/perf/baseline-02-lakuti.md` and `docs/perf/baseline-03-martyn.md`. Plus `docs/perf/README.md` with methodology, corpus, and reproduction instructions. Session 32's exploratory 7-track run (3 pipelines exercised, see Session 32 in SESSIONS.md) already strongly suggests Path A at the Step 5 decision point with `analysis_detect_key` dominating analysis-per-track wall-clock (~94%); Baselines 1 and 2 should confirm whether that shape holds at higher N before Step 5 commits.
 
 ### Phase Summary
 
@@ -418,10 +432,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 5a — Crate Builder | 814 | `docs/features/phase-5a-crate-builder.md` |
 | 5b — Set Planner | 930 | `docs/features/phase-5b-set-planner.md` |
 | 6a — App Shell & Packaging | 1013 | `docs/features/phase-6a-app-shell.md` |
-| 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-xml-import.md` |
+| 4b — Rekordbox XML Import | 1143 | `docs/features/phase-4b-rekordbox-xml-import.md` |
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
-| 6c — UI Review & Bug Fixing | 1192 | (dogfooding — no feature brief) |
-| 6d — Performance Optimisation | 1215 | `docs/features/phase-6d-performance.md` |
+| 6c — UI Review & Bug Fixing | 1192 | `docs/features/phase-6c-dogfooding.md` |
+| 6d — Performance Optimisation | 1245 | `docs/features/phase-6d-performance.md` |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -477,8 +491,8 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - FastAPI DELETE endpoints with JSON bodies require explicit `Body(...)` annotation and the client must send `Content-Type: application/json`.
 - AI tagging validation distinguishes auth failures from transient API errors (429/529). Only genuine auth rejection (`AuthenticationError` / "Invalid" in error) disables the button. Transient errors and unreachable backend default to allowing the button. The amber "API key not configured" hint only shows when no key is set.
 - Ingestion worker runs in a plain `threading.Thread` (not asyncio) because PyInstaller-bundled stdout is piped to Tauri, and after ~64KB the pipe buffer fills, blocking any thread that writes to stdout via Python's logging StreamHandler. The StreamHandler is removed from the root logger in packaged mode. The worker thread communicates SSE events to the asyncio event loop via `loop.call_soon_threadsafe`. This architecture was validated with 668-file batch ingestion.
-- `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore in Phase 6d if concurrent conversion is re-enabled.
-- `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. Re-enabling requires solving the stdout pipe buffer issue first (Phase 6d).
+- `inspect_file` and `_run_ffmpeg_sync` use synchronous `subprocess.run` (not `asyncio.create_subprocess_exec`). Async subprocess was eliminated during the packaged-mode pipe deadlock investigation. Safe to restore alongside the Phase 6d secondary deliverable when concurrent conversion is re-enabled.
+- `max_concurrent_conversions` defaults to 1 and the worker pool always spawns exactly 1 worker. Concurrent conversion was disabled during Phase 6c debugging. The underlying stdout pipe deadlock was fixed in Phase 6c via the StreamHandler-removal-in-packaged-mode mitigation (validated with 668-file batch ingestion); re-enabling concurrent conversion is the brief-level secondary deliverable for Phase 6d.
 - uvloop is bundled by PyInstaller (transitive uvicorn dependency) and is explicitly bypassed via `loop="asyncio"` in `uvicorn.run()`. uvloop's libuv event loop had GIL interaction issues with worker threads on macOS.
 - Settings API key validation: structural guard rejects values that don't start with `sk-` or are under 20 chars. Error messages from the validate endpoint are sanitised (no raw Python exceptions). Credit/billing errors return `valid=True` since the key itself is valid.
 - Flexbox constraint chains: `min-h-0` and `min-w-0` only propagate through flex items if every intermediate wrapper is itself a flex container in the same axis. A non-flex wrapper between a parent flex column and a child with `flex-1` breaks the constraint chain — the child falls back to intrinsic content size. When adding `flex-1` to a component's outer wrapper, verify its parent in the consuming component is `flex flex-col` (or `flex flex-row`).
@@ -488,6 +502,9 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - BPM and key detection produce `BPMResult.confidence` and `KeyResult.confidence` values for informational display only. No threshold-based gating action consumes them anywhere in the pipeline. If a future feature wants to gate on these (e.g. "skip tag writing for low-confidence BPM"), it will need to introduce its own threshold field — not reuse the now-removed generic `confidence_threshold`.
 - SettingsPanel renders as an absolutely-positioned overlay (`absolute inset-0 z-10 bg-gray-950`) inside a `relative` wrapper in App.tsx, NOT as a swap-mount. This is deliberate — preserving in-flight component state (analysis SSE connection, progress bar state, etc.) across Settings round-trips required keeping `<main>` mounted continuously. ConflictReviewPanel and SetPlannerView remain swap-mounted because they are full workflows where state-loss on entry is acceptable. The Settings overlay sits below the header (it shares a parent with `<main>`, not with the header). z-index `z-10` places it above the underlying view but below `CrateCreateDialog` and `SetCreateDialog` (which use `z-40` for true modal behaviour).
 - `REKORDBOT_PERF_RECORD=1` enables the opt-in profiling harness. When set, every named pipeline stage (30 stages across ingestion / analysis / AI tagging / XML export / XML import) emits a JSONL timing record to `~/Library/Application Support/rekordbot/perf/run-<timestamp>.jsonl`. When unset (default), the harness is a strict no-op — no I/O, no allocations beyond `contextlib.nullcontext()`. Stage constants are defined in `backend/services/perf.py::Stage`; the wrappers live in each pipeline's orchestrator service (`converter.py`, `analysis.py`, `ai_tagger.py` + `claude_client.py`, `xml_exporter.py`, `xml_importer.py`).
+- `scripts/perf-report.py` is the CLI for the Phase 6d performance reporter, with pure logic in `backend/services/perf_report.py` and golden-file tests in `backend/tests/test_perf_report.py`. Invocation: `uv run scripts/perf-report.py --input <jsonl> --output <md>`. Percentiles (p50/p95) are computed only when `count >= 10` per stage; below that they render as "—" with a footnote. For pipelines with an outer wrapper stage (`ingestion_file`, `analysis_track`, `ai_tag_batch`), inner stages also show a "Share of outer mean" percentage. The AI tagging rate-limit wait is derived as `AI_TAG_BATCH duration − sum(inner stage durations within window)`, clamped to 0 to absorb measurement noise. Records emit in exit-order (inner stages emit before their containing outer), so the reporter relies on `start_ts` and `OUTER_STAGE_FOR_PIPELINE` for nesting awareness — never file order. Golden fixtures regenerated via `pytest --update-golden` (flag wired in `conftest.py`). PerfRecord does not currently capture thread origin (PID is per-process, threads share it); if Step 4+ work re-enables concurrent conversion or concurrent analysis, add `threading.get_ident()` to the harness at that point.
+- Browser dev mode is effectively unusable for ingestion. The Vite dev server (`npm run dev`, `http://localhost:1420`) loads the React app in a regular browser, but `DropZone.tsx` relies on Tauri's path-injection for drag-and-drop and the "Select Folder…" button uses the Tauri dialog plugin. In a plain browser `file.path` is undefined (the component falls back to `file.name` and the backend correctly rejects bare filenames), and the folder dialog errors out cleanly. Two workarounds for any dev-mode session that needs to exercise ingestion: (a) use `npm run tauri dev` to get the full Tauri shell, or (b) hit the backend API directly via curl. Confirmed in Session 32 data-gen run.
+- Dev-mode backend invocation: from the repo root, run `uv run uvicorn backend.main:app --host 127.0.0.1 --port 8420 --reload`. The absolute imports in `backend/main.py` require `backend.main:app` (module path), not `main:app`, and the working directory must be the repo root, not `backend/`. The output directory env var is `REKORDBOT_OUTPUT_DIRECTORY` (NOT `REKORDBOT_OUTPUT_DIR`) — the wrong name silently does nothing and routes output to the default (real) library directory. For any workspace-isolated run (e.g. perf profiling), set both `REKORDBOT_DB_URL="sqlite:////tmp/some-test.db"` and `REKORDBOT_OUTPUT_DIRECTORY="/tmp/some-test-output"` explicitly.
 
 ## Phased Build Plan
 

@@ -1879,3 +1879,281 @@ here.
   `perf.py` wraps real code; pytest passes unchanged; recorder is
   opt-in via `REKORDBOT_PERF_RECORD`; no business-logic changes
   anywhere. Step 3 not started.
+
+---
+
+## Session 32 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 3 — reporting script. One commit landed (`9561877`,
+amended once from `271942f`). The script reads JSONL profile records
+produced by the harness from Step 2 and emits a markdown summary
+suitable for committing to `docs/perf/`.
+
+Pre-implementation work for the session: a workspace-isolated data
+generation run to produce real JSONL records to develop the reporter
+against (per the agreed "don't write the reporter against a hypothesis"
+principle from Session 31).
+
+### Summary
+
+The session ran in four phases:
+
+1. **Plan alignment against the brief.** The Phase 6d brief was not in
+   project knowledge at session start — only the CLAUDE.md summary and
+   the Session 31 close-out were. Dale uploaded the brief mid-session.
+   This is worth flagging: future phase sessions should start with the
+   feature brief already in project knowledge so the plan can be
+   anchored against it from message 1.
+
+2. **Real JSONL generation.** Workspace-isolated dev-mode run.
+   Sacrificial DB at `/tmp/rekordbot-perf-test.db`, sacrificial output
+   at `/tmp/rekordbot-perf-output/`, JSONL sink in the normal
+   `~/Library/Application Support/rekordbot/perf/` location (only the
+   DB and output dir needed isolation). Ingested 7 FLACs from
+   `Panorama_Bar_Playlist_02_Lakuti/`, analysed all 7, exported XML.
+   Produced `run-20260518T015022.jsonl` with 97 records across 19
+   distinct stages — 7 ingestion (of 8 instrumented; `ingestion_copy`
+   was absent because the all-FLAC corpus didn't exercise the lossy
+   passthrough path) + 6 analysis + 6 xml_export.
+
+3. **Step 3 implementation.** One CC pass, scoped tight per the brief.
+   Pure logic in `backend/services/perf_report.py` (440 lines), thin
+   CLI in `scripts/perf-report.py` (58 lines), TDD-driven tests in
+   `backend/tests/test_perf_report.py` (517 lines), two hand-written
+   JSONL fixtures with paired golden markdown files. Implementation
+   landed at `271942f`.
+
+4. **Fixture audit and amend.** Audit before push surfaced that the
+   `compute_rate_limit_wait` clamp-to-zero branch was unit-tested but
+   not golden-tested. Extended the full fixture with a third
+   ai_tag_batch designed to clamp (inner sum 5.5s vs batch duration
+   5.0s → wait clamps to 0.0), regenerated the golden via the
+   `--update-golden` flag, amended the commit. Final commit at
+   `9561877`. Stage stats elsewhere in the golden were unchanged
+   (verified via diff).
+
+The real-data eyeball check at the end of implementation surfaced a
+strong signal for Step 5 — see "Things that surprised us" below.
+
+### Key decisions made
+
+1. **Hybrid stage-share view in the report.** The brief calls for
+   "per-pipeline aggregate (total wall-clock, per-stage breakdown,
+   percentiles)" without specifying nesting. Chose to render per-stage
+   stats as the core (the brief's explicit ask) plus a "Share of outer
+   mean" column for the three pipelines that have an outer wrapper
+   (`ingestion`, `analysis`, `ai_tagging`). The xml_export and
+   xml_import pipelines don't have an outer-vs-inner relationship in
+   the same way — their outer stage IS the pipeline — so the share
+   column renders "—" for those.
+
+2. **Pure logic in `backend/services/perf_report.py`, thin CLI at
+   `scripts/perf-report.py`.** Brief literal said the script lives at
+   `scripts/perf-report.py` (hyphenated). Kept that for the CLI entry
+   point and put the testable logic in a normal module under
+   `backend/services/` so it imports cleanly into pytest. Cleaner
+   than a hyphenated single-file script with `importlib.util` tricks
+   in the tests.
+
+3. **Filename: `perf-report.py` (hyphen).** Per brief literal. Other
+   Python in the repo uses underscores; the brief's call wins because
+   it's an entry-point script invoked as `uv run scripts/perf-report.py`,
+   not a module imported elsewhere.
+
+4. **N ≥ 10 threshold for percentile computation.** Below 10 records,
+   `StageStats.p50_s` and `StageStats.p95_s` are `None` and render
+   "—" in the table with a `_Percentiles omitted for stages with
+   count < 10._` footnote. Concrete and verifiable.
+
+5. **`statistics.quantiles(durations, n=100, method="inclusive")`.**
+   CC's call. The brief was silent on the method choice. Inclusive
+   cuts at min/max rather than extrapolating outside the data, which
+   is what most readers expect from "p50/p95 of a measured
+   distribution." Pinned in the function docstring.
+
+6. **Rate-limit wait derived metric included even though the brief
+   doesn't mandate it.** Session 31 carry-forward identified this as
+   worth surfacing. Trivial to compute (`AI_TAG_BATCH duration −
+   sum(inner stages within window)`, clamped to 0). Negligible cost,
+   real value if AI tagging ever gets profiled at scale. Rendered as
+   a separate table after the per-pipeline sections.
+
+7. **Two hand-written fixtures, not one.** `sample-run-small.jsonl`
+   exercises the percentiles-omitted branch and the missing-stages
+   case. `sample-run-full.jsonl` exercises the N ≥ 10 branch, the
+   rate-limit-wait computation, and the clamp-to-zero rendering
+   (after fixture extension). Two fixtures kept each test's intent
+   clear without one over-stuffed test.
+
+8. **Hand-write fixtures, accept transient-script generation.** CC
+   used a one-shot stdin Python block to produce `sample-run-full.jsonl`
+   rather than typing 72 lines by hand. The committed artifact is
+   static JSON; no builder lives in the repo. Spirit of "don't commit
+   a fixture-builder" preserved.
+
+9. **Clamp-to-zero branch covered at the golden layer, not just the
+   unit-test layer.** The audit surfaced that
+   `test_negative_result_clamps_to_zero` covered the dict-value logic
+   but the rendering of a `0.0000` row was never asserted. Extended
+   the fixture with batch 3 to render a real clamp row in the golden.
+   Cost: 5 JSONL lines, 1 golden table row. Logic the unit test
+   wouldn't catch (rendering as `0` vs `0.0000`, accidental filtering
+   of zero rows from output) is now covered.
+
+10. **Thread-origin not added to `PerfRecord` in Step 3.** Session 31's
+    expectation was that the ingestion worker thread and asyncio loop
+    would produce distinct PIDs in records. They don't — threads
+    share PID via `os.getpid()`. To distinguish thread origin we'd
+    need `threading.get_ident()` or `threading.current_thread().name`.
+    Not added in Step 3 (instrumentation already shipped without it,
+    and report doesn't currently need it). Deferred to Step 4 if
+    concurrent conversion lands and re-enabling needs to be
+    verified.
+
+### Things that surprised us
+
+1. **`analysis_detect_key` is 94.4% of `analysis_track` wall-clock in
+   the 7-track exploratory run.** 12.56s mean per track for key
+   detection alone, out of a 13.30s analysis-per-track total. BPM
+   detection is 2.0%. Librosa audio loading is 3.5%. DB update is
+   rounding error.
+
+   This is not what the brief assumed. The brief named
+   load-once-decode-twice (Step 6 — Targeted optimisations, option (c))
+   as a likely first optimisation target — sharing the librosa decode
+   between BPM and key. That optimisation, executed perfectly, saves
+   `analysis_librosa_load`: best case 3.5% improvement in
+   analysis-per-track wall-clock. The real bottleneck is inside
+   `key_detector.py`'s chroma extraction + Krumhansl-Schmuckler
+   correlation pass.
+
+   This is from a single exploratory run, not a baseline. The Step 4
+   baselines (Lakuti and Martyn, 24 tracks each, packaged mode) will
+   confirm the relative shape at higher N. But percentages of this
+   magnitude don't typically invert with more data.
+
+2. **Exit-order emission, not start-order.** Records emit on
+   `_StageContext.__exit__`, so inner stages land in the JSONL before
+   the outer wrapper that contains them. The reporter must rely on
+   `start_ts` (and the `OUTER_STAGE_FOR_PIPELINE` mapping for share
+   computation), not file order. Naive line-order grouping would get
+   nesting wrong. Captured in the spec; the implementation handles it
+   via the stage-to-pipeline map.
+
+3. **Browser-mode drag-and-drop doesn't work.** The Vite dev server
+   runs at `http://localhost:1420`, but `DropZone.tsx` relies on
+   Tauri's path-injection for file drops. In a regular browser
+   `file.path` is undefined, the component falls back to `file.name`,
+   and the backend correctly rejects bare filenames. The "Select
+   Folder…" button uses the Tauri dialog plugin and errors out
+   cleanly. Not a blocker — switched to direct API calls via curl
+   for the data-gen run.
+
+4. **Two task-prompt errors caught by CC during data-gen:**
+   - `REKORDBOT_OUTPUT_DIRECTORY` is the correct env var, not
+     `REKORDBOT_OUTPUT_DIR`. The wrong name would have silently
+     routed output to the real library directory.
+   - `uv run uvicorn main:app` from `backend/` doesn't work because
+     of absolute imports in `main.py`. Correct invocation is
+     `uv run uvicorn backend.main:app` from repo root.
+
+   Both worth remembering for future re-use of the data-gen prompt
+   (which is likely — Step 4 baseline runs will use a near-identical
+   pattern, just against the Panorama Bar folders and in packaged
+   mode).
+
+### Unresolved questions / blockers
+
+None blocking Step 4.
+
+Carry-forward notes for future steps:
+
+- **Step 5 decision input.** Once Step 4 baselines land, Step 5's
+  decision should weight Session 32's finding heavily:
+  `analysis_detect_key` is the dominant cost. The brief named
+  load-once-decode-twice; the data suggests internals of
+  `key_detector.py` (chroma method, HPSS, K-S correlation) deserve
+  the real optimisation budget. Worth checking whether librosa's
+  default chroma method is `chroma_cqt` (slower, more accurate) vs
+  `chroma_stft` (faster) — the choice may already lean toward the
+  slower one and trading accuracy for speed could be the cleanest
+  intervention. To be confirmed by reading `key_detector.py` at
+  Step 5, not now.
+
+- **Thread origin in `PerfRecord`.** Not needed in Step 3, may be
+  needed in Step 4/6 if concurrent conversion or concurrent analysis
+  lands. One field addition to the harness; reporter learns to use
+  it at the same time. Cheap when it's needed.
+
+- **Exit-time payloads** (Session 31 carry-forward, still open). Not
+  needed for Step 3 reporting — outer counts reconstruct cleanly
+  from inner records via `session_id`. Revisit only if Step 4 or
+  Step 6 needs richer outer payloads.
+
+- **AI tagging fixture window boundary.** Current fixture has all
+  inner records with `start_ts` strictly inside the batch window.
+  Boundary case `start_ts == batch.start_ts + batch.duration_s` is
+  not exercised. The clamp-to-zero branch covers logic robustness,
+  but the boundary inclusivity check is implicit. Note for if/when
+  `compute_rate_limit_wait` gets revisited.
+
+- **`xml_export` table rendering.** The outer `xml_export` stage
+  renders in the same table as its five inner sub-phases with a `—`
+  in the Share column. The relationship isn't strict parent/child —
+  the inner stages are sequential sub-phases that sum to roughly the
+  outer wall-clock, not nested calls — but visually they sit
+  side-by-side in one table without that distinction made clear.
+  Cosmetic; the data is correct. Leave for now.
+
+### What's next — Phase 6d Step 4
+
+Baseline measurement pass. Two runs:
+
+1. `Panorama_Bar_Playlist_02_Lakuti/` — packaged mode, against the
+   real DB and real library output. Generate JSONL, run the reporter
+   over it, commit the markdown to `docs/perf/baseline-02-lakuti.md`.
+
+2. `Panorama_Bar_Playlist_03_Martyn/` — same, output to
+   `docs/perf/baseline-03-martyn.md`.
+
+Plus `docs/perf/README.md` with the methodology, test corpus, and
+reproduction instructions.
+
+Two operational concerns to bake into the Step 4 prompts:
+
+- **Packaged mode, not dev mode.** Step 4 measures the actual
+  performance characteristics rekordbot ships with. The harness has
+  to work in the bundled `.app` — verified during Step 1, but worth
+  reconfirming.
+
+- **Real DB / real library = side effect.** Baselines 1 and 2 advance
+  Dale's real library state. This is intentional per the brief
+  (real-state measurement matters) but flagged here for the audit
+  trail.
+
+Step 4 to be opened in a fresh chat session for clean context.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `9561877` (Step 3
+  reporting commit) after push. A docs commit lands on top of this
+  at session close.
+- Commits added by this session (Session 32): 1 Step 3 reporting
+  commit (`9561877`, amended once from `271942f`) + 1 docs commit
+  (this commit). The branch's full distance ahead of `develop`
+  (at `b7dc4f4`, `phase-6c-complete`) includes those plus everything
+  added by Sessions 30 and 31 (Step 1 scaffolding, Step 2's five
+  instrumentation commits, and the docs commits closing each).
+  Verify the exact count with `git log b7dc4f4..HEAD --oneline | wc -l`
+  if needed.
+- Tests: 1245 passing (1215 baseline + 30 new in Step 3).
+- 30 stage constants instrumented (Step 2 close).
+- `backend/services/perf_report.py`, `scripts/perf-report.py`,
+  `backend/tests/test_perf_report.py`, and 4 fixture/golden files
+  committed (Step 3 close).
+- Phase 6d Step 3 complete per acceptance: reporting script exists,
+  has unit and golden tests, pure logic separated from CLI, mypy
+  clean, ruff clean, pre-commit clean.
+- CLAUDE.md and SESSIONS.md updated this session (this commit).
