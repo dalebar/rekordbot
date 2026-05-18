@@ -174,7 +174,63 @@ Follow the structure of `baseline-02-lakuti.md` or `baseline-03-martyn.md`. The 
 
 ## Decision point (Phase 6d Step 5)
 
-_Pending. To be recorded in a follow-up commit once scope discussion is complete. See README commit history._
+**Outcome: scope reduction.** Path A (in-scope optimisation of `key_detector.py`) was the expected outcome given the baseline shape. The actual decision is a third path that the brief did not contemplate: retire the consumers of key data and remove key detection from the analysis pipeline entirely. This brings the analysis stage from ~11.9s/track to ~0.5s/track — a 25x speedup on the dominant phase — and removes two features (Crate Builder, Set Planner) whose downstream value the user empirically does not consume.
+
+### Data
+
+Two independent baselines, 76 tracks across two real DJ corpora, agree:
+
+| Baseline | Corpus | N | `analysis_detect_key` share | `analysis_detect_key` mean |
+|----------|--------|---|----------------------------:|---------------------------:|
+| 1 | Lakuti | 24 | 94.4% | 13.01s |
+| 2 | Martyn | 52 | 96.0% | 11.40s |
+
+Key detection dominates analysis-per-track wall-clock. All other inner stages of analysis are negligible: librosa decode is 1.9–3.4%, BPM detection is 2.0–2.1%, tag reading is 0.1%, DB update is rounding error. The brief's named optimisation candidate (c) "share the librosa decode between BPM and key detection" caps at a ~2–3% improvement under ideal execution.
+
+### Reasoning
+
+The Path A → Path-A-with-algorithmic-changes-inside-key_detector route was viable. Concurrent analysis workers (brief candidate b) could have delivered a further 4–6x on top via a worker pool. But the bottleneck-as-stated assumes the work needs doing at all.
+
+Key data inside rekordbot is consumed by:
+
+1. **Crate Builder** (Phase 5a) — Camelot-wheel-based harmonic mixing for crate assignment.
+2. **Set Planner** (Phase 5b) — key-aware transition scoring and segment planning.
+3. **The track table UI** — displays key as a column.
+4. **The Rekordbox XML export** — writes the `Tonality` attribute.
+
+The Phase 5a/5b features were empirically tested in real interaction during this session. The Crate Builder run was abandoned by the user after several minutes with no output produced, and the architectural mismatch was identified: the AI-clustered crate-building model assumes a comprehensive analysed library to mine, while the realistic workflow involves a few hundred new tracks against a much larger Rekordbox-managed library already known to the DJ through listening. The features solve a problem the user does not have.
+
+The (3) and (4) consumers are surface-level only. Key data in the track table and the XML export has informational value but is not load-bearing for the workflow the user describes as central: ingest → analyse → AI-tag → organise → import to Rekordbox.
+
+Rekordbox performs its own key analysis on import. The user does not use harmonic-mixing or Camelot-wheel-based selection in practice. The rekordbot value proposition is the work Rekordbox does *not* do well — fast ingestion, quality conversion, AI-augmented tagging, intelligent organisation — and key detection is not part of that work.
+
+BPM detection (~2% of analysis time, ~0.24s/track) is kept. BPM is consumed by the AI tagging prompt as input for genre/mood/energy inference, displayed and sorted in the track table, and written to the TBPM tag that Rekordbox uses as a hint for its own beat-grid analysis. The cost-vs-value ratio for BPM is excellent; for key it is not.
+
+### Consequences
+
+**In scope for the scope-reduction phase (next phase, separate session):**
+
+- Soft-retire Crate Builder (Phase 5a). UI entry points and routes removed; code, models, tests, and DB tables preserved.
+- Soft-retire Set Planner (Phase 5b). Same treatment.
+- Remove `analysis_detect_key` from the analysis pipeline. The `KeyDetector` service stays in the codebase as dormant code reachable only by direct call.
+- Remove the key column from the track table UI.
+- Remove the `Tonality` attribute from the Rekordbox XML export.
+- Verify the AI tagging prompt does not consume key as input. If it does, remove the field from the prompt builder.
+- Update CLAUDE.md and the project plan to reflect the new value proposition.
+- Re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/` to confirm the expected ~25x analysis speedup in practice. Result committed as `post-scope-reduction-04-josey-rebelle.md` plus `delta.md`.
+
+**Deferred:**
+
+- **Concurrent conversion re-enable** (the brief's secondary deliverable for Phase 6d). On a post-scope-reduction analysis pipeline running at ~0.5s/track, the absolute savings from concurrent conversion are small. The architectural fix may still be worth doing — single-worker is a regression from the pre-Phase-6c capability — but it does not belong in the scope-reduction phase. Will be revisited as its own scoped session after the scope reduction lands.
+- **Algorithmic improvements inside `key_detector.py`.** Moot once the consumer is gone. Code preserved for any future revival.
+
+**Not done:**
+
+- Path A optimisation work as originally scoped. The bottleneck identified by the brief is real, but the work would have produced speedups against features the user does not use. Better to remove the work than to optimise it.
+
+### Why this is recorded as a third path rather than Path A or Path B
+
+The brief's Path A assumed feature stability — optimise the bottleneck within the existing scope. Path B was "nothing meaningfully slow, close phase." Neither matched the actual conclusion. The decision is closer to Path B in shape (no in-scope optimisation work performed) but with substantial follow-on work in a separate phase, and with the explicit reasoning that the bottleneck IS real and IS meaningfully slow — just not worth optimising because its output is unused. This is recorded as a deliberate third path so future audits do not misread it as "no bottleneck found."
 
 ## Future runs
 
