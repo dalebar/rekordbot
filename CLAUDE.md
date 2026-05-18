@@ -400,10 +400,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6d — Performance Optimisation (Step 1 complete; Step 2 next)
+**Phase:** 6d — Performance Optimisation (Steps 1 and 2 complete; Step 3 next)
 **Branch:** `feature/phase-6d-performance`
 **Tests:** 1215 passing across all phases
-**Next step:** Phase 6d Step 2 — instrument the five in-scope pipelines (ingestion, analysis, AI tagging, XML export, XML import) with PerfRecorder context blocks. One commit per pipeline; no business-logic changes.
+**Next step:** Phase 6d Step 3 — build the reporting tool that reads JSONL profile records from `~/Library/Application Support/rekordbot/perf/` and emits per-pipeline / per-stage summaries. Run the app once with `REKORDBOT_PERF_RECORD=1` against a small real workload (5–10 tracks ingested + analysed) to produce real JSONL data the reporting tool can be developed against, before any reporting code is written.
 
 ### Phase Summary
 
@@ -487,6 +487,7 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - `organise_confidence_threshold` is the live organisation threshold (default 0.7), exposed in Settings → Advanced. The short-named `confidence_threshold` field that previously appeared in `CONFIGURABLE_FIELDS` and the Settings UI was dead config and was removed in Session 28. Old user configs with the short name silently drop the key on next save via `CONFIGURABLE_FIELDS` filtering in `save_config()`. The per-request `OrganiseRequest.options.confidence_threshold` override on `/api/organise/propose` is wired-up-but-unused — intentional API affordance, not a bug.
 - BPM and key detection produce `BPMResult.confidence` and `KeyResult.confidence` values for informational display only. No threshold-based gating action consumes them anywhere in the pipeline. If a future feature wants to gate on these (e.g. "skip tag writing for low-confidence BPM"), it will need to introduce its own threshold field — not reuse the now-removed generic `confidence_threshold`.
 - SettingsPanel renders as an absolutely-positioned overlay (`absolute inset-0 z-10 bg-gray-950`) inside a `relative` wrapper in App.tsx, NOT as a swap-mount. This is deliberate — preserving in-flight component state (analysis SSE connection, progress bar state, etc.) across Settings round-trips required keeping `<main>` mounted continuously. ConflictReviewPanel and SetPlannerView remain swap-mounted because they are full workflows where state-loss on entry is acceptable. The Settings overlay sits below the header (it shares a parent with `<main>`, not with the header). z-index `z-10` places it above the underlying view but below `CrateCreateDialog` and `SetCreateDialog` (which use `z-40` for true modal behaviour).
+- `REKORDBOT_PERF_RECORD=1` enables the opt-in profiling harness. When set, every named pipeline stage (30 stages across ingestion / analysis / AI tagging / XML export / XML import) emits a JSONL timing record to `~/Library/Application Support/rekordbot/perf/run-<timestamp>.jsonl`. When unset (default), the harness is a strict no-op — no I/O, no allocations beyond `contextlib.nullcontext()`. Stage constants are defined in `backend/services/perf.py::Stage`; the wrappers live in each pipeline's orchestrator service (`converter.py`, `analysis.py`, `ai_tagger.py` + `claude_client.py`, `xml_exporter.py`, `xml_importer.py`).
 
 ## Phased Build Plan
 

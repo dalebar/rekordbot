@@ -1664,3 +1664,218 @@ review and merge prep belong to this session and stop here.
 - Phase 6d Step 1 complete per acceptance: harness exists, has unit
   tests, opt-in via env var, verified no-op when disabled. Step 2 not
   started.
+
+## Session 31 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 2 — pipeline instrumentation. All five in-scope pipelines
+wrapped with `recorder.stage(...)` blocks per the brief. One commit per
+pipeline; mechanical reverts available; no business-logic changes; test
+count unchanged at 1215 across all five commits.
+
+### Summary
+
+Five commits landed in this session:
+
+1. `ce8db3e` — ingestion pipeline instrumentation. 8 stage blocks in
+   `backend/services/converter.py::convert_file`: `INGESTION_FILE` outer
+   wrapper (with payload `{source_path, size_bytes}`), plus inner
+   wrappers `INGESTION_INSPECT`, `INGESTION_DECIDE`, `INGESTION_HASH`,
+   `INGESTION_DUP_CHECK` (including the orphaned-record cleanup branch),
+   mutually-exclusive `INGESTION_CONVERT_FFMPEG` / `INGESTION_COPY`, and
+   `INGESTION_DB_INSERT` around Track construction + commit. `queue.py`
+   untouched — the worker thread calls `convert_file()` which carries
+   its own instrumentation.
+
+2. `10c0841` — analysis pipeline instrumentation. 6 stage blocks in
+   `backend/services/analysis.py::analyse_track`: `ANALYSIS_TRACK` outer
+   wrapper (with payload `{track_id}`), plus inner wrappers
+   `ANALYSIS_READ_TAGS`, `ANALYSIS_LIBROSA_LOAD` (the primary Phase 6d
+   optimisation target), `ANALYSIS_DETECT_BPM`, `ANALYSIS_DETECT_KEY`,
+   and `ANALYSIS_DB_UPDATE` around the success-path status update +
+   commit. Failure-path commits (file-missing early return, exception
+   handler) intentionally unwrapped — they persist a "failed" status
+   rather than completing analysis.
+
+3. `a375d7d` — AI tagging pipeline instrumentation. 5 stage blocks split
+   across TWO files: `backend/services/ai_tagger.py::_process_batch`
+   carries `AI_TAG_BATCH` (payload `{batch_number, batch_size}`),
+   `AI_TAG_BUILD_MESSAGE`, and `AI_TAG_DB_UPDATE`;
+   `backend/services/claude_client.py::tag_batch` carries
+   `AI_TAG_API_CALL` and `AI_TAG_PARSE_RESPONSE`. The cross-file split
+   was the right call — putting the API and parse stages where they
+   actually run, rather than bending stage names to fit a single-file
+   constraint.
+
+4. `2b5def3` — XML export pipeline instrumentation. 6 stage blocks in
+   `backend/services/xml_exporter.py::export_library`: `XML_EXPORT`
+   outer wrapper, plus inner wrappers `XML_EXPORT_LOAD_TRACKS` (around
+   `query.all()` only — query-builder lines and the file-path filter
+   loop deliberately outside), `XML_EXPORT_LOAD_CRATES`,
+   `XML_EXPORT_LOAD_SETS`, `XML_EXPORT_BUILD` (`build_xml` call +
+   playlist-count walk), `XML_EXPORT_WRITE`. No payloads — outer counts
+   are deferred to reporting via JOINs on `session_id`.
+
+5. `a5d2e5a` — XML import pipeline instrumentation. 5 stage blocks in
+   `backend/services/xml_importer.py::run_import`: `XML_IMPORT` outer
+   wrapper, `XML_IMPORT_PARSE`, `XML_IMPORT_TRACKS`,
+   `XML_IMPORT_PLAYLISTS`, `XML_IMPORT_COMMIT` (broken out separately
+   because SQLite fsync at end-of-transaction can be slow on large
+   imports).
+
+Diff sizes per commit (insertions / deletions / file-changed line
+count): ingestion 108/89/197; analysis 101/91/192; AI tagging 69/57/126
+across two files; XML export 84/76/160; XML import 43/36/79. Bulk in all
+cases is indentation churn from re-indenting wrapped blocks; real
+logical change is ~10–15 lines per commit. Total stage blocks added:
+30 across 5 commits, covering all 30 `Stage` constants defined in
+Step 1.
+
+### Key decisions made
+
+1. **One commit per pipeline, all stages added at once.** Considered
+   splitting outer-from-nested in separate commits; rejected — a stage
+   that times the outer block but not its nested children is a
+   meaningless intermediate state. Five commits is also what the brief
+   specified.
+
+2. **Stage wrappers placed inside `try:` blocks where the function has
+   one** (ingestion, analysis, AI tagging). This puts
+   `_StageContext.__exit__` before the `except` clause in the unwinding
+   order, so the exception name is captured on the `PerfRecord` before
+   the `except` clause catches it. XML export and XML import have no
+   `try:` block — exceptions propagate to the caller — so the wrapper
+   sits directly in the function body.
+
+3. **`recorder = get_recorder()` is function-local, per-call** (Pattern
+   1 from the planning pass). Module-level capture-at-import would
+   break `_reset_for_tests()` for any module that imports `perf`. The
+   lock overhead on each `get_recorder()` call is negligible — single
+   dict lookup + no-contention lock.
+
+4. **Payloads kept minimal, all attached at context-manager entry.**
+   The recorder API supplies payload at `__enter__`, not `__exit__`, so
+   counts like "number of tracks exported" (only known after the work
+   runs) cannot be attached to the outer stage. Two approaches
+   considered: extend the harness API to support exit-time payloads
+   (Option Y); or accept simpler payloads at entry and reconstruct
+   counts in reporting (Option X). Chose X — keeps Step 2
+   instrumentation-only as the brief required; revisit in Step 4 if
+   reporting needs richer payloads. Locked payloads: `INGESTION_FILE`
+   gets `{source_path, size_bytes}`, `ANALYSIS_TRACK` gets
+   `{track_id}`, `AI_TAG_BATCH` gets `{batch_number, batch_size}`. All
+   other stages (inner stages, `XML_EXPORT` outer, `XML_IMPORT` outer)
+   attach no payload.
+
+5. **Cross-file commit for AI tagging accepted as one commit, two
+   files.** The brief says "one commit per pipeline keeps the audit
+   trail clean and reverts cheap" — touching two files in one commit
+   still satisfies that. Splitting would have created an intermediate
+   state where `ai_tagger.py` was instrumented but its
+   `claude_client.py` callees were not, which is meaningless to look
+   at. Two files, called out explicitly in the prompt.
+
+6. **`AI_TAG_API_CALL` covers retry wall-clock including backoff
+   sleep.** Considered timing individual retry attempts; rejected — the
+   report wants total time the user waits, which includes backoff.
+   Per-attempt detail can come from logs.
+
+7. **`AI_TAG_API_CALL` does NOT cover rate-limiter `acquire()` time.**
+   Rate-limit waits are a guard, not a stage. If they become
+   significant in real runs, a separate `AI_TAG_RATE_LIMIT_WAIT` stage
+   can be added in a later step. Captured in the prompt and the commit
+   message.
+
+8. **`INGESTION_DB_INSERT` tightened to exclude
+   `output_path.stat().st_size`.** First CC report wrapped the
+   filesystem stat inside the DB-insert stage; we narrowed it. A stage
+   named "DB insert" should measure DB work, not filesystem syscalls.
+   Microsecond difference in the timing data; meaningful difference in
+   honest stage naming.
+
+9. **Pre-existing mypy errors in `claude_client.py` and
+   `xml_exporter.py` left untouched.** Verified pre-existing via stash
+   round-trip in CC's verification reports. Two errors in
+   `claude_client.py` (`asyncio.to_thread` overload resolution against
+   the Anthropic SDK at lines 136 and 243); one in `xml_exporter.py`
+   (`Element | None` `.find` narrowing at line 126). Not introduced by
+   Step 2 and unrelated to instrumentation.
+
+### Things that surprised us
+
+- **Stage count was 30, not 28.** Session 30 logged "28 stage
+  identifiers" but `perf.py` actually defines 30. The discrepancy was
+  in the SESSIONS.md log, not the code — manual recount in Step 2
+  confirmed 8 + 6 + 5 + 6 + 5 = 30. All 30 are now instrumented.
+  Corrected in this entry.
+
+- **Indentation churn dominated every diff.** Each commit's `git diff`
+  line count was 80–220 lines, but the actual logical change in every
+  commit was 8–15 lines (one import + one recorder acquisition + N
+  `with` statements). Git counts re-indentation of wrapped blocks as
+  delete+insert. Not a red flag once you know the shape; useful
+  baseline for reviewing future instrumentation diffs (if a future
+  "instrumentation" commit has many non-indentation changes, that's
+  the real signal).
+
+- **Comments stayed with the code they label, not with the wrapper.**
+  CC consistently kept section comments (e.g. `# Step 7: Get output
+  file size`, `# Build XML`, `# Count playlists`) directly above the
+  code they describe, even when that means a comment sometimes ends up
+  inside a wrapper (heading a wrapped block) and sometimes outside
+  (heading an unwrapped block adjacent to the wrapper). Consistent and
+  correct — the alternative would have detached comments from their
+  code.
+
+### Unresolved questions / blockers
+
+None blocking Step 3.
+
+Two notes carried forward for Step 4 consideration (not action items
+now):
+
+- **Exit-time payloads** (Option Y from the planning pass) would let
+  outer stages carry summary counts. If Step 3's reporting reveals
+  it's awkward to reconstruct outer counts from inner-stage records,
+  consider revisiting the harness API at the start of Step 4.
+
+- **Rate-limiter `acquire()` time is currently untimed.** If profiling
+  reveals significant wait time, add an `AI_TAG_RATE_LIMIT_WAIT`
+  stage. Mentioned in Step 2's AI tagging commit message and
+  verifiable from the absence of timing in `AI_TAG_BATCH` minus the
+  sum of its nested stages.
+
+### What's next — Phase 6d Step 3
+
+Reporting: build a script that reads the JSONL files in
+`~/Library/Application Support/rekordbot/perf/` and emits
+human-readable summaries (per-pipeline rollups, per-stage averages and
+percentiles, slow-stage callouts). Before Step 3 begins, run the app
+with `REKORDBOT_PERF_RECORD=1` against a small real workload — even
+just ingestion of 5–10 tracks plus one analysis batch — to produce
+real JSONL data the reporting script can be developed against.
+Reporting written against synthetic JSONL is reporting written against
+a hypothesis; reporting written against real data catches the messy
+cases.
+
+Step 3 to be opened in a fresh chat session for clean context. Step 2
+instrumentation review and merge prep belong to this session and stop
+here.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at the XML import
+  instrumentation commit (`a5d2e5a`), in sync with
+  `origin/feature/phase-6d-performance` after Dale's push. Working
+  tree clean before the docs commit.
+- Five commits ahead of the Step 1 close (`cf5d9dc`), nine commits
+  ahead of `develop` (at `b7dc4f4`, `phase-6c-complete`) after this
+  docs commit lands.
+- Tests: 1215 passing (unchanged across all five Step 2 commits).
+- All 30 `Stage` constants instrumented.
+- CLAUDE.md and SESSIONS.md updated this session (this commit).
+- Phase 6d Step 2 complete per acceptance: every named stage in
+  `perf.py` wraps real code; pytest passes unchanged; recorder is
+  opt-in via `REKORDBOT_PERF_RECORD`; no business-logic changes
+  anywhere. Step 3 not started.
