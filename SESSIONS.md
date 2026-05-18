@@ -2367,3 +2367,361 @@ re-enable concurrent conversion (brief's secondary deliverable). Steps
 - CLAUDE.md updated this session: Phase 6d Step 4 partial state, new
   install-vs-build lesson recorded.
 - SESSIONS.md updated this session (this commit).
+
+---
+
+## Session 34 — 2026-05-18
+
+### What was worked on
+
+Phase 6d Step 4 completed (Baseline 2 — Martyn, README), Step 5
+Decision Point recorded, Phase 6d closed. The Decision Point
+outcome was neither Path A (in-scope optimisation of `key_detector.py`)
+nor Path B (close phase, no work) but a third path that emerged
+from an empirical Crate Builder trial during the session: **scope
+reduction.** Phase 6d.1 (next phase) will retire Crate Builder
+(Phase 5a) and Set Planner (Phase 5b) via soft retirement, and
+remove key detection from the analysis pipeline. Production code
+is unchanged in Phase 6d itself; the phase delivered measurement,
+empirical validation, and a decision — the code change is
+scoped into 6d.1.
+
+### Summary
+
+Session 34 ran in five distinct phases:
+
+1. **Plan alignment, ~17:45.** Walked through Step 4 completion
+   plan: three commits (Baseline 2 report, README with placeholder
+   Decision Point, README with populated Decision Point), the
+   stale-`/Applications/`-binary pre-flight per Session 33 lesson,
+   and budget confirmation for AI tagging on the Martyn corpus
+   (~$0.10–$0.15). The cross-check via filesystem MCP found a
+   visual miscount (51 audio files) against the brief's 52; a `find`
+   command at session start ground-truthed 52, resolving the
+   discrepancy. Pre-flight checks passed cleanly: install timestamp
+   `May 18 04:01` (today's build), corpus 52 files, disk 1.1 TiB
+   free on collection.
+
+2. **Baseline 2 run, ~17:58 to ~18:18.** Snapshot pattern
+   followed exactly as Session 33: DB copy, output-dir listing,
+   imports-dir listing. App launched via direct binary invocation
+   with `REKORDBOT_PERF_RECORD=1`. Drag-and-drop still broken (a
+   known carry-forward bug, not 6d scope), so Select Folder… used.
+   52 files ingested with 0 failures (Martyn is a more recent
+   corpus than Lakuti, no source corruption). Analysis ran on 52
+   tracks. AI tagging caught up to 83 tracks total (the 31
+   pre-existing untagged Lakuti tracks plus the 52 fresh Martyn
+   tracks). XML export wrote 106 tracks. Clean Cmd-Q at 18:18.
+   JSONL: 707 records, 159.62 KB.
+
+3. **Baseline 2 reporter run and data review, ~18:20 to ~18:30.**
+   Reporter ran cleanly via uv. Headline finding: `analysis_detect_key`
+   at 96.0% of analysis-per-track wall-clock (vs Baseline 1's
+   94.4%), confirming the bottleneck shape across two independent
+   corpora. Other notable shifts vs Baseline 1: ingestion conversion
+   share rose to 73.7% (from 65.8%) reflecting larger average source
+   file size; AI tagging measured for first time (5 batches, 113s
+   total, $0.1667, ~22.6s mean batch wall-clock dominated entirely
+   by API call); `ingestion_copy` passthrough branch exercised
+   for the first time by the single AIFF file (`13 Mixing Room.aiff`).
+   The librosa_load outlier present but smaller (1.49s vs Baseline
+   1's 6.24s), confirming outliers are inconsistent in magnitude
+   rather than a recurring edge case.
+
+4. **Crate Builder empirical trial and scope-reduction
+   conversation, ~18:30 to ~19:30.** This is the consequential
+   stretch of the session. Per the brief, Step 5 is a joint
+   chat-side decision. Before drafting the Decision Point, Claude
+   raised the option of removing key detection entirely —
+   given the 96% dominance, removing the work is a 25× speedup
+   vs the 4–6× best case of optimising it. The user pushed
+   that proposal one step further: if key data's main consumers
+   are Crate Builder and Set Planner, and those features may not
+   be valued in practice, the right move is to retire the
+   features, not optimise their inputs. Claude pushed back with
+   pause-for-validation: open the Crate Builder in the running
+   app and try it before deciding. User did so. Crate Builder
+   produced no output after several minutes; user identified
+   the architectural mismatch (AI clustering assumes a
+   comprehensive analysed library to mine; realistic ingestion
+   is a few hundred new tracks at a time against a much larger
+   Rekordbox-managed library known through listening). Decision
+   crystallised: retire Crate Builder and Set Planner via soft
+   retirement (option b: routes/UI removed, code/models/tests/DB
+   preserved); remove key detection from the analysis pipeline;
+   keep BPM detection. User initially considered dropping BPM
+   too; Claude argued BPM is consumed by AI tagging prompts and
+   has an excellent cost-vs-value ratio at ~0.24s/track. BPM
+   stays.
+
+5. **Three commits + phase close, ~19:30 onward.** Baseline 2
+   report (`28a2766`), README with placeholder Decision Point
+   (`26d7e08`), README with populated Decision Point (`2d9c3bd`),
+   then CLAUDE.md update for phase close (`25d602e`), and this
+   SESSIONS.md update. Merge to develop and tag `phase-6d-complete`
+   pending after this commit lands.
+
+### Key decisions made
+
+1. **The Decision Point is a third path, not Path A or Path B.**
+   The brief committed to one or the other, but the actual
+   conclusion is closer to Path B in shape (no in-scope
+   optimisation work performed) with substantial follow-on work
+   in a separate phase. Recorded explicitly as a "third path"
+   in `docs/perf/README.md` so future audits do not misread
+   it as "no bottleneck found."
+
+2. **Soft-retire (option b), not hard-delete (option a).** The
+   Phase 5a + 5b code remains in git and in the codebase
+   post-6d.1, but is unreachable from the UI and unused by
+   routes. DB tables preserved. Tests preserved. The case for
+   soft-retire over hard-delete: same wall-clock savings, much
+   smaller change radius, optionality preserved if the features
+   ever turn out to be desirable, no multi-table DB migration
+   risk. The case for hard-delete ("dormant code that'll
+   silently break a year from now") is real but addressed by
+   documenting the retired state in CLAUDE.md Known Issues and
+   accepting that revival is a scoped revival session, not
+   automatic.
+
+3. **Keep BPM detection, drop key detection.** This was a
+   distinct sub-decision. The user initially proposed dropping
+   both on "Rekordbox does it anyway" grounds. Claude argued
+   BPM has different cost-vs-value:
+   - BPM ~0.24s/track vs key ~11.4s/track (47× differential)
+   - BPM consumed by AI tagging prompts (genre/mood/energy
+     inference is BPM-aware)
+   - BPM displayed and sorted in the track table UI
+   - BPM written to TBPM tag, which Rekordbox uses as a hint
+     for its own beat-grid analysis
+   None of those apply to key in the post-Phase-6d.1 world.
+   The user accepted the reasoning. BPM stays in the analysis
+   pipeline.
+
+4. **The Crate Builder empirical trial was the load-bearing
+   evidence for the scope reduction.** Without it, the
+   conversation would have rested on abstract reasoning about
+   what features are valuable. With it, the user could speak
+   from direct interaction: "it took several minutes and
+   produced nothing." Claude's pushback ("open it and try it
+   before deciding") prevented committing to a major scope
+   reversal on theoretical grounds alone. This is a pattern
+   worth preserving: empirical validation before major
+   reversal, even when reasoning seems strong.
+
+5. **Concurrent conversion re-enable indefinitely deferred.**
+   The Phase 6d brief named it as a secondary deliverable.
+   Without action on it, Phase 6d technically does not meet
+   the original brief's acceptance criterion as written. But
+   the criterion explicitly allows "explicitly deferred with
+   reason documented" — which is what we've done. On a
+   post-Phase-6d.1 analysis pipeline at ~0.5s/track, concurrent
+   conversion savings are small (single-digit seconds on a
+   52-track corpus). The architectural fix may still matter
+   eventually but it's no longer urgent.
+
+6. **Project Overview deliberately not updated in the Phase
+   6d close commit.** The Project Overview at the top of
+   CLAUDE.md still describes Crate Builder and Set Planner as
+   core features. That description is accurate for the
+   currently-running code. The update belongs with Phase 6d.1's
+   code change, not with the Phase 6d documentation. Avoids a
+   commit that says "feature is retired" while the feature is
+   still running.
+
+7. **Phase numbering: 6d.1 not 6e.** Keeps the audit trail
+   explicit (6d directly led to it). Avoids reshuffling 6e and
+   6f. Indented visually in the Phased Build Plan.
+
+8. **Decision Point recorded in `docs/perf/README.md`, not in a
+   standalone document.** The README is the source of truth for
+   the methodology and harness; the Decision Point is the
+   intellectual conclusion of the measurement work; both belong
+   in the same document. Future-Claude and future-Dale will
+   find the decision in the same place they find the
+   reproduction instructions.
+
+9. **Install-vs-build pre-flight check made durable in CLAUDE.md
+   Known Issues.** Previously lived in a standalone paragraph
+   under Current Status referring specifically to Phase 6d. Now
+   a durable entry that applies to any packaged-mode work —
+   manual smoke tests, dogfooding, performance measurement.
+   The Session 33 lesson now outlives its session.
+
+### Things that surprised us
+
+1. **Crate Builder validated as not-valuable by direct
+   interaction in under five minutes.** The empirical case
+   came together faster than expected. The architectural
+   mismatch (assumes comprehensive analysed library; realistic
+   workflow is incremental ingestion) was visible immediately
+   once the user tried to use it on the actual library state.
+   Theoretical reasoning would have taken much longer to reach
+   the same conclusion with less confidence.
+
+2. **The BPM-vs-key cost differential is 47×.** Easy to
+   under-appreciate from the brief, which lists them together
+   as "BPM/key detection." In wall-clock terms they're nothing
+   alike: BPM is a rounding-error tax, key is the bottleneck.
+   The cost-vs-value ratio analysis was only possible once the
+   per-stage breakdown was in front of us — the brief's named
+   candidate (c) "share the librosa decode between BPM and key
+   detection" assumed they were roughly comparable inner stages,
+   which they aren't.
+
+3. **The `ingestion_copy` passthrough branch never ran until
+   Baseline 2.** Baseline 1 was 100% FLAC; Martyn's single AIFF
+   exercised the alternate code path for the first time in any
+   committed measurement. Useful incidental pipeline coverage.
+
+4. **AI tagging cost was almost exactly on the operator
+   projection.** $0.1667 actual vs $0.10–$0.15 projected; the
+   overrun came from the AI tagger catching up the 31 untagged
+   Lakuti tracks alongside the 52 fresh Martyn tracks, not from
+   per-track cost being higher. Per-track cost was ~$0.0020.
+
+5. **Reading the data overturned both Path A and Path B.** Going
+   into Session 34, the strong expectation was Path A
+   (algorithmic improvements inside `key_detector.py`). The
+   weak fallback was Path B (close phase, no work). Neither
+   path matched the actual conclusion. The brief's framing
+   assumed the consumers of analysis output were stable; once
+   that assumption was revisited, scope reduction emerged as
+   the dominant option. Worth remembering that the brief is
+   never the last word on what a measurement phase will
+   conclude.
+
+6. **Two baselines closely agreed but not identically.** Baseline
+   1 `analysis_detect_key` mean 13.01s, Baseline 2 11.40s
+   (-12%). The shape (% share of outer) reproduced cleanly
+   (94.4% → 96.0%) but the absolute timing did not. External-
+   drive I/O variability is the most likely cause. The shape
+   is what's load-bearing for the decision; the absolute
+   timing being slightly different across runs doesn't change
+   anything.
+
+### Unresolved questions / blockers
+
+1. **The Phase 6d.1 feature brief is not yet drafted.** Session
+   35 opens with this work. The Decision Point in
+   `docs/perf/README.md` defines the scope (~8 in-scope items);
+   the brief turns that into TDD candidates, build order,
+   acceptance criteria, risks. Likely a focused single-session
+   brief-drafting exercise before any code work starts.
+
+2. **Does the AI tagging prompt actually consume key as input?**
+   The Phase 6d.1 plan includes "verify the AI tagging prompt
+   does not consume key as input. If it does, remove the field
+   from the prompt builder." This needs reading `prompt_builder.py`
+   in Session 35 before the brief can finalise the scope of the
+   prompt-builder change. If key is in the prompt, removing it
+   is a measured change with possible accuracy implications;
+   if it isn't, the line in the brief is a no-op verification.
+
+3. **Migration of existing key data in the DB.** Post-Phase-6d.1,
+   the `key` column on the Track model will retain its existing
+   data (the 30 historical tracks have key data; the Baseline
+   1 and 2 additions have key data populated by today's runs).
+   The column won't be populated for new tracks (no detection),
+   won't be displayed (UI column removed), won't be written
+   (Tonality removed from XML). Drop the column or keep it? Lean
+   is keep — dropping requires an Alembic migration, the
+   column is cheap, and preserving data preserves optionality.
+   Decision deferred to the 6d.1 brief.
+
+4. **Test impact of soft retirement.** Phase 5a contributed 108
+   tests, Phase 5b contributed 116 tests (cumulative counts:
+   706 → 814 → 930). After soft retirement, most of those
+   tests should still pass (the code paths still exist; they're
+   just unreachable from the UI). Some integration tests that
+   exercise full ingest → analyse → crate-assign flows may
+   need updating. The brief needs an audit of the test surface
+   to scope the test-change work realistically.
+
+Carry-forward, not blocking:
+
+- **Drag-and-drop still broken** in the current build. Known
+  from Session 32 / 33. Not 6d scope. Likely a 6e issue once
+  UI polish phase opens.
+- **Thread origin in `PerfRecord`.** Still not added. Will only
+  matter if a future phase re-enables concurrent conversion or
+  concurrent analysis. Currently neither.
+- **`Panorama_Bar_Playlist_04_Josey_Rebelle/`** is the corpus
+  reserved for post-Phase-6d.1 re-baseline. Confirmed accessible
+  earlier this session via filesystem MCP.
+
+### What's next — Session 35
+
+1. Open `feature/scope-reduction` branch from develop.
+
+2. Draft the Phase 6d.1 feature brief in `docs/features/phase-6d.1-scope-reduction.md`.
+   The brief lands as its own commit before any code change. Per
+   the project's "explain before you implement" principle, the
+   brief gets the same care every other phase brief got — TDD
+   candidates, build order, acceptance criteria, risks. Source
+   of truth for scope is the Decision Point in
+   `docs/perf/README.md`.
+
+3. Before drafting the brief, read `prompt_builder.py` to
+   resolve the open question about whether the AI tagging
+   prompt consumes key as input. This decides the scope of
+   the prompt-builder changes in the brief.
+
+4. After brief lands and is reviewed, execute it: probably 4–6
+   commits across UI removal, route removal, pipeline change,
+   AI prompt verification, test update, and re-baseline
+   measurement.
+
+5. Phase 6d.1 closes with a re-baseline against
+   `Panorama_Bar_Playlist_04_Josey_Rebelle/` (committed as
+   `docs/perf/post-scope-reduction-04-josey-rebelle.md`) and a
+   `delta.md` documenting the before/after wall-clock change.
+   Expected ~25× analysis speedup vs Baselines 1 + 2.
+
+### Final state
+
+- Branch: `feature/phase-6d-performance` at `25d602e` (post-CLAUDE.md
+  update), 4 commits ahead of origin (this SESSIONS.md commit
+  will make it 5).
+  Commits added this session:
+  - `28a2766` — docs(perf): add Phase 6d baseline 2 report for Martyn corpus
+  - `26d7e08` — docs(perf): add README — methodology, harness, reproduction
+  - `2d9c3bd` — docs(perf): record Step 5 decision point — scope reduction
+  - `25d602e` — chore: update CLAUDE.md for Phase 6d close
+  - (this commit) — chore: SESSIONS.md Session 34 entry
+- Tests: still 1245 passing. Production code unchanged this
+  session.
+- `docs/perf/` contains 3 files: README.md (11.96 KB),
+  baseline-02-lakuti.md (7.10 KB), baseline-03-martyn.md (9.41 KB).
+- 5 perf JSONL files in `~/Library/Application Support/rekordbot/perf/`:
+  - `run-20260518T015022.jsonl` (Session 32 exploratory, 22440 bytes)
+  - `run-20260518T035630.jsonl` (Session 33 diagnostic export, 1326 bytes)
+  - `run-20260518T040407.jsonl` (Session 33 post-install verification, 1328 bytes)
+  - `run-20260518T041044.jsonl` (Baseline 1 — Lakuti, 76976 bytes)
+  - `run-20260518T185959.jsonl` (Baseline 2 — Martyn, 159620 bytes)
+- Snapshots retained from this session:
+  - `~/Library/Application Support/rekordbot/rekordbot.db.pre-baseline-03`
+    (30+24 = 54 tracks, pre-Martyn state)
+  - `/tmp/output-dir-pre-baseline-03.txt`
+  - `/tmp/imports-dir-pre-baseline-03.txt`
+- `/Applications/rekordbot.app` install timestamp: `May 18 04:01`,
+  unchanged from Session 33's recovery-phase install. The same
+  install ran both baselines. Source-tree commits advanced between
+  Baseline 1 (run against `45fd218` source state) and Baseline 2
+  (run against `18d74a0` source state), but no instrumentation
+  code changed in those intervening commits (Session 33's only
+  code change was a single-line diagnostic that was reverted
+  before commit; the Session 33 report commit was docs-only), so
+  re-installing wasn't required.
+- CLAUDE.md updated this session: Current Status reset to 6d.1,
+  Phase Summary row added, Phased Build Plan 6d → Done +
+  6d.1 added, 4 new Known Issues entries (install timestamp
+  pre-flight, `analysis_detect_key` as known-but-not-target,
+  Crate/Set retirement flag, concurrent conversion deferral).
+  Project Overview deliberately not updated — belongs with
+  6d.1 code change.
+- SESSIONS.md updated this session (this commit).
+- Phase 6d feature brief still to be marked complete (next
+  commit, Commit C).
+- Merge to develop and tag `phase-6d-complete` pending after
+  Commit C lands.
