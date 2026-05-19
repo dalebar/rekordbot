@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from backend.config import Settings
 from backend.models.track import Track
 from backend.services.bpm_detector import BPMResult, detect_bpm
-from backend.services.key_detector import KeyResult, detect_key
 from backend.services.key_notation import parse_key_tag
 from backend.services.perf import Stage, get_recorder
 from backend.services.tag_reader import TagData, read_tags
@@ -34,7 +33,6 @@ class AnalysisResult:
         track_id: Database ID of the analysed track.
         status: "success" or "failed".
         bpm_result: BPM detection result, if successful.
-        key_result: Key detection result, if successful.
         tags_read: Tags read from the file, if successful.
         error: Error message if analysis failed.
     """
@@ -42,7 +40,6 @@ class AnalysisResult:
     track_id: int
     status: Literal["success", "failed"]
     bpm_result: BPMResult | None = None
-    key_result: KeyResult | None = None
     tags_read: TagData | None = None
     error: str | None = None
 
@@ -69,7 +66,7 @@ async def analyse_track(
     db_session: Session,
     settings: Settings,
 ) -> AnalysisResult:
-    """Analyse a single track: read tags, detect BPM and key, update DB.
+    """Analyse a single track: read tags, detect BPM, update DB.
 
     Args:
         track: Track model instance to analyse.
@@ -161,37 +158,22 @@ async def analyse_track(
                 track.bpm = bpm_result.bpm
                 track.bpm_confidence = bpm_result.confidence
 
-            # Step 4: Detect key
-            with recorder.stage(Stage.ANALYSIS_DETECT_KEY):
-                key_result = await asyncio.to_thread(
-                    detect_key,
-                    file_path,
-                    y=y,
-                    loaded_sr=sr,
-                )
-
-            if key_result is not None:
-                track.key = key_result.key
-                track.key_confidence = key_result.confidence
-
-            # Step 5: Update analysis status
+            # Step 4: Update analysis status
             with recorder.stage(Stage.ANALYSIS_DB_UPDATE):
                 track.analysis_status = "analysed"
                 db_session.commit()
 
             logger.info(
-                "Analysis complete for track %d (%s): BPM=%.2f, Key=%s",
+                "Analysis complete for track %d (%s): BPM=%.2f",
                 track.id,
                 file_path.name,
                 track.bpm or 0.0,
-                track.key or "unknown",
             )
 
             return AnalysisResult(
                 track_id=track.id,
                 status="success",
                 bpm_result=bpm_result,
-                key_result=key_result,
                 tags_read=tag_data,
             )
 
