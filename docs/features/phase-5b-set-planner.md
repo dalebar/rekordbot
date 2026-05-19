@@ -1,8 +1,26 @@
 # Feature: Set Planner
 **Branch:** `feature/phase-5b-set-planner`
-**Status:** Complete ✅
+**Status:** Complete (Phase 5b) → Soft-retired (Phase 6d.1) ⛔
 **Phase:** 5b
 **Depends on:** Phase 5a (complete)
+
+---
+
+## ⛔ Superseded — Soft-retired in Phase 6d.1
+
+This feature was built and shipped in Phase 5b (Session 23, October 2025), and was soft-retired in Phase 6d.1 (Session 35, May 2026).
+
+**Reason:** Set Planner depended on Crate Builder (Phase 5a) as a source pool for lock-and-shuffle suggestions. When Crate Builder was retired (see `docs/features/phase-5a-crate-builder.md`), Set Planner's input premise went with it. Additionally, the realistic DJ workflow for set planning — picking from tracks you already know in Rekordbox and arranging by ear — turned out not to benefit from AI-generated sequences in the way the brief originally hypothesised.
+
+**Endstate as of Phase 6d.1:**
+- UI entry points removed (`SetPlannerView`, `SetCreateDialog`, `SetListPanel` no longer imported by `App.tsx`).
+- Backend routes deregistered (`/api/sets/*` returns 404).
+- XML exporter no longer emits set playlists.
+- `routes/sets.py:export_set_endpoint` body neutralised to `raise NotImplementedError`.
+- `set_prompt_builder.py:_build_track_summary_for_set` `key_notation` parameter retained as dead arg (`noqa: ARG001`) to preserve the public signature for soft-retired `set_planner.py` callers.
+- Code, data models, DB tables, and tests preserved as dormant.
+
+**Future:** A hard-delete pass (working name "Path X") may eventually `git rm` this entire feature alongside Phase 5a. Until then, the brief below is preserved as historical record of what was built and why.
 
 ---
 

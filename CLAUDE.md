@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-rekordbot is a desktop application for digital DJs who use Rekordbox and CDJs. It handles the full file management workflow: ingest music files from any source/format, convert them with quality-preserving logic (lossless → AIFF, lossy left as-is or converted to MP3), auto-tag with BPM/key/genre/mood using algorithmic analysis and Claude AI, organise into a clean folder structure, build crates, plan sets, and export a Rekordbox-compatible XML library. All file operations use dry-run previews — nothing moves without user approval.
+rekordbot is a focused utility for digital DJs who use Rekordbox and CDJs. It minimises the friction between downloading audio files and having them ready to play: ingest from any source/format, convert losslessly to AIFF (lossy left as-is or optionally converted to MP3), auto-tag BPM/genre/mood with algorithmic analysis and Claude AI, organise into a clean folder structure, and export a Rekordbox-compatible XML library that imports cleanly with all metadata intact. All file operations use dry-run previews — nothing moves without user approval.
 
 Target user: Dale and his DJ peers, with monetisation potential later.
 
@@ -414,10 +414,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6d.1 — Scope Reduction (next; brief not yet drafted)
-**Branch:** to be opened as `feature/scope-reduction` from `develop` at next session start
-**Tests:** 1245 passing across all phases (Phase 6d complete, no production code changes during 6d — measurement and documentation only)
-**Next step:** Open Session 35 by drafting the Phase 6d.1 feature brief. The Phase 6d Decision Point (`docs/perf/README.md` — Decision point section) is the source of truth for what 6d.1 must deliver: soft-retire Crate Builder (Phase 5a) and Set Planner (Phase 5b), remove key detection from the analysis pipeline, remove the key column from the track table UI, remove the `Tonality` attribute from XML export, verify AI tagging prompt does not consume key as input, and re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/` to confirm the expected ~25× analysis speedup.
+**Phase:** 6d.1 — Scope Reduction (closing)
+**Branch:** `feature/scope-reduction`
+**Tests:** 1201 passing, 24 skipped (Phase 6d.1 deactivated Phase 5a/5b test surface)
+**Next step:** Complete Commit 6 (re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/`) and close Phase 6d.1. Then `fix/drag-and-drop` as the immediate next session.
 
 ### Phase Summary
 
@@ -436,7 +436,7 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 | 6b — .dmg Packaging & Migration | 1154 | `docs/features/phase-6b-dmg-packaging.md` |
 | 6c — UI Review & Bug Fixing | 1192 | `docs/features/phase-6c-dogfooding.md` |
 | 6d — Performance Optimisation | 1245 | `docs/features/phase-6d-performance.md` |
-| 6d.1 — Scope Reduction | TBD | TBD (brief to be drafted Session 35) |
+| 6d.1 — Scope Reduction | 1201 | `docs/features/phase-6d.1-scope-reduction.md` |
 
 Test counts are cumulative. Each phase's feature brief has full deliverables, architecture, and acceptance criteria. Research docs in `docs/research/`.
 
@@ -508,7 +508,7 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - Dev-mode backend invocation: from the repo root, run `uv run uvicorn backend.main:app --host 127.0.0.1 --port 8420 --reload`. The absolute imports in `backend/main.py` require `backend.main:app` (module path), not `main:app`, and the working directory must be the repo root, not `backend/`. The output directory env var is `REKORDBOT_OUTPUT_DIRECTORY` (NOT `REKORDBOT_OUTPUT_DIR`) — the wrong name silently does nothing and routes output to the default (real) library directory. For any workspace-isolated run (e.g. perf profiling), set both `REKORDBOT_DB_URL="sqlite:////tmp/some-test.db"` and `REKORDBOT_OUTPUT_DIRECTORY="/tmp/some-test-output"` explicitly.
 - **Packaged-mode pre-flight — install timestamp.** `make build-dmg` produces a `.app` in `target/release/bundle/macos/` and a `.dmg` in `target/release/bundle/dmg/` but does NOT install to `/Applications/`. Installation requires manually opening the `.dmg` and dragging. Before any packaged-mode measurement, manual smoke test, or dogfooding session: confirm `/Applications/rekordbot.app/Contents/MacOS/sidecar/rekordbot-server` modification timestamp is after the latest relevant commit (`ls -la`). Session 33 lost ~90 minutes diagnosing an apparent harness bug that was actually a stale `/Applications/` install predating the harness code. This is the cheap audit; the cheapest correct check before any packaged-mode work.
 - **`analysis_detect_key` is a known 94–96% dominant stage and not an optimisation target.** Two independent Phase 6d baselines (76 tracks total: Lakuti N=24 at 94.4%, Martyn N=52 at 96.0%) confirmed key detection dominates `analysis_track` wall-clock. The Phase 6d Step 5 Decision Point retired the downstream consumers of key data rather than optimising the detector. Do not re-open key detection as a speed-optimisation target without first reading `docs/perf/README.md` Decision point. The `KeyDetector` service remains in the codebase as dormant code post-Phase-6d.1 (reachable by direct call but not invoked by any pipeline).
-- **Crate Builder (Phase 5a) and Set Planner (Phase 5b) are being soft-retired in Phase 6d.1.** Their UI entry points and routes will be removed; code, models, tests, and DB tables preserved for potential future revival. Empirical trial during Session 34 confirmed architectural mismatch with realistic DJ workflow (AI clustering assumes a comprehensive analysed library; realistic ingestion is a few hundred new tracks at a time against a much larger Rekordbox-managed library known through listening, not algorithmic mining). Do not modify, extend, or fix bugs in Phase 5a/5b code unless working specifically in Phase 6d.1 or a future revival phase.
+- **Crate Builder (Phase 5a) and Set Planner (Phase 5b) are soft-retired as of Phase 6d.1.** UI entry points removed; backend routes deregistered; XML export no longer emits crate/set playlists. The service modules (`crate_assigner.py`, `crate_manager.py`, `set_planner.py`, `set_prompt_builder.py`, `crate_prompt_builder.py`, `bpm_transition.py`, `key_compatibility.py`), data models (`Crate`, `CrateTrack`, `SetPlan`, `SetTrack`, `SetSegment`), DB tables, and tests are preserved as dormant code reachable only by direct call. The frontend component files (`CrateSidebar.tsx`, `CrateCreateDialog.tsx`, `SetPlannerView.tsx`, `SetCreateDialog.tsx`, `SetListPanel.tsx`) remain in the repo but are unimported. Two dead parameters were left in place during the cleanup to preserve dormant-code signatures: `key_notation` on `set_prompt_builder.py:_build_track_summary_for_set` (annotated with `noqa: ARG001`) and the body of `routes/sets.py:export_set_endpoint` (replaced with `raise NotImplementedError`). Empirical trial during Session 34 confirmed architectural mismatch with realistic DJ workflow. Do not modify, extend, or fix bugs in this dormant surface area unless working specifically in a future hard-delete phase or revival phase.
 - **Concurrent conversion re-enable indefinitely deferred.** The Phase 6d brief named it as a secondary deliverable. Phase 6d closed without action on it: on a post-Phase-6d.1 analysis pipeline running at ~0.5s/track instead of ~11.9s/track, the absolute savings from concurrent conversion become small (single-digit seconds on a 52-track corpus). The architectural fix may still be worth doing eventually — single-worker is a regression from pre-Phase-6c capability — but it now ranks below several other candidates and gets revisited only if profiling against a post-scope-reduction baseline shows it matters.
 - **Pre-existing mypy debt: 21 errors across 8 files** (state at Phase 6d close, baseline on `develop`). Categorised by location:
   - **11 in Phase 5a/5b code** (`crate_assigner.py` 1, `crate_manager.py` 1, `set_planner.py` 3, `test_crate_integration.py` 3, `test_set_integration.py` 3) — these will **persist after Phase 6d.1**, because soft retirement preserves code and tests. Only hard deletion would clear them. They are dormant code's debt.
@@ -535,6 +535,6 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 | **6b** | .dmg Packaging & Migration Setup | ✅ Done | Alembic baseline migration, automatic startup migration, .dmg packaging, post-build sidecar injection |
 | **6c** | UI Review & Bug Fixing | ✅ Done | Dogfooding phase — import real library, fix bugs and UX friction |
 | **6d** | Performance Optimisation | ✅ Done | Profiling harness, two real-corpus baselines (Lakuti, Martyn), measure-then-decide outcome → scope reduction |
-| **6d.1** | Scope Reduction | ⬅️ Current | Retire Crate Builder + Set Planner (soft); remove key detection from analysis pipeline; refocus app on ingest → analyse (BPM only) → AI tag → organise → export |
-| 6e | UI Polish & Design | Not started | Serious design pass, folder template editor, drag-and-drop, custom .dmg background |
+| **6d.1** | Scope Reduction | ✅ Done | Retired Crate Builder + Set Planner from active surface area; removed key detection from the analysis pipeline and key as an input signal to AI tagging; refocused the app on ingest → analyse (BPM only) → AI tag → organise → export. Code preserved as dormant until a future hard-delete phase. |
+| 6e | UI Polish & Design | Not started | Serious design pass on the focused post-6d.1 surface area, folder template editor, custom .dmg background |
 | 6f | Signing & Distribution | Not started | Code signing, notarisation, signed .dmg, onboarding docs |

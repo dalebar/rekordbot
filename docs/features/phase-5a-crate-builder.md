@@ -1,8 +1,24 @@
 # Feature: Crate Builder
 **Branch:** `feature/phase-5a-crate-builder`
-**Status:** Complete ✅
+**Status:** Complete (Phase 5a) → Soft-retired (Phase 6d.1) ⛔
 **Phase:** 5a
 **Depends on:** Phase 4 (complete)
+
+---
+
+## ⛔ Superseded — Soft-retired in Phase 6d.1
+
+This feature was built and shipped in Phase 5a (Session 22, October 2025), and was soft-retired in Phase 6d.1 (Session 35, May 2026).
+
+**Reason:** Empirical use during Phase 6c dogfooding established that the AI-clustering model behind Crate Builder didn't fit realistic DJ workflow. The model assumed a comprehensive analysed library against which Claude could cluster tracks into vibe-described crates. Real-world DJ ingestion looks different: a handful of new tracks at a time, fed into a much larger Rekordbox-managed library that the DJ already knows through listening rather than through algorithmic mining. Inviting Claude to cluster a 3-track batch into vibe-described crates produced output that wasn't useful — it lacked the breadth to be meaningful and competed with the DJ's own contextual knowledge rather than augmenting it.
+
+**Endstate as of Phase 6d.1:**
+- UI entry points removed (`CrateSidebar`, `CrateCreateDialog` no longer imported by `App.tsx`).
+- Backend routes deregistered (`/api/crates/*` returns 404).
+- XML exporter no longer emits crate playlists.
+- Code, data models, DB tables, and tests preserved as dormant.
+
+**Future:** A hard-delete pass (working name "Path X") may eventually `git rm` this entire feature. Until then, the brief below is preserved as historical record of what was built and why.
 
 ---
 

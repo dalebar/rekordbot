@@ -22,14 +22,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   // Form state
   const [apiKey, setApiKey] = useState("");
   const [outputDir, setOutputDir] = useState("");
-  const [keyNotation, setKeyNotation] = useState("camelot");
   const [folderTemplate, setFolderTemplate] = useState("{artist}/{album}/{title}");
   const [convertAac, setConvertAac] = useState(false);
   const [bpmMin, setBpmMin] = useState(70);
   const [bpmMax, setBpmMax] = useState(180);
   const [organiseConfidence, setOrganiseConfidence] = useState(0.7);
-  const [trackDuration, setTrackDuration] = useState(7);
-  const [maxTracks, setMaxTracks] = useState(50);
 
   // Validation state
   const [keyValid, setKeyValid] = useState<boolean | null>(null);
@@ -43,14 +40,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         setSettings(s);
         setApiKey(s.anthropic_api_key);
         setOutputDir(s.output_directory);
-        setKeyNotation(s.default_key_notation);
         setFolderTemplate(s.folder_template);
         setConvertAac(s.convert_aac_to_mp3);
         setBpmMin(s.bpm_range_min);
         setBpmMax(s.bpm_range_max);
         setOrganiseConfidence(s.organise_confidence_threshold);
-        setTrackDuration(s.set_track_duration_minutes);
-        setMaxTracks(s.set_max_tracks);
         setLoading(false);
       })
       .catch(() => {
@@ -121,14 +115,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
       await updateSettings({
         anthropic_api_key: apiKey,
         output_directory: outputDir,
-        default_key_notation: keyNotation,
         folder_template: folderTemplate,
         convert_aac_to_mp3: convertAac,
         bpm_range_min: bpmMin,
         bpm_range_max: bpmMax,
         organise_confidence_threshold: organiseConfidence,
-        set_track_duration_minutes: trackDuration,
-        set_max_tracks: maxTracks,
       });
       addToast("success", "Settings saved");
     } catch {
@@ -138,14 +129,11 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
   }, [
     apiKey,
     outputDir,
-    keyNotation,
     folderTemplate,
     convertAac,
     bpmMin,
     bpmMax,
     organiseConfidence,
-    trackDuration,
-    maxTracks,
     addToast,
   ]);
 
@@ -205,7 +193,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               {keyValid === false && <span className="self-center text-red-400">✗</span>}
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Required for AI tagging, crate building, and set planning
+              Required for AI tagging
             </p>
           </div>
 
@@ -234,20 +222,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
               {dirValid === false && <span className="self-center text-red-400">✗</span>}
             </div>
             {dirError && <p className="text-xs text-red-400 mt-1">{dirError}</p>}
-          </div>
-
-          {/* Key Notation */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Key Notation</label>
-            <select
-              value={keyNotation}
-              onChange={(e) => setKeyNotation(e.target.value)}
-              className="bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200"
-            >
-              <option value="camelot">Camelot (8A, 11B)</option>
-              <option value="open_key">Open Key (1m, 4d)</option>
-              <option value="classical">Classical (Am, C)</option>
-            </select>
           </div>
 
           {/* Folder Template */}
@@ -334,31 +308,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </p>
               </div>
 
-              {/* Track Duration */}
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">
-                  Set Track Duration (minutes)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={trackDuration}
-                  onChange={(e) => setTrackDuration(Number(e.target.value))}
-                  className="w-24 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200"
-                />
-              </div>
-
-              {/* Max Tracks Per Set */}
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Max Tracks Per Set</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={maxTracks}
-                  onChange={(e) => setMaxTracks(Number(e.target.value))}
-                  className="w-24 bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200"
-                />
-              </div>
             </div>
           )}
         </div>

@@ -2725,3 +2725,214 @@ Carry-forward, not blocking:
   commit, Commit C).
 - Merge to develop and tag `phase-6d-complete` pending after
   Commit C lands.
+
+
+## Session 35 — 2026-05-19
+
+### What was worked on
+
+Phase 6d.1 (Scope Reduction) executed on `feature/scope-reduction`,
+brief at `docs/features/phase-6d.1-scope-reduction.md`. Six of the
+seven planned commits landed during the session: brief drafted
+(Commit 0), frontend UI surface area removed (Commit 1), backend
+routes deregistered + XML exporter crate/set hooks removed +
+Tonality dropped (Commit 2), key detection removed from the
+analysis pipeline (Commit 3), key removed from the AI tagging
+prompt (Commit 4), and housekeeping — project docs reframed,
+supersession headers on Phase 5a/5b briefs, vestigial Settings UI
+cleanup, this SESSIONS.md entry (Commit 5, this commit). Commit 6
+(re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/`)
+carries forward to the next sitting.
+
+### Summary
+
+Six distinct stretches:
+
+1. **Brief drafting and Shape decision, ~14:00.** Phase 6d's
+   Decision Point (Session 34) had locked the scope; the brief
+   was a sequencing document, not a re-litigation. Drafted in one
+   pass against the Decision Point's "In scope for the
+   scope-reduction phase" list. Locked D1 (keep `track.key` and
+   `track.key_confidence` columns; no Alembic migration) before
+   any code change. Project Overview rewrite was deferred from
+   the brief itself to the housekeeping commit, and the framing
+   question — minimal subtraction, full user-perspective rewrite,
+   or concise reframing — was decided in the housekeeping commit
+   as **Shape B** (concise reframing). Shape B reads as a focused
+   utility rather than a feature catalogue with deactivated
+   features mixed in; it sets the tone for the post-6d.1 codebase.
+
+2. **Commits 1 and 2, ~14:30 to ~16:30.** Frontend UI removal
+   (Commit 1) went cleanly except for the side effect that
+   removing `CrateSidebar` removed the only path to Settings from
+   the UI. Added a Settings button to the header rather than
+   leave the panel unreachable. Commit 2 (route deregistration
+   plus XML exporter cleanup) hit the first of the session's two
+   trilemmas: the `_load_crates`, `_load_sets`, and signature-changed
+   `build_xml` references in `routes/sets.py:export_set_endpoint`
+   no longer compile against the cleaned-up service code. Mypy
+   flagged it; pre-commit failed. The three options — modify the
+   dormant route, stub the deleted helpers back in as no-ops, or
+   add a mypy exclude — resolved to **option 1: neutralise the
+   endpoint body to `raise NotImplementedError`** with the
+   function signature, decorator, and docstring preserved. The
+   route is deregistered so the body is unreachable at runtime;
+   the change is minimal-touch consistent with the soft-retire
+   spirit. This precedent then re-applied at Commit 4.
+
+3. **Commits 3 and 4, ~16:30 to ~18:30.** Commit 3 (analysis
+   pipeline key removal) was clean: Step 4 of `analyse_track`
+   deleted, `KeyResult` import gone, log line and return shape
+   updated, one new regression test added. 1199 passing, 24
+   skipped. Commit 4 (AI prompt key removal) tightened
+   `build_track_summary` and `build_batch_message` signatures
+   and immediately hit the second trilemma: dormant
+   `set_prompt_builder.py:_build_track_summary_for_set` and
+   `crate_assigner.py:_process_batch` still called the old
+   signature. 12 test failures cascaded from those two call
+   sites. Same shape as Commit 2: modify the dormant code (option
+   1), shim backwards-compat (option 2), or rescope (option 3).
+   Resolved to **option 1a**: drop the `key_display=` kwarg in
+   both dormant call sites; retain `key_notation` as a dead
+   parameter on `_build_track_summary_for_set` with `noqa: ARG001`
+   to preserve the signature that `set_planner.py` still calls
+   (which itself remains untouched per the brief). All 12 tests
+   passed unmodified after the service-side fix — no test edits
+   needed.
+
+4. **Strategic shift mid-phase: "soft retire now, hard delete
+   later."** Between Commit 4 and the housekeeping commit, the
+   framing of the entire phase tightened. The brief's original
+   "preserve verbatim" rule was, in practice, "preserve where
+   preservation doesn't break the build, otherwise minimal-touch
+   for compilation." The two Commit 2 and Commit 4 precedents
+   set the tone; the new framing was articulated explicitly
+   between sessions and locked in for the housekeeping commit.
+   A future hard-delete pass — working name **Path X** — will
+   `git rm` the dormant Crate Builder, Set Planner, key
+   detection, and key notation infrastructure when it's clear
+   they aren't being revived. Until then, the soft-retire endstate
+   is the operational reality; documentation should describe the
+   project as the focused tool it now is, not as a catalogue of
+   active and inactive features.
+
+5. **Housekeeping commit (this commit), ~19:00 to ~20:30.**
+   CLAUDE.md Project Overview rewritten in Shape B. Phased Build
+   Plan table updated with the 6d.1 row marked Done. Known Issues
+   entry on Phase 5a/5b retirement rewritten in present tense
+   with the full surface-area inventory. Current Status section
+   updated with the closing-phase wording and the new 1201-test
+   count. Phase Summary table got its 6d.1 row.
+   `docs/rekordbot-project-plan.md` got the v1.1 title bump and
+   Section 1 rewrite, supersession indicators on Modules E / E2 /
+   F, a new Phase 6d.1 entry in Section 4, and the branch list
+   in Section 5 updated. Supersession headers landed on Phase 5a
+   and 5b briefs with reason, endstate, and Path X note.
+   `SetupWizard.tsx`, `SettingsPanel.tsx`, and `TrackTable.tsx`
+   got copy and vestigial-UI fixes (Key Notation dropdown
+   removed; Set Track Duration and Max Tracks Per Set removed
+   from Advanced Settings; mentions of crates/sets dropped from
+   helper text). Backend `default_key_notation`,
+   `set_track_duration_minutes`, and `set_max_tracks` settings
+   remain in the schema — UI removal only. Brief acceptance
+   criteria ticked; brief status updated to "Closing — Commit 6
+   outstanding"; Commit Log table appended.
+
+6. **`fix/drag-and-drop` deferred to next session.** Drag-and-drop
+   has been broken since the Tauri v2 migration. Considered
+   folding it into 6d.1 since it would help Commit 6's manual
+   smoke test, but kept the phase scope tight: 6d.1 is about
+   scope reduction; the DnD fix is its own thing. Will open
+   `fix/drag-and-drop` as the immediate next session, ahead of
+   Phase 6e and ahead of any further dogfooding.
+
+### Key decisions made
+
+1. **Soft retire now, hard delete later (Path X).** Dormant code
+   for Crate Builder, Set Planner, key detection, and key
+   notation remains in git. Reasons: optionality preserved if any
+   of these features turn out to be desirable in a revival
+   session; smaller change radius for 6d.1; no multi-table
+   migration to write or test. The hard-delete pass is a future
+   scoped session, not automatic.
+
+2. **Project Overview reframed in Shape B.** Shape A (minimal
+   subtraction — just remove the retired-feature bullets) was
+   rejected for reading as "feature catalogue with gaps." Shape
+   C (full user-perspective rewrite) was rejected as scope creep
+   beyond the brief. Shape B (concise reframing as "focused
+   utility for getting audio files from downloaded to
+   Rekordbox-ready") landed with the brief's user-value framing
+   intact and the deactivated features omitted entirely from
+   the active narrative.
+
+3. **Two Commit-2 / Commit-4 trilemmas resolved by softening
+   "preserved verbatim" to "preserved where preservation doesn't
+   break the build, otherwise minimal-touch."** Precedents:
+   `routes/sets.py:export_set_endpoint` body → `raise
+   NotImplementedError` (Commit 2); `set_prompt_builder.py:
+   _build_track_summary_for_set` `key_notation` parameter →
+   `noqa: ARG001` dead arg (Commit 4 follow-on). Both touches
+   were minimal, both preserved public signatures for upstream
+   dormant callers, both are surface area Path X will sweep when
+   it happens. The `pyproject.toml` mypy override approach for
+   soft-retired routes was considered and rejected in favour of
+   option 1.
+
+4. **`fix/drag-and-drop` is its own session, not 6d.1 scope.**
+   The fix is frontend-only: rewire `DropZone.tsx` to Tauri v2's
+   `onDragDropEvent` from `@tauri-apps/api/webview`. Folding it
+   into 6d.1 would have been convenient for Commit 6's manual
+   smoke test (drag-and-drop the corpus folder rather than use
+   Select Folder…) but the scope-reduction phase is
+   subtraction-only; adding a fix would muddy the narrative.
+
+5. **Vestigial settings: UI removed, backend schema kept.** The
+   Key Notation dropdown, Set Track Duration field, and Max
+   Tracks Per Set field are gone from `SettingsPanel.tsx`. The
+   `default_key_notation`, `set_track_duration_minutes`, and
+   `set_max_tracks` fields stay in `backend/config.py` and on
+   `SettingsResponse`. Old user configs continue to ship those
+   values without breaking; new configs persist defaults. Hard
+   delete of the schema fields is Path X work.
+
+### Carry-forward
+
+- **Commit 6 outstanding.** Re-baseline against
+  `Panorama_Bar_Playlist_04_Josey_Rebelle/` (52 tracks) in
+  packaged mode. Expected: analysis stage ~0.5s/track (down
+  from ~11.9s/track), ~24× speedup. Pre-flight per
+  `docs/perf/README.md` Reproduction Step 1: confirm
+  `/Applications/rekordbot.app/Contents/MacOS/sidecar/rekordbot-server`
+  modification timestamp is after the most recent relevant
+  commit. Output goes to
+  `docs/perf/post-scope-reduction-04-josey-rebelle.md` plus
+  `docs/perf/delta.md` (per-stage before/after) plus
+  `docs/perf/README.md` run history table update.
+- **SetupWizard / Settings layout polish.** When Advanced
+  Settings is expanded the Save button drops below the fold;
+  no scrollbar appears. Deferred to Phase 6e.
+- **`analysis.py` module docstring still references "BPM/key
+  detection."** Step 2 comment says "shared between detectors"
+  but there's only one detector left. `AnalysisResult` docstring
+  says "detection results" (plural). All deferred to Path X
+  rather than introduce a fourth round of dormant-code-cleanup
+  in 6d.1.
+- **Dead code in `TrackTable.tsx`.** The `getCrate` import,
+  `crateId` prop, and `crateTrackIds` state are still present
+  but only the crate path is ever hit by `crateId=null` from
+  `App.tsx`. Deferred to Path X.
+- **`revertField` API client `"key"` literal type.** Still
+  present in the union type. Deferred to Path X.
+- **Phase 6d.1 close pending.** Merge to develop with `--no-ff`
+  and tag `phase-6d.1-complete` after Commit 6 lands.
+
+### Next session
+
+`fix/drag-and-drop` — frontend-only fix. Rewire
+`frontend/src/DropZone.tsx` from the Tauri v1 drag-drop
+mechanism (currently reads `file.path` directly from the drop
+event, which is undefined in v2) to v2's `onDragDropEvent` from
+`@tauri-apps/api/webview`. Smoke-test against the Josey Rebelle
+corpus in packaged mode before push. Should be a single-commit
+session; opens after `phase-6d.1-complete` is tagged.

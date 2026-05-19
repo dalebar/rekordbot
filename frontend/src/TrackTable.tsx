@@ -467,8 +467,7 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
               Delete {selectedIds.size} track{selectedIds.size !== 1 ? "s" : ""}?
             </h3>
             <p className="mb-4 text-xs text-gray-400">
-              This removes the selected tracks from rekordbot's database and any crates or sets they
-              belong to.
+              This removes the selected tracks from rekordbot's database.
             </p>
             <label className="mb-4 flex items-center gap-2 text-xs text-gray-300">
               <input
