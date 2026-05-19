@@ -49,10 +49,12 @@ One JSON object per line, one line per timed event. Records include pipeline sta
 | Pipeline | Stages |
 |----------|--------|
 | Ingestion | `ingestion_inspect`, `ingestion_decide`, `ingestion_hash`, `ingestion_dup_check`, `ingestion_convert_ffmpeg`, `ingestion_copy`, `ingestion_db_insert`, `ingestion_file` (outer) |
-| Analysis | `analysis_read_tags`, `analysis_librosa_load`, `analysis_detect_bpm`, `analysis_detect_key`, `analysis_db_update`, `analysis_track` (outer) |
+| Analysis | `analysis_read_tags`, `analysis_librosa_load`, `analysis_detect_bpm`, `analysis_detect_key` (retired post-Phase-6d.1), `analysis_db_update`, `analysis_track` (outer) |
 | AI tagging | `ai_tag_build_message`, `ai_tag_api_call`, `ai_tag_parse_response`, `ai_tag_db_update`, `ai_tag_batch` (outer) |
-| XML export | `xml_export_load_tracks`, `xml_export_load_crates`, `xml_export_load_sets`, `xml_export_build`, `xml_export_write`, `xml_export` (outer) |
+| XML export | `xml_export_load_tracks`, `xml_export_load_crates` (retired post-Phase-6d.1), `xml_export_load_sets` (retired post-Phase-6d.1), `xml_export_build`, `xml_export_write`, `xml_export` (outer) |
 | XML import | `xml_import_parse`, `xml_import_tracks`, `xml_import_playlists`, `xml_import_commit`, `xml_import` (outer) |
+
+Three stage constants remain in `backend/services/perf.py::Stage` but no longer emit because Phase 6d.1 removed their call sites (key detection, crate loading, set loading). The constants are retained so historical JSONL files emitted before Phase 6d.1 still parse cleanly through the reporter. Post-Phase-6d.1 JSONL files will not contain records for these stages.
 
 Crate Builder and Set Planner are NOT instrumented. They were excluded from Phase 6d scope as pre-validation-stage features. (Subsequently retired in the scope-reduction phase — see Decision Point below.)
 
@@ -74,7 +76,7 @@ uv run scripts/perf-report.py \
 **Report contents:**
 
 - Per-pipeline aggregate (total wall-clock, per-stage count/total/mean/p50/p95/min/max)
-- "Share of outer mean" for inner stages within a pipeline that has a wrapping outer stage (e.g. `analysis_track` wraps `analysis_detect_key`)
+- "Share of outer mean" for inner stages within a pipeline that has a wrapping outer stage (e.g. `analysis_track` wraps `analysis_detect_bpm`)
 - AI tagging rate-limit wait derivation (`AI_TAG_BATCH duration − sum of inner stage durations`)
 - Errors table (any records emitted with error payloads)
 
@@ -86,14 +88,14 @@ uv run scripts/perf-report.py \
 
 Four DJ-curated playlists on `/Volumes/collection/`, sourced from Soulseek:
 
-1. `Panorama_Bar_Playlist_02_Lakuti/` — Lakuti (26 FLAC, 2 corrupt at source)
-2. `Panorama_Bar_Playlist_03_Martyn/` — Martyn (51 FLAC + 1 AIFF)
-3. `Panorama_Bar_Playlist_04_Josey_Rebelle/` — Josey Rebelle (held for post-scope-reduction measurement)
-4. `Panorama_Bar_Playlist_05_Nick_Höppner/` — Nick Höppner (held for reserve / direct A/B if needed)
+1. `Panorama_Bar_Playlist_02_Lakuti/` — Lakuti (26 FLAC, 2 corrupt at source). **Consumed:** Baseline 1.
+2. `Panorama_Bar_Playlist_03_Martyn/` — Martyn (51 FLAC + 1 AIFF). **Consumed:** Baseline 2.
+3. `Panorama_Bar_Playlist_04_Josey_Rebelle/` — Josey Rebelle (40 FLAC). **Consumed:** post-scope-reduction re-baseline. Corpus is smaller than the README originally implied (the Phase 6d.1 brief and the README's earlier "Future runs" wording inferred parity with Martyn's N=52; the folder actually contains 40 audio files).
+4. `Panorama_Bar_Playlist_05_Nick_Höppner/` — Nick Höppner (held for reserve / direct A/B if needed).
 
 The corpus was chosen because it reflects real DJ download practice: curated playlists rather than catalogue dumps, lossless source files, real-world tag completeness (often imperfect), occasional source corruption. Synthetic fixtures would not capture the FLAC-decode failures or the source-format-mix characteristics that surfaced in actual baselines.
 
-The two baselines (Lakuti, Martyn) advanced the real library state as a side effect. This was an intentional trade-off: measurement-against-real-state matters more than measurement-against-pristine-state, given the realistic workflow is "process new folder against existing library."
+The three consumed corpora (Lakuti, Martyn, Josey) advanced the real library state as a side effect. This was an intentional trade-off: measurement-against-real-state matters more than measurement-against-pristine-state, given the realistic workflow is "process new folder against existing library."
 
 ## Reproduction
 
@@ -163,22 +165,25 @@ uv run scripts/perf-report.py \
 
 ### 6. Write the report
 
-Follow the structure of `baseline-02-lakuti.md` or `baseline-03-martyn.md`. The reporter output is embedded as a section; the surrounding sections (corpus, starting state, pipelines exercised, anomalies, headline findings) provide context the reporter cannot generate.
+Follow the structure of `baseline-02-lakuti.md`, `baseline-03-martyn.md`, or `post-scope-reduction-04-josey-rebelle.md`. The reporter output is embedded as a section; the surrounding sections (corpus, starting state, pipelines exercised, anomalies, headline findings) provide context the reporter cannot generate.
 
 ## Run history
 
 | Run | Date | Corpus | N | Build commit | Report | Notes |
 |-----|------|--------|--:|--------------|--------|-------|
 | Baseline 1 | 2026-05-18 | Lakuti | 24 (of 26, 2 corrupt) | `45fd218` | [baseline-02-lakuti.md](baseline-02-lakuti.md) | First baseline. AI tagging deferred to Baseline 2. |
-| Baseline 2 | 2026-05-18 | Martyn | 52 | `18d74a0` | [baseline-03-martyn.md](baseline-03-martyn.md) | Second baseline. Full pipeline including AI tagging. |
+| Baseline 2 | 2026-05-18 | Martyn | 52 | `18d74a0` | [baseline-03-martyn.md](baseline-03-martyn.md) | Second baseline. Full pipeline including AI tagging. Established the `analysis_detect_key` 96% share. |
+| Post-6d.1 | 2026-05-19 | Josey Rebelle | 40 | `2826625` | [post-scope-reduction-04-josey-rebelle.md](post-scope-reduction-04-josey-rebelle.md) | Re-baseline after Phase 6d.1 scope reduction. Confirmed 19.5× analysis-per-track speedup. Delta narrative: [delta.md](delta.md). |
 
 ## Decision point (Phase 6d Step 5)
 
 **Outcome: scope reduction.** Path A (in-scope optimisation of `key_detector.py`) was the expected outcome given the baseline shape. The actual decision is a third path that the brief did not contemplate: retire the consumers of key data and remove key detection from the analysis pipeline entirely. This brings the analysis stage from ~11.9s/track to ~0.5s/track — a 25x speedup on the dominant phase — and removes two features (Crate Builder, Set Planner) whose downstream value the user empirically does not consume.
 
+**Outcome confirmed empirically:** the post-scope-reduction re-baseline (Josey Rebelle, 2026-05-19, build `2826625`) measured a 19.5× per-track speedup on `analysis_track` mean — slightly below the 25× prediction, with the shortfall attributable to cold-cache I/O on external storage now being the new ceiling rather than computation. See [delta.md](delta.md) for the full before/after narrative.
+
 ### Data
 
-Two independent baselines, 76 tracks across two real DJ corpora, agree:
+Two independent baselines, 76 tracks across two real DJ corpora, agreed pre-scope-reduction:
 
 | Baseline | Corpus | N | `analysis_detect_key` share | `analysis_detect_key` mean |
 |----------|--------|---|----------------------------:|---------------------------:|
@@ -208,16 +213,16 @@ BPM detection (~2% of analysis time, ~0.24s/track) is kept. BPM is consumed by t
 
 ### Consequences
 
-**In scope for the scope-reduction phase (next phase, separate session):**
+**In scope for the scope-reduction phase (Phase 6d.1, completed in Session 35):**
 
-- Soft-retire Crate Builder (Phase 5a). UI entry points and routes removed; code, models, tests, and DB tables preserved.
-- Soft-retire Set Planner (Phase 5b). Same treatment.
-- Remove `analysis_detect_key` from the analysis pipeline. The `KeyDetector` service stays in the codebase as dormant code reachable only by direct call.
-- Remove the key column from the track table UI.
-- Remove the `Tonality` attribute from the Rekordbox XML export.
-- Verify the AI tagging prompt does not consume key as input. If it does, remove the field from the prompt builder.
-- Update CLAUDE.md and the project plan to reflect the new value proposition.
-- Re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/` to confirm the expected ~25x analysis speedup in practice. Result committed as `post-scope-reduction-04-josey-rebelle.md` plus `delta.md`.
+- ✅ Soft-retire Crate Builder (Phase 5a). UI entry points and routes removed; code, models, tests, and DB tables preserved.
+- ✅ Soft-retire Set Planner (Phase 5b). Same treatment.
+- ✅ Remove `analysis_detect_key` from the analysis pipeline. The `KeyDetector` service stays in the codebase as dormant code reachable only by direct call.
+- ✅ Remove the key column from the track table UI.
+- ✅ Remove the `Tonality` attribute from the Rekordbox XML export.
+- ✅ Verify the AI tagging prompt does not consume key as input. The prompt did consume key in three places (system prompt hint, `build_track_summary`'s `key_display` row, `ai_tagger.py`'s `key_displays` construction); all three removed in Commit 4.
+- ✅ Update CLAUDE.md and the project plan to reflect the new value proposition.
+- ✅ Re-baseline against `Panorama_Bar_Playlist_04_Josey_Rebelle/` to confirm the expected ~25× analysis speedup in practice. Result committed as `post-scope-reduction-04-josey-rebelle.md` plus `delta.md`. Empirical speedup: 19.5× (slightly below the 25× prediction; explanation in delta.md).
 
 **Deferred:**
 
@@ -234,13 +239,20 @@ The brief's Path A assumed feature stability — optimise the bottleneck within 
 
 ## Future runs
 
-Following the scope-reduction phase that closes Phase 6d, a re-measurement pass against `Panorama_Bar_Playlist_04_Josey_Rebelle/` will be committed as `post-scope-reduction-04-josey-rebelle.md`, with an accompanying `delta.md` documenting the before/after wall-clock change.
+The post-scope-reduction re-baseline (Josey Rebelle, post-6d.1) has been consumed and the analysis speedup empirically confirmed.
 
-`Panorama_Bar_Playlist_05_Nick_Höppner/` is held in reserve for: (a) a direct A/B against either earlier baseline if needed, or (b) a final confirmation pass on the real library after optimisation work completes.
+`Panorama_Bar_Playlist_05_Nick_Höppner/` remains held in reserve for:
+
+- A direct A/B against either earlier baseline if needed (e.g. validating any future concurrent-analysis worker pool implementation).
+- A future confirmation pass on the real library after any subsequent optimisation work (e.g. if concurrent conversion is re-enabled or if librosa I/O caching is pursued).
+- A hard-delete-phase (Path X) confirmation that the dormant Phase 5a/5b code paths haven't accidentally crept back into the live pipelines.
+
+Post-6d.1, the next bottleneck candidates are I/O (librosa_load at 58.5% of post-6d.1 analysis time, dominated by cold-cache external-drive variance) and BPM detection (40.5% of post-6d.1 analysis time, the largest remaining computational cost). Neither is currently in scope; both are real candidates if a future phase justifies the work.
 
 ## Known caveats
 
-- **External-drive I/O variance.** `/Volumes/collection/` is a USB-C external. I/O timings vary with drive cache state and concurrent system I/O. Multiple runs of the same corpus would show different absolute numbers; the per-stage *shapes* are reproducible (see the Baseline 1 vs Baseline 2 `analysis_detect_key` share comparison).
+- **External-drive I/O variance.** `/Volumes/collection/` is a USB-C external. I/O timings vary with drive cache state and concurrent system I/O. Multiple runs of the same corpus would show different absolute numbers; the per-stage *shapes* are reproducible (see the Baseline 1 vs Baseline 2 `analysis_detect_key` share comparison, and the consistent librosa_load max outliers across all three runs).
 - **Pipeline-time vs operator-time.** The reporter's wall-clock span measures from first emitted record to last. Operator-driven gaps between clicking "Analyse" → "AI Tag" → "Export XML" are not pipeline cost and are not captured. Both spans are recorded in baseline report preambles.
 - **One outer stage may overlap multiple inner stages.** Reporter relies on `start_ts` and the `OUTER_STAGE_FOR_PIPELINE` mapping for nesting awareness, not file order. Records emit in exit-order (inner before outer).
 - **Thread origin not yet captured.** `PerfRecord` does not currently include `threading.get_ident()`. The single-worker conversion path means this hasn't mattered yet. If concurrent conversion is re-enabled at any point, this field becomes essential and the harness will need to be updated.
+- **Retired stage constants.** `Stage.ANALYSIS_DETECT_KEY`, `Stage.XML_EXPORT_LOAD_CRATES`, and `Stage.XML_EXPORT_LOAD_SETS` remain defined in `backend/services/perf.py` but no longer emit records. Historical JSONL files (Baseline 1, Baseline 2) contain records for these stages and parse correctly; post-Phase-6d.1 runs do not.
