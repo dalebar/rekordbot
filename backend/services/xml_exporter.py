@@ -12,8 +12,6 @@ from sqlalchemy.orm import Session
 
 from backend.config import Settings
 from backend.exceptions import ExportError
-from backend.models.crate import Crate, CrateTrack
-from backend.models.set_plan import SetPlan, SetTrack
 from backend.models.track import Track
 from backend.services.perf import Stage, get_recorder
 from backend.services.xml_builder import build_xml, write_xml
@@ -104,20 +102,11 @@ def export_library(
         # Resolve output directory for playlist generation
         output_directory = str(Path(settings.output_directory).expanduser().resolve())
 
-        # Load crates and sets for playlist generation
-        with recorder.stage(Stage.XML_EXPORT_LOAD_CRATES):
-            crates_data = _load_crates(db_session)
-        with recorder.stage(Stage.XML_EXPORT_LOAD_SETS):
-            sets_data = _load_sets(db_session)
-
         # Build XML
         with recorder.stage(Stage.XML_EXPORT_BUILD):
             tree, track_id_map, build_warnings = build_xml(
                 exportable_tracks,
-                settings.default_key_notation,
                 output_directory,
-                crates=crates_data,
-                sets=sets_data,
             )
             warnings.extend(build_warnings)
 
@@ -173,61 +162,3 @@ def _resolve_output_path(output_path: str | None, settings: Settings) -> str:
 
     output_dir = Path(settings.output_directory).expanduser().resolve()
     return str(output_dir / "rekordbox.xml")
-
-
-def _load_crates(db_session: Session) -> list:
-    """Load all crates with their track IDs for XML export.
-
-    Args:
-        db_session: SQLAlchemy session.
-
-    Returns:
-        List of (Crate, list[int]) tuples where the int list contains
-        DB track IDs assigned to that crate.
-    """
-    crates = db_session.query(Crate).all()
-    if not crates:
-        return []
-
-    result = []
-    for crate in crates:
-        track_ids = [
-            ct.track_id
-            for ct in db_session.query(CrateTrack).filter(CrateTrack.crate_id == crate.id).all()
-        ]
-        if track_ids:
-            result.append((crate, track_ids))
-
-    return result
-
-
-def _load_sets(db_session: Session) -> list:
-    """Load all complete sets with their ordered track IDs for XML export.
-
-    Only sets with status 'complete' are included. Track IDs are returned
-    in position order to preserve the set sequence.
-
-    Args:
-        db_session: SQLAlchemy session.
-
-    Returns:
-        List of (SetPlan, list[int]) tuples where the int list contains
-        DB track IDs in position order.
-    """
-    sets = db_session.query(SetPlan).filter(SetPlan.status == "complete").all()
-    if not sets:
-        return []
-
-    result = []
-    for set_plan in sets:
-        set_tracks = (
-            db_session.query(SetTrack)
-            .filter(SetTrack.set_id == set_plan.id, SetTrack.is_candidate.is_(False))
-            .order_by(SetTrack.position)
-            .all()
-        )
-        track_ids = [st.track_id for st in set_tracks]
-        if track_ids:
-            result.append((set_plan, track_ids))
-
-    return result

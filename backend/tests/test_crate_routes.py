@@ -1,8 +1,14 @@
 """Tests for crate API routes."""
 
+import pytest
+
 from backend.models.crate import Crate, CrateTrack
 from backend.models.database import SessionLocal
 from backend.models.track import Track
+
+pytestmark = pytest.mark.skip(
+    reason="Routes deregistered in Phase 6d.1 — module preserved for future revival"
+)
 
 
 class TestCrateListAndDetail:

@@ -111,7 +111,7 @@ class TestEndToEndExport:
         assert track1.get("Album") == "Shelflife 6"
         assert track1.get("Genre") == "Drum & Bass"
         assert track1.get("AverageBpm") == "174.00"
-        assert track1.get("Tonality") == "8A"
+        assert track1.get("Tonality") is None
         assert track1.get("Rating") == "204"  # 4 stars
         assert track1.get("TotalTime") == "342"
         assert track1.get("Kind") == "AIFF File"

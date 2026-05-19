@@ -59,12 +59,12 @@ class TestBuildCollection:
 
     def test_entries_count(self, mock_mtime: Any, mock_size: Any) -> None:
         tracks = [_make_track(track_id=i) for i in range(1, 4)]
-        collection, _, _ = build_collection(tracks, "camelot")
+        collection, _, _ = build_collection(tracks)
         assert collection.get("Entries") == "3"
 
     def test_track_ids_sequential(self, mock_mtime: Any, mock_size: Any) -> None:
         tracks = [_make_track(track_id=i) for i in [10, 20, 30]]
-        collection, id_map, _ = build_collection(tracks, "camelot")
+        collection, id_map, _ = build_collection(tracks)
 
         track_elems = collection.findall("TRACK")
         assert len(track_elems) == 3
@@ -76,13 +76,13 @@ class TestBuildCollection:
         assert id_map == {10: 1, 20: 2, 30: 3}
 
     def test_empty_collection(self, mock_mtime: Any, mock_size: Any) -> None:
-        collection, id_map, warnings = build_collection([], "camelot")
+        collection, id_map, warnings = build_collection([])
         assert collection.get("Entries") == "0"
         assert len(id_map) == 0
 
     def test_track_attributes_present(self, mock_mtime: Any, mock_size: Any) -> None:
         tracks = [_make_track(title="My Track", artist="My Artist")]
-        collection, _, _ = build_collection(tracks, "camelot")
+        collection, _, _ = build_collection(tracks)
         track_elem = collection.find("TRACK")
         assert track_elem is not None
         assert track_elem.get("Name") == "My Track"
@@ -194,13 +194,13 @@ class TestBuildXml:
 
     def test_root_element(self, mock_mtime: Any, mock_size: Any) -> None:
         tracks = [_make_track(track_id=1, file_path="/library/A/t.aiff")]
-        tree, _, _ = build_xml(tracks, "camelot", "/library")
+        tree, _, _ = build_xml(tracks, "/library")
         root = tree.getroot()
         assert root.tag == "DJ_PLAYLISTS"
         assert root.get("Version") == "1.0.0"
 
     def test_product_element(self, mock_mtime: Any, mock_size: Any) -> None:
-        tree, _, _ = build_xml([], "camelot", "/library")
+        tree, _, _ = build_xml([], "/library")
         product = tree.getroot().find("PRODUCT")
         assert product is not None
         assert product.get("Name") == "rekordbot"
@@ -209,13 +209,13 @@ class TestBuildXml:
 
     def test_collection_present(self, mock_mtime: Any, mock_size: Any) -> None:
         tracks = [_make_track(track_id=1, file_path="/library/A/t.aiff")]
-        tree, _, _ = build_xml(tracks, "camelot", "/library")
+        tree, _, _ = build_xml(tracks, "/library")
         collection = tree.getroot().find("COLLECTION")
         assert collection is not None
         assert collection.get("Entries") == "1"
 
     def test_playlists_present(self, mock_mtime: Any, mock_size: Any) -> None:
-        tree, _, _ = build_xml([], "camelot", "/library")
+        tree, _, _ = build_xml([], "/library")
         playlists = tree.getroot().find("PLAYLISTS")
         assert playlists is not None
 
@@ -225,7 +225,7 @@ class TestBuildXml:
             _make_track(track_id=1, file_path="/library/A/t1.aiff"),
             _make_track(track_id=2, file_path="/library/B/t2.aiff"),
         ]
-        tree, _, _ = build_xml(tracks, "camelot", "/library")
+        tree, _, _ = build_xml(tracks, "/library")
 
         # Get TrackIDs from COLLECTION
         collection = tree.getroot().find("COLLECTION")
@@ -252,7 +252,7 @@ class TestWriteXml:
 
     def test_write_creates_file(self, mock_mtime: Any, mock_size: Any, tmp_path: Path) -> None:
         tracks = [_make_track(track_id=1, file_path="/library/A/t.aiff")]
-        tree, _, _ = build_xml(tracks, "camelot", "/library")
+        tree, _, _ = build_xml(tracks, "/library")
 
         output = tmp_path / "rekordbox.xml"
         write_xml(tree, output)
@@ -261,7 +261,7 @@ class TestWriteXml:
 
     def test_write_valid_xml(self, mock_mtime: Any, mock_size: Any, tmp_path: Path) -> None:
         tracks = [_make_track(track_id=1, file_path="/library/A/t.aiff")]
-        tree, _, _ = build_xml(tracks, "camelot", "/library")
+        tree, _, _ = build_xml(tracks, "/library")
 
         output = tmp_path / "rekordbox.xml"
         write_xml(tree, output)
@@ -274,7 +274,7 @@ class TestWriteXml:
     def test_write_has_xml_declaration(
         self, mock_mtime: Any, mock_size: Any, tmp_path: Path
     ) -> None:
-        tree, _, _ = build_xml([], "camelot", "/library")
+        tree, _, _ = build_xml([], "/library")
         output = tmp_path / "rekordbox.xml"
         write_xml(tree, output)
 
@@ -284,7 +284,7 @@ class TestWriteXml:
     def test_write_creates_parent_dirs(
         self, mock_mtime: Any, mock_size: Any, tmp_path: Path
     ) -> None:
-        tree, _, _ = build_xml([], "camelot", "/library")
+        tree, _, _ = build_xml([], "/library")
         output = tmp_path / "subdir" / "nested" / "rekordbox.xml"
         write_xml(tree, output)
         assert output.exists()
@@ -298,7 +298,7 @@ class TestWriteXml:
                 title="Rêve",
             )
         ]
-        tree, _, _ = build_xml(tracks, "camelot", "/library")
+        tree, _, _ = build_xml(tracks, "/library")
         output = tmp_path / "rekordbox.xml"
         write_xml(tree, output)
 

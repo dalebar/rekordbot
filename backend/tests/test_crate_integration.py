@@ -27,7 +27,6 @@ from backend.services.crate_manager import (
     refresh_crate,
     remove_tracks,
 )
-from backend.services.xml_builder import build_xml
 
 
 def _make_track(
@@ -281,83 +280,3 @@ class TestCrateListAndDetail:
 
         assert by_id[crate_a.id].track_count == 2
         assert by_id[crate_b.id].track_count == 0
-
-
-class TestXmlExportWithCrates:
-    """Test that crates appear correctly in Rekordbox XML export."""
-
-    def test_crate_playlists_in_xml(self, db_session: Session) -> None:
-        """Crate playlists appear in the XML output alongside folder playlists."""
-        t1 = _make_track(db_session, "XML Track", artist="XML Artist")
-
-        crate = create_crate("My Crate", "test xml export", False, db_session)
-        add_tracks(crate.id, [t1.id], db_session)
-
-        # Build XML with crate data
-        tracks = db_session.query(Track).all()
-        crate_data = [
-            (crate, [t1.id]),
-        ]
-
-        tree, _, _ = build_xml(tracks, "camelot", "/output", crates=crate_data)
-        root = tree.getroot()
-
-        # Verify crate playlist exists
-        playlists_node = root.find(".//NODE[@Name='ROOT'][@Type='0']")
-        assert playlists_node is not None
-
-        rekordbot_node = playlists_node.find("./NODE[@Name='rekordbot']")
-        assert rekordbot_node is not None
-
-        crate_node = rekordbot_node.find("./NODE[@Name='My Crate']")
-        assert crate_node is not None
-        assert crate_node.get("Type") == "1"
-        assert crate_node.get("Entries") == "1"
-
-    def test_multiple_crates_sorted_alphabetically(self, db_session: Session) -> None:
-        """Multiple crate playlists are sorted alphabetically."""
-        t1 = _make_track(db_session, "Sort Track")
-
-        crate_z = create_crate("Zebra", "z crate", False, db_session)
-        crate_a = create_crate("Alpha", "a crate", False, db_session)
-        add_tracks(crate_z.id, [t1.id], db_session)
-        add_tracks(crate_a.id, [t1.id], db_session)
-
-        tracks = db_session.query(Track).all()
-        crate_data = [
-            (crate_z, [t1.id]),
-            (crate_a, [t1.id]),
-        ]
-
-        tree, _, _ = build_xml(tracks, "camelot", "/output", crates=crate_data)
-        root = tree.getroot()
-
-        rekordbot_node = root.find(".//NODE[@Name='rekordbot']")
-        assert rekordbot_node is not None
-
-        crate_nodes = [
-            n
-            for n in rekordbot_node
-            if n.get("Type") == "1" and n.get("Name") in ("Alpha", "Zebra")
-        ]
-        crate_names = [n.get("Name") for n in crate_nodes]
-        assert crate_names.index("Alpha") < crate_names.index("Zebra")
-
-    def test_crates_coexist_with_folder_playlists(self, db_session: Session) -> None:
-        """Crate playlists appear alongside folder-based (All Tracks, per-artist) playlists."""
-        t1 = _make_track(db_session, "Coexist Track", artist="Coexist Artist")
-        crate = create_crate("Coexist Crate", "test coexistence", False, db_session)
-        add_tracks(crate.id, [t1.id], db_session)
-
-        tracks = db_session.query(Track).all()
-        crate_data = [(crate, [t1.id])]
-
-        tree, _, _ = build_xml(tracks, "camelot", "/output", crates=crate_data)
-        root = tree.getroot()
-
-        rekordbot_node = root.find(".//NODE[@Name='rekordbot']")
-        assert rekordbot_node is not None
-
-        child_names = [n.get("Name") for n in rekordbot_node]
-        assert "All Tracks" in child_names
-        assert "Coexist Crate" in child_names

@@ -171,7 +171,7 @@ class TestTrackToXmlAttrs:
     def test_full_track(self, mock_mtime, mock_size) -> None:
         """Full metadata track produces all expected attributes."""
         track = self._make_track()
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
 
         assert isinstance(result, TrackXmlResult)
         assert result.attrs["TrackID"] == "1"
@@ -183,7 +183,7 @@ class TestTrackToXmlAttrs:
         assert result.attrs["Size"] == "50000000"
         assert result.attrs["TotalTime"] == "342"
         assert result.attrs["AverageBpm"] == "174.00"
-        assert result.attrs["Tonality"] == "8A"
+        assert "Tonality" not in result.attrs
         assert result.attrs["Rating"] == "204"
         assert result.attrs["BitRate"] == "2116"
         assert result.attrs["SampleRate"] == "44100"
@@ -222,7 +222,7 @@ class TestTrackToXmlAttrs:
             label=None,
             file_path="/library/unknown_track.aiff",
         )
-        result = track_to_xml_attrs(track, track_id=5, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=5)
 
         # Fallbacks
         assert result.attrs["Name"] == "unknown_track"  # filename stem
@@ -231,7 +231,7 @@ class TestTrackToXmlAttrs:
         assert result.attrs["Genre"] == ""
         assert result.attrs["Comments"] == ""
         assert result.attrs["AverageBpm"] == "0.00"
-        assert result.attrs["Tonality"] == ""
+        assert "Tonality" not in result.attrs
         assert result.attrs["Rating"] == "0"
         assert result.attrs["TotalTime"] == "0"
         assert result.attrs["BitRate"] == "0"
@@ -243,7 +243,7 @@ class TestTrackToXmlAttrs:
     def test_missing_file_warning(self, mock_mtime, mock_size) -> None:
         """Track with missing file generates a warning."""
         track = self._make_track(file_path="/nonexistent/track.aiff")
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
 
         assert result.attrs["Size"] == "0"
         assert any(
@@ -252,27 +252,12 @@ class TestTrackToXmlAttrs:
 
     @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
     @patch("backend.services.xml_schema_mapper._get_file_mtime", return_value="2026-03-08")
-    def test_classical_key_notation(self, mock_mtime, mock_size) -> None:
-        """Key notation preference is respected."""
-        track = self._make_track(key=15)  # 8A = A minor
-        result = track_to_xml_attrs(track, track_id=1, key_notation="classical")
-        assert result.attrs["Tonality"] == "A minor"
-
-    @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
-    @patch("backend.services.xml_schema_mapper._get_file_mtime", return_value="2026-03-08")
-    def test_open_key_notation(self, mock_mtime, mock_size) -> None:
-        track = self._make_track(key=15)  # 8A = 1m in Open Key
-        result = track_to_xml_attrs(track, track_id=1, key_notation="open_key")
-        assert result.attrs["Tonality"] == "1m"
-
-    @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
-    @patch("backend.services.xml_schema_mapper._get_file_mtime", return_value="2026-03-08")
     def test_optional_attrs_omitted_when_none(self, mock_mtime, mock_size) -> None:
         """Optional attributes (Composer, Remixer, etc.) are omitted when None."""
         track = self._make_track(
             composer=None, remixer=None, grouping=None, mix_name=None, album_artist=None
         )
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
         assert "Composer" not in result.attrs
         assert "Remixer" not in result.attrs
         assert "Grouping" not in result.attrs
@@ -284,7 +269,7 @@ class TestTrackToXmlAttrs:
     def test_optional_attrs_included_when_set(self, mock_mtime, mock_size) -> None:
         """Optional attributes are included when they have values."""
         track = self._make_track(composer="Test Composer", remixer="DJ Remix")
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
         assert result.attrs["Composer"] == "Test Composer"
         assert result.attrs["Remixer"] == "DJ Remix"
 
@@ -293,7 +278,7 @@ class TestTrackToXmlAttrs:
     def test_bitrate_lossy_uses_source_bitrate(self, mock_mtime, mock_size) -> None:
         """Lossy files should use source_bitrate from ffprobe."""
         track = self._make_track(is_lossy=True, source_bitrate=320, sample_rate=44100, channels=2)
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
         assert result.attrs["BitRate"] == "320"
 
     @patch("backend.services.xml_schema_mapper.get_file_size", return_value=50000000)
@@ -307,7 +292,7 @@ class TestTrackToXmlAttrs:
             channels=2,
             source_bitrate=None,
         )
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
         # 44100 * 16 * 2 / 1000 = 1411
         assert result.attrs["BitRate"] == "1411"
 
@@ -323,7 +308,7 @@ class TestTrackToXmlAttrs:
             source_bit_depth=None,
             channels=None,
         )
-        result = track_to_xml_attrs(track, track_id=1, key_notation="camelot")
+        result = track_to_xml_attrs(track, track_id=1)
         assert result.attrs["BitRate"] == "0"
 
 

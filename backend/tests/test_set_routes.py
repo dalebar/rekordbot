@@ -7,6 +7,10 @@ from backend.models.set_plan import SetPlan, SetTrack
 from backend.models.track import Track
 from backend.services.set_planner import recalculate_segments
 
+pytestmark = pytest.mark.skip(
+    reason="Routes deregistered in Phase 6d.1 — module preserved for future revival"
+)
+
 _route_counter = 0
 
 
