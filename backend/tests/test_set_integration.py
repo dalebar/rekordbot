@@ -23,7 +23,6 @@ from backend.services.set_planner import (
     unlock_track,
     update_segment_description,
 )
-from backend.services.xml_builder import build_xml
 
 _counter = 0
 
@@ -239,127 +238,7 @@ class TestSetCreationFlow:
             db.close()
 
 
-class TestXmlExportWithSets:
-    """XML export integration with set playlists."""
-
-    def setup_method(self):
-        """Clean tables before each test."""
-        _clean_tables()
-
-    def test_set_playlist_in_xml(self):
-        """Sets appear as ordered playlists in the XML."""
-        db = SessionLocal()
-        try:
-            t1 = _create_track(db, "Track A", bpm=120.0)
-            t2 = _create_track(db, "Track B", bpm=124.0)
-            t3 = _create_track(db, "Track C", bpm=128.0)
-            db.commit()
-
-            plan = create_set(name="XML Set", description="Test", db_session=db)
-            for i, t in enumerate([t1, t2, t3], 1):
-                db.add(SetTrack(set_id=plan.id, track_id=t.id, position=i, is_candidate=False))
-            db.commit()
-
-            tracks = [t1, t2, t3]
-            set_track_ids = [t.id for t in tracks]
-
-            tree, track_id_map, warnings = build_xml(
-                tracks,
-                "camelot",
-                "/output",
-                sets=[(plan, set_track_ids)],
-            )
-
-            # Find set playlist node
-            root = tree.getroot()
-            playlist_names = []
-            for node in root.iter("NODE"):
-                if node.get("Type") == "1":
-                    playlist_names.append(node.get("Name"))
-
-            assert "XML Set" in playlist_names
-        finally:
-            db.close()
-
-    def test_set_playlist_order_preserved(self):
-        """Track order in the XML matches set position order."""
-        db = SessionLocal()
-        try:
-            t1 = _create_track(db, "First")
-            t2 = _create_track(db, "Second")
-            t3 = _create_track(db, "Third")
-            db.commit()
-
-            plan = create_set(name="Order Test", description="Test", db_session=db)
-            # Reverse order: t3, t1, t2
-            db.add(SetTrack(set_id=plan.id, track_id=t3.id, position=1, is_candidate=False))
-            db.add(SetTrack(set_id=plan.id, track_id=t1.id, position=2, is_candidate=False))
-            db.add(SetTrack(set_id=plan.id, track_id=t2.id, position=3, is_candidate=False))
-            db.commit()
-
-            tracks = [t1, t2, t3]
-            set_track_ids = [t3.id, t1.id, t2.id]  # Position order
-
-            tree, track_id_map, warnings = build_xml(
-                tracks,
-                "camelot",
-                "/output",
-                sets=[(plan, set_track_ids)],
-            )
-
-            # Find set playlist and check order
-            root = tree.getroot()
-            for node in root.iter("NODE"):
-                if node.get("Name") == "Order Test":
-                    track_refs = list(node)
-                    keys = [int(ref.get("Key", "0")) for ref in track_refs]
-                    # Keys should be in order: t3's XML ID, t1's XML ID, t2's XML ID
-                    assert keys == [
-                        track_id_map[t3.id],
-                        track_id_map[t1.id],
-                        track_id_map[t2.id],
-                    ]
-                    break
-        finally:
-            db.close()
-
-    def test_sets_coexist_with_crates(self):
-        """Set and crate playlists both appear in the XML."""
-        from unittest.mock import MagicMock
-
-        db = SessionLocal()
-        try:
-            t1 = _create_track(db, "Shared Track")
-            db.commit()
-
-            plan = create_set(name="My Set", description="Test", db_session=db)
-            db.add(SetTrack(set_id=plan.id, track_id=t1.id, position=1, is_candidate=False))
-            db.commit()
-
-            crate = MagicMock()
-            crate.name = "My Crate"
-
-            tree, track_id_map, warnings = build_xml(
-                [t1],
-                "camelot",
-                "/output",
-                crates=[(crate, [t1.id])],
-                sets=[(plan, [t1.id])],
-            )
-
-            root = tree.getroot()
-            playlist_names = []
-            for node in root.iter("NODE"):
-                if node.get("Type") == "1":
-                    playlist_names.append(node.get("Name"))
-
-            assert "My Set" in playlist_names
-            assert "My Crate" in playlist_names
-            assert "All Tracks" in playlist_names
-        finally:
-            db.close()
-
-
+@pytest.mark.skip(reason="Routes deregistered in Phase 6d.1 — module preserved for future revival")
 class TestSetRouteIntegration:
     """End-to-end API route tests."""
 

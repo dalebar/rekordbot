@@ -9,14 +9,10 @@ import {
 } from "./api/client";
 import { useToast } from "./ToastProvider";
 import ConflictReviewPanel from "./ConflictReviewPanel";
-import CrateCreateDialog from "./CrateCreateDialog";
-import CrateSidebar from "./CrateSidebar";
 import DropZone from "./DropZone";
 import ImportControls from "./ImportControls";
 import ProcessingQueue from "./ProcessingQueue";
-import SetCreateDialog from "./SetCreateDialog";
 import SettingsPanel from "./SettingsPanel";
-import SetPlannerView from "./SetPlannerView";
 import SetupWizard from "./SetupWizard";
 import TrackTable from "./TrackTable";
 
@@ -36,12 +32,6 @@ function App() {
 
   const [batch, setBatch] = useState<IngestResponse | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [selectedCrateId, setSelectedCrateId] = useState<number | null>(null);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [crateRefreshTrigger, setCrateRefreshTrigger] = useState(0);
-  const [activeSetId, setActiveSetId] = useState<number | null>(null);
-  const [showSetCreateDialog, setShowSetCreateDialog] = useState(false);
-  const [setsRefreshTrigger, setSetsRefreshTrigger] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showConflicts, setShowConflicts] = useState(false);
   const [conflictCount, setConflictCount] = useState(0);
@@ -96,25 +86,6 @@ function App() {
     setRefreshTrigger((prev) => prev + 1);
   }, []);
 
-  const handleCrateCreated = useCallback(() => {
-    setCrateRefreshTrigger((prev) => prev + 1);
-  }, []);
-
-  const handleSetCreated = useCallback((setId: number) => {
-    setSetsRefreshTrigger((prev) => prev + 1);
-    setActiveSetId(setId);
-    setShowSetCreateDialog(false);
-  }, []);
-
-  const handleSetSelect = useCallback((setId: number) => {
-    setActiveSetId(setId);
-    setSelectedCrateId(null);
-  }, []);
-
-  const handleBackToLibrary = useCallback(() => {
-    setActiveSetId(null);
-  }, []);
-
   // Show wizard on first run
   if (showWizard === true) {
     return <SetupWizard onComplete={() => setShowWizard(false)} />;
@@ -130,110 +101,78 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100">
-      {/* Crate sidebar */}
-      <CrateSidebar
-        onCrateSelect={setSelectedCrateId}
-        selectedCrateId={selectedCrateId}
-        onNewCrate={() => setShowCreateDialog(true)}
-        refreshTrigger={crateRefreshTrigger}
-        onSetSelect={handleSetSelect}
-        onNewSet={() => setShowSetCreateDialog(true)}
-        setRefreshTrigger={setsRefreshTrigger}
-        onOpenSettings={() => setShowSettings(true)}
-      />
-
-      {/* Main content */}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0">
-        {/* Header */}
-        <header className="flex items-center justify-between border-b border-gray-800 px-6 py-3">
-          <h1 className="text-sm font-medium text-gray-400">
-            {activeSetId ? "Set Planner" : selectedCrateId ? "Crate" : "Library"}
-          </h1>
-          <div className="text-sm">
-            {health ? (
-              <span className="text-emerald-400">
-                Connected to rekordbot backend v{health.version}
-              </span>
-            ) : error ? (
-              <span className="text-red-400">{error}</span>
-            ) : (
-              <span className="text-gray-500">Connecting...</span>
-            )}
-          </div>
-        </header>
-
-        {/* Content area */}
-        <div className="relative flex flex-1 flex-col overflow-hidden">
-          {showConflicts ? (
-            <ConflictReviewPanel
-              onClose={() => setShowConflicts(false)}
-              onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
-            />
-          ) : activeSetId ? (
-            <SetPlannerView setId={activeSetId} onBack={handleBackToLibrary} />
+    <div className="flex h-screen flex-col bg-gray-950 text-gray-100">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-gray-800 px-6 py-3">
+        <h1 className="text-sm font-medium text-gray-400">Library</h1>
+        <div className="flex items-center gap-4 text-sm">
+          {health ? (
+            <span className="text-emerald-400">
+              Connected to rekordbot backend v{health.version}
+            </span>
+          ) : error ? (
+            <span className="text-red-400">{error}</span>
           ) : (
-            <main className="flex flex-1 flex-col overflow-hidden p-6">
-              {/* Drop zone and import controls */}
-              <div className="mb-4 flex shrink-0 items-start gap-4">
-                <DropZone onBatchStarted={handleBatchStarted} />
-                <ImportControls
-                  onRefresh={() => {
-                    setRefreshTrigger((prev) => prev + 1);
-                    setCrateRefreshTrigger((prev) => prev + 1);
-                  }}
-                  onConflicts={(count) => {
-                    setConflictCount(count);
-                    setShowConflicts(true);
-                  }}
-                />
-                {conflictCount > 0 && !showConflicts && (
-                  <button
-                    onClick={() => setShowConflicts(true)}
-                    className="rounded bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-600"
-                  >
-                    Review Conflicts ({conflictCount})
-                  </button>
-                )}
-              </div>
-
-              {/* Processing queue (shown when a batch is active) */}
-              {batch && batch.total_files > 0 && (
-                <div className="mb-4 shrink-0">
-                  <ProcessingQueue
-                    batchId={batch.batch_id}
-                    totalFiles={batch.total_files}
-                    onComplete={handleBatchComplete}
-                    onDismiss={() => setBatch(null)}
-                  />
-                </div>
-              )}
-
-              {/* Track table */}
-              <div className="flex min-h-0 flex-1 flex-col">
-                <TrackTable refreshTrigger={refreshTrigger} crateId={selectedCrateId} />
-              </div>
-            </main>
+            <span className="text-gray-500">Connecting...</span>
           )}
-          {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-400 hover:text-gray-200"
+          >
+            Settings
+          </button>
         </div>
+      </header>
+
+      {/* Content area */}
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        {showConflicts ? (
+          <ConflictReviewPanel
+            onClose={() => setShowConflicts(false)}
+            onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+          />
+        ) : (
+          <main className="flex flex-1 flex-col overflow-hidden p-6">
+            {/* Drop zone and import controls */}
+            <div className="mb-4 flex shrink-0 items-start gap-4">
+              <DropZone onBatchStarted={handleBatchStarted} />
+              <ImportControls
+                onRefresh={() => setRefreshTrigger((prev) => prev + 1)}
+                onConflicts={(count) => {
+                  setConflictCount(count);
+                  setShowConflicts(true);
+                }}
+              />
+              {conflictCount > 0 && !showConflicts && (
+                <button
+                  onClick={() => setShowConflicts(true)}
+                  className="rounded bg-amber-700 px-3 py-1.5 text-xs text-white hover:bg-amber-600"
+                >
+                  Review Conflicts ({conflictCount})
+                </button>
+              )}
+            </div>
+
+            {/* Processing queue (shown when a batch is active) */}
+            {batch && batch.total_files > 0 && (
+              <div className="mb-4 shrink-0">
+                <ProcessingQueue
+                  batchId={batch.batch_id}
+                  totalFiles={batch.total_files}
+                  onComplete={handleBatchComplete}
+                  onDismiss={() => setBatch(null)}
+                />
+              </div>
+            )}
+
+            {/* Track table */}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <TrackTable refreshTrigger={refreshTrigger} crateId={null} />
+            </div>
+          </main>
+        )}
+        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       </div>
-
-      {/* Create crate dialog */}
-      {showCreateDialog && (
-        <CrateCreateDialog
-          onClose={() => setShowCreateDialog(false)}
-          onCreated={handleCrateCreated}
-        />
-      )}
-
-      {/* Create set dialog */}
-      {showSetCreateDialog && (
-        <SetCreateDialog
-          onClose={() => setShowSetCreateDialog(false)}
-          onCreated={handleSetCreated}
-        />
-      )}
     </div>
   );
 }

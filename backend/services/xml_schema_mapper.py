@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from backend.services.key_notation import key_to_display
 from backend.services.location_encoder import encode_location
 
 logger = logging.getLogger(__name__)
@@ -194,14 +193,12 @@ def _get_file_mtime(path: str) -> str:
 def track_to_xml_attrs(
     track: object,
     track_id: int,
-    key_notation: str,
 ) -> TrackXmlResult:
     """Map a Track model instance to Rekordbox XML TRACK attributes.
 
     Args:
         track: Track model instance with metadata fields.
         track_id: Sequential TrackID to assign (1-indexed).
-        key_notation: Key notation preference ("camelot", "open_key", "classical").
 
     Returns:
         TrackXmlResult with attribute dict and any warnings.
@@ -224,10 +221,6 @@ def track_to_xml_attrs(
 
     # Artist fallback
     artist = getattr(track, "artist", None) or "Unknown Artist"
-
-    # Key conversion
-    key_int = getattr(track, "key", None)
-    tonality = key_to_display(key_int, key_notation)
 
     # Duration as integer seconds (truncated)
     duration = getattr(track, "duration", None)
@@ -259,7 +252,6 @@ def track_to_xml_attrs(
         "PlayCount": "0",
         "Rating": format_rating(getattr(track, "rating", None)),
         "Location": encode_location(file_path) if file_path else "",
-        "Tonality": tonality,
         "Colour": "0",
     }
 

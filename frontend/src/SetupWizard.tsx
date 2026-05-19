@@ -103,7 +103,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         <div className="text-center max-w-md">
           <h1 className="text-3xl font-bold mb-2">rekordbot</h1>
           <p className="text-gray-400 mb-8">
-            Organise your DJ library with AI-powered tagging and crate building
+            Get your music from "downloaded" to "Rekordbox-ready" with as little friction as possible
           </p>
           <button
             className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 rounded font-medium"
@@ -198,8 +198,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             {keyValid === false && <span className="self-center text-red-400">✗</span>}
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Required for AI tagging, crate building, and set planning. You can add this later in
-            Settings.
+            Required for AI tagging. You can add this later in Settings.
           </p>
         </div>
 

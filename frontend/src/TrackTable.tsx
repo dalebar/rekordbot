@@ -32,7 +32,6 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "album", label: "Album", visible: true, defaultVisible: true },
   { id: "genre", label: "Genre", visible: true, defaultVisible: true },
   { id: "bpm", label: "BPM", visible: true, defaultVisible: true },
-  { id: "key", label: "Key", visible: true, defaultVisible: true },
   { id: "duration", label: "Duration", visible: true, defaultVisible: true },
   { id: "bitrate", label: "Bitrate", visible: true, defaultVisible: true },
   { id: "quality", label: "Quality", visible: true, defaultVisible: true },
@@ -46,7 +45,6 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "source_format", label: "Source Format", visible: false, defaultVisible: false },
   { id: "conversion_action", label: "Action", visible: false, defaultVisible: false },
   { id: "bpm_confidence", label: "BPM Conf.", visible: false, defaultVisible: false },
-  { id: "key_confidence", label: "Key Conf.", visible: false, defaultVisible: false },
   { id: "analysis_status", label: "Status", visible: false, defaultVisible: false },
   { id: "subgenre", label: "Subgenre", visible: false, defaultVisible: false },
   { id: "mood", label: "Mood", visible: true, defaultVisible: true },
@@ -113,12 +111,9 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
       // Analysis filters
       if (filter === "unanalysed") return t.analysis_status === "unanalysed";
       if (filter === "low_confidence") {
-        return (
-          (t.bpm_confidence !== null && t.bpm_confidence < CONFIDENCE_THRESHOLD) ||
-          (t.key_confidence !== null && t.key_confidence < CONFIDENCE_THRESHOLD)
-        );
+        return t.bpm_confidence !== null && t.bpm_confidence < CONFIDENCE_THRESHOLD;
       }
-      if (filter === "conflicts") return t.has_bpm_conflict || t.has_key_conflict;
+      if (filter === "conflicts") return t.has_bpm_conflict;
       if (filter === "ai_tagged")
         return t.ai_status === "ai_tagged" || t.ai_status === "ai_tags_written";
       if (filter === "not_ai_tagged") return t.ai_status === "untagged";
@@ -218,8 +213,6 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
     const update: TrackUpdate = {};
     if (field === "bpm") {
       update.bpm = parseFloat(editValue);
-    } else if (field === "key") {
-      update.key = parseInt(editValue, 10);
     } else if (field === "year") {
       update.year = parseInt(editValue, 10);
     } else if (field === "energy") {
@@ -474,8 +467,7 @@ export default function TrackTable({ refreshTrigger, crateId }: TrackTableProps)
               Delete {selectedIds.size} track{selectedIds.size !== 1 ? "s" : ""}?
             </h3>
             <p className="mb-4 text-xs text-gray-400">
-              This removes the selected tracks from rekordbot's database and any crates or sets they
-              belong to.
+              This removes the selected tracks from rekordbot's database.
             </p>
             <label className="mb-4 flex items-center gap-2 text-xs text-gray-300">
               <input
@@ -524,8 +516,6 @@ function getFieldValue(track: Track, field: string): string | number | boolean |
       return track.genre;
     case "bpm":
       return track.bpm;
-    case "key":
-      return track.key_display;
     case "duration":
       return track.duration;
     case "bitrate":
@@ -550,8 +540,6 @@ function getFieldValue(track: Track, field: string): string | number | boolean |
       return track.conversion_action;
     case "bpm_confidence":
       return track.bpm_confidence;
-    case "key_confidence":
-      return track.key_confidence;
     case "analysis_status":
       return track.analysis_status;
     case "subgenre":
@@ -682,17 +670,6 @@ function renderCell(
       );
     }
 
-    case "key": {
-      const isLowConf = track.key_confidence !== null && track.key_confidence < 0.6;
-      return (
-        <span
-          className={`${isLowConf ? "text-amber-400" : ""} ${track.has_key_conflict ? "underline decoration-amber-400 decoration-dotted" : ""}`}
-        >
-          {track.key_display ?? "—"}
-        </span>
-      );
-    }
-
     case "duration":
       return track.duration ? formatDuration(track.duration) : "—";
 
@@ -735,9 +712,6 @@ function renderCell(
 
     case "bpm_confidence":
       return track.bpm_confidence !== null ? `${(track.bpm_confidence * 100).toFixed(0)}%` : "—";
-
-    case "key_confidence":
-      return track.key_confidence !== null ? `${(track.key_confidence * 100).toFixed(0)}%` : "—";
 
     case "analysis_status":
       return (

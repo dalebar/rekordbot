@@ -55,11 +55,8 @@ class TestIngestAnalyseWriteFlow:
         assert result.status == "success"
         assert track.analysis_status == "analysed"
         assert track.bpm is not None
-        assert track.key is not None
         assert track.bpm_confidence is not None
-        assert track.key_confidence is not None
         assert track.duration is not None
-        assert 1 <= track.key <= 24
 
         # Write tags
         results = await write_tags_batch([track], db_session)

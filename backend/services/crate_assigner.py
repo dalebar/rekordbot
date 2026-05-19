@@ -21,7 +21,6 @@ from backend.services.crate_prompt_builder import (
     build_assignment_prompt,
     parse_assignment_result,
 )
-from backend.services.key_notation import key_to_display
 from backend.services.prompt_builder import build_track_summary
 
 logger = logging.getLogger(__name__)
@@ -188,13 +187,7 @@ class CrateAssigner:
 
         try:
             # Build track summaries
-            summaries = []
-            for track in batch:
-                key_display = None
-                if track.key is not None:
-                    key_display = key_to_display(track.key, self.settings.default_key_notation)
-                summaries.append(build_track_summary(track, key_display=key_display))
-
+            summaries = [build_track_summary(track) for track in batch]
             track_summaries_text = "\n\n".join(summaries)
 
             # Build assignment prompt

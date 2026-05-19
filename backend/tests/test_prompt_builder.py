@@ -99,6 +99,25 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt()
         assert "tag_tracks" in prompt
 
+    def test_does_not_mention_key(self):
+        """The system prompt does not reference key as a genre signal.
+
+        Phase 6d.1 removed key from the AI prompt because key detection was
+        removed from the analysis pipeline. This is a regression guard against
+        accidentally re-introducing key as a prompt input.
+
+        Substring check is whole-word ('key' surrounded by word boundaries or
+        common punctuation) to avoid false positives on words like 'monkey' or
+        'keyboard' that may legitimately appear in genre descriptions.
+        """
+        import re
+
+        prompt = build_system_prompt().lower()
+        assert not re.search(r"\bkey\b", prompt), (
+            "System prompt contains the word 'key' as a standalone token. "
+            "Key was removed from the AI prompt in Phase 6d.1."
+        )
+
 
 # --- build_track_summary() ---
 
@@ -117,11 +136,10 @@ class TestBuildTrackSummary:
             year=2022,
             genre="Drum & Bass",
             bpm=174.0,
-            key=5,
             comment="Vinyl rip",
             source_path="/downloads/calibre-lost_souls.flac",
         )
-        summary = build_track_summary(track, key_display="4A")
+        summary = build_track_summary(track)
         assert "Track #42" in summary
         assert "Lost Souls" in summary
         assert "Calibre" in summary
@@ -130,7 +148,6 @@ class TestBuildTrackSummary:
         assert "2022" in summary
         assert "Drum & Bass" in summary
         assert "174" in summary
-        assert "4A" in summary
         assert "Vinyl rip" in summary
         assert "calibre-lost_souls.flac" in summary
 
@@ -141,7 +158,7 @@ class TestBuildTrackSummary:
             title="Unknown Track",
             artist="Unknown Artist",
         )
-        summary = build_track_summary(track, key_display=None)
+        summary = build_track_summary(track)
         assert "Track #7" in summary
         assert "Unknown Track" in summary
         assert "Unknown Artist" in summary
@@ -155,7 +172,7 @@ class TestBuildTrackSummary:
     def test_none_values_omitted(self):
         """None values don't produce lines in the summary."""
         track = FakeTrack(id=1, title=None, artist=None)
-        summary = build_track_summary(track, key_display=None)
+        summary = build_track_summary(track)
         assert "Track #1" in summary
         assert "Title:" not in summary
         assert "Artist:" not in summary
@@ -163,28 +180,39 @@ class TestBuildTrackSummary:
     def test_empty_string_values_omitted(self):
         """Empty string values don't produce lines in the summary."""
         track = FakeTrack(id=1, title="", artist="")
-        summary = build_track_summary(track, key_display=None)
+        summary = build_track_summary(track)
         assert "Title:" not in summary
         assert "Artist:" not in summary
 
     def test_filename_from_source_path(self):
         """Filename is extracted from source_path."""
         track = FakeTrack(id=1, source_path="/long/path/to/file.mp3")
-        summary = build_track_summary(track, key_display=None)
+        summary = build_track_summary(track)
         assert "file.mp3" in summary
 
     def test_filename_from_file_path_fallback(self):
         """Falls back to file_path when source_path is absent."""
         track = FakeTrack(id=1, source_path=None, file_path="/library/track.aiff")
-        summary = build_track_summary(track, key_display=None)
+        summary = build_track_summary(track)
         assert "track.aiff" in summary
 
     def test_unicode_handling(self):
         """Unicode characters in metadata are preserved."""
         track = FakeTrack(id=1, title="Über Alles", artist="Björk")
-        summary = build_track_summary(track, key_display=None)
+        summary = build_track_summary(track)
         assert "Über Alles" in summary
         assert "Björk" in summary
+
+    def test_key_field_not_emitted_when_track_has_key(self):
+        """Track with track.key populated does not produce a 'Key:' row.
+
+        Phase 6d.1 removed key from the AI prompt. This is a regression guard
+        against accidentally re-introducing the field.
+        """
+        track = FakeTrack(id=1, title="Test", artist="Test", key=5)
+        summary = build_track_summary(track)
+        assert "Key:" not in summary
+        assert "4A" not in summary  # Camelot display for key=5
 
 
 # --- build_batch_message() ---

@@ -39,7 +39,7 @@ class TestAnalyseTrack:
     """Test single-track analysis."""
 
     async def test_analyse_mp3(self, db_session, test_settings, tmp_audio_dir):
-        """Analyse an MP3 file — should populate BPM, key, and analysis_status."""
+        """Analyse an MP3 file — should populate BPM and analysis_status."""
         track = Track(
             file_path=str(tmp_audio_dir / "silence_320k.mp3"),
             analysis_status="unanalysed",
@@ -51,12 +51,29 @@ class TestAnalyseTrack:
 
         assert result.status == "success"
         assert result.bpm_result is not None
-        assert result.key_result is not None
         assert track.analysis_status == "analysed"
         assert track.bpm is not None
-        assert track.key is not None
         assert track.bpm_confidence is not None
-        assert track.key_confidence is not None
+
+    async def test_analyse_does_not_populate_key(self, db_session, test_settings, tmp_audio_dir):
+        """Key detection is removed from the analysis pipeline (Phase 6d.1).
+
+        A fresh track with no existing key tag should have track.key == None
+        after analysis. The key_detector service is preserved as dormant code
+        but not called from analyse_track.
+        """
+        track = Track(
+            file_path=str(tmp_audio_dir / "silence_320k.mp3"),
+            analysis_status="unanalysed",
+        )
+        db_session.add(track)
+        db_session.flush()
+
+        result = await analyse_track(track, db_session, test_settings)
+
+        assert result.status == "success"
+        assert track.key is None
+        assert track.key_confidence is None
 
     async def test_analyse_aiff(self, db_session, test_settings, tmp_audio_dir):
         """Analyse an AIFF file."""

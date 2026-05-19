@@ -103,8 +103,8 @@ gives strong signals.
 (one sentence explaining your classification).
 - If existing genre tags are present, consider them as a signal \
 but don't blindly trust them \u2014 they are often wrong or overly broad.
-- BPM and key are strong genre signals (e.g. 170+ BPM suggests DnB \
-or hard techno; 120-126 BPM with minor key suggests deep/tech house).
+- BPM is a strong genre signal (e.g. 170+ BPM suggests DnB \
+or hard techno; 120-126 BPM suggests deep or tech house).
 - Artist and label names are often the strongest signals. \
 Use your knowledge of the music industry.
 - When unsure between two genres, pick the more specific one \
@@ -189,14 +189,13 @@ def build_system_prompt() -> str:
     return SYSTEM_PROMPT
 
 
-def build_track_summary(track: Any, key_display: str | None = None) -> str:
+def build_track_summary(track: Any) -> str:
     """Format a single track's metadata for the prompt.
 
     Fields that are None or empty strings are omitted to reduce noise.
 
     Args:
         track: Track model instance (or any object with the expected attributes).
-        key_display: Human-readable key notation (e.g. "4A"), or None.
 
     Returns:
         Formatted track summary string.
@@ -211,7 +210,6 @@ def build_track_summary(track: Any, key_display: str | None = None) -> str:
         ("Year", getattr(track, "year", None)),
         ("Existing Genre", getattr(track, "genre", None)),
         ("BPM", getattr(track, "bpm", None)),
-        ("Key", key_display),
         ("Comment", getattr(track, "comment", None)),
     ]
 
@@ -233,23 +231,16 @@ def build_track_summary(track: Any, key_display: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def build_batch_message(tracks: list[Any], key_displays: dict[int, str] | None = None) -> str:
+def build_batch_message(tracks: list[Any]) -> str:
     """Format a batch of track summaries as the user message.
 
     Args:
         tracks: List of Track model instances.
-        key_displays: Optional mapping of track ID to key display string.
 
     Returns:
         User message string containing all track summaries.
     """
-    if key_displays is None:
-        key_displays = {}
-
-    summaries = []
-    for track in tracks:
-        display = key_displays.get(track.id)
-        summaries.append(build_track_summary(track, key_display=display))
+    summaries = [build_track_summary(track) for track in tracks]
 
     header = f"Please tag the following {len(tracks)} track(s):\n\n"
     return header + "\n\n".join(summaries)

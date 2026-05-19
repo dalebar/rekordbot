@@ -1,22 +1,29 @@
-# rekordbot — Project Plan v1.0
-*A desktop DJ file management, format conversion, and AI-powered crate-building tool*
+# rekordbot — Project Plan v1.1
+*A focused utility for getting audio files from "downloaded" to "Rekordbox-ready"*
 
 ---
 
 ## 1. Vision & Scope
 
-A desktop application that solves the full DJ file management workflow in one place:
+rekordbot is a focused utility for digital DJs who use Rekordbox and CDJs. The goal is to minimise the friction between downloading audio files and having them ready to play.
 
-- Ingest music files from any source in any format
-- Convert or prepare files for CDJ/Rekordbox compatibility in a quality-preserving way
-- Auto-tag with BPM, key, genre, energy, and mood using AI
-- Organise files into a logical folder structure according to user preference
-- Organise into crates intelligently using Claude
-- Plan and sequence sets with AI assistance
-- Export a Rekordbox-compatible XML library
-- Dry-run previews before any file operation that moves, renames, or modifies — no surprises
+What it does:
 
-**Target user:** Digital DJs who use Rekordbox and CDJs and are tired of doing this manually.
+- Ingest music files from any source, in any format the DJ might encounter
+- Convert losslessly to AIFF (16-bit for universal CDJ compatibility); leave MP3 as-is, optionally convert AAC to MP3
+- Detect BPM with librosa; infer genre, subgenre, mood, and energy with Claude
+- Organise into a clean folder structure (default `{artist}/{album}/{title}`, fully configurable)
+- Export a Rekordbox-compatible XML library that imports cleanly with all metadata intact
+- Import an existing Rekordbox XML to merge a pre-existing library
+- Dry-run previews on every file operation — nothing moves without user approval
+
+What it deliberately doesn't do:
+
+- AI crate-building from free-text descriptions (tried in Phase 5a; retired after empirical evidence that the AI-clustering model didn't fit realistic DJ workflow)
+- AI set planning with lock-and-shuffle (tried in Phase 5b; retired for the same reason)
+- Key detection (the algorithm is reliable enough, but the downstream value didn't justify the per-track wall-clock cost once 5a/5b were retired — see `docs/perf/README.md`)
+
+**Target user:** Digital DJs who use Rekordbox and CDJs and want a focused tool for one specific job — moving new music into a CDJ-ready state with as little manual work as possible.
 **Initial goal:** Personal use + peers, with monetisation potential later.
 
 ---
@@ -154,7 +161,8 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ No TEMPO or POSITION_MARK import (metadata only, matching export behaviour)
 - ✅ Import UI: Tauri file dialog, progress bar, conflict review panel with per-field toggle
 
-### Module E — Crate Builder ✅ (Phase 5a — Complete)
+### Module E — Crate Builder ⛔ (Phase 5a — Soft-retired in Phase 6d.1)
+- ⛔ **Soft-retired** as of Phase 6d.1. UI entry points removed; backend routes deregistered. Code, models, and DB tables preserved as dormant. See `docs/features/phase-5a-crate-builder.md` for the original spec and the supersession header for the retirement rationale.
 - ✅ User creates crates by providing a free-text description of the vibe (e.g. "Deep & dubby minimal house, 118–124 BPM, hypnotic and warm")
 - ✅ Claude interprets the description into searchable criteria (mood, energy range, BPM range, genre hints) and stores both the original description and parsed interpretation
 - ✅ Claude assigns every matching track from the library — crates are pools to draw from, not curated short lists
@@ -164,7 +172,8 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ Sidebar panel UI in Rekordbox playlist tree style
 - ✅ Manual override: user can add/remove individual tracks from any crate
 
-### Module E2 — Set Planner ✅ (Phase 5b — Complete)
+### Module E2 — Set Planner ⛔ (Phase 5b — Soft-retired in Phase 6d.1)
+- ⛔ **Soft-retired** as of Phase 6d.1. UI entry points removed; backend routes deregistered. Code, models, and DB tables preserved as dormant. See `docs/features/phase-5b-set-planner.md` for the original spec.
 - ✅ User describes a set with time dimension, energy arc, and destination state (e.g. "1 hour, build from ambient to moderate house, positive mood, hand off at 120–125 BPM")
 - ✅ Claude pulls from crates or the full library to suggest a track sequence
 - ✅ 2–3x track multiplier — provides enough options for the user to customise the final plan
@@ -176,7 +185,8 @@ Finalised during Phase 0 planning (Session 1). Full details in CLAUDE.md.
 - ✅ Export set as ordered Rekordbox playlist (track order preserved, unlike unordered crate playlists)
 - ✅ Set planner UI: track sequence table with lock toggle, BPM/key transition indicators, segment dividers with inline editing, candidate pool panel, shuffle controls, export button
 
-### Module F — Key Compatibility Utility ✅ (Phase 5a — Complete)
+### Module F — Key Compatibility Utility ⛔ (Phase 5a — Soft-retired in Phase 6d.1)
+- ⛔ **Soft-retired** as of Phase 6d.1. The module is no longer called from any active pipeline. It depended on key detection, which was retired alongside Phase 5a/5b. The pure Camelot wheel logic is preserved as dormant code.
 - ✅ Standalone Camelot wheel logic: given two key integers, determine compatibility (same key, adjacent on wheel, relative major/minor)
 - ✅ Pure math module, no Claude dependency
 - ✅ Used by Set Planner (5b) for sequencing, and available for future UI features (related tracks, visual indicators)
@@ -430,12 +440,29 @@ No hard deadlines. Each phase is complete when its acceptance criteria are met, 
 
 ---
 
+### Phase 6d.1 — Scope Reduction ✅ Complete
+**Goal:** Refocus the app on the high-value ingest → analyse → AI tag → organise → export pipeline by retiring features that empirical evidence showed didn't fit realistic DJ workflow.
+
+**Delivered (6 commits, 1201 tests / 24 skipped):**
+- Removed Crate Builder (Phase 5a) and Set Planner (Phase 5b) from the active surface area: UI entry points removed, backend routes deregistered, XML exporter no longer emits crate/set playlists. Code, models, DB tables, and tests preserved as dormant.
+- Removed key detection from the analysis pipeline. `KeyDetector` service preserved as dormant code; `track.key` and `track.key_confidence` columns kept (no Alembic migration); historical key data on existing rows preserved.
+- Removed key from the AI tagging prompt. Track summaries to Claude no longer include a `Key:` row; the system prompt no longer references key as a genre signal. Risk accepted in the 120–126 BPM band where minor-key information helped disambiguate deep/tech/melodic house.
+- Removed `Tonality` attribute from Rekordbox XML export.
+- Removed key column from the track table UI.
+- Re-baselined against `Panorama_Bar_Playlist_04_Josey_Rebelle/` (52 tracks): analysis wall-clock dropped from ~11.9s/track to ~0.5s/track (~24× speedup), as predicted by the Phase 6d decision point.
+- Feature brief: `docs/features/phase-6d.1-scope-reduction.md`
+
+**Deferred to Phase 6e or later:**
+- Hard delete of dormant Phase 5a/5b code (a future Path X phase).
+- `fix/drag-and-drop` immediately after 6d.1 close — Tauri v2 changed the drag-drop channel and the current `DropZone.tsx` is wired to the v1 mechanism.
+
+---
+
 ### Phase 6e — UI Polish & Design
 **Goal:** Serious design pass — layout, colour, typography, interaction quality.
 
 - [ ] UI polish pass (spacing, alignment, visual hierarchy, colour system)
 - [ ] Folder template editor UI (visual drag-and-drop)
-- [ ] Drag-and-drop reordering in set planner
 - [ ] Custom `.dmg` background image
 - [ ] Any other UX improvements deferred from earlier phases
 
@@ -475,7 +502,9 @@ feature/phase-5b-set-planner   ← merged ✅
 feature/phase-6a-app-shell     ← merged ✅
 feature/phase-4b-xml-import    ← merged ✅
 feature/phase-6b-dmg-packaging ← merged ✅
-feature/phase-6c-dogfooding    ← current
+feature/phase-6c-dogfooding    ← merged ✅
+feature/phase-6d-performance   ← merged ✅
+feature/scope-reduction        ← current
 ```
 
 **Convention:** Branch names follow `feature/phase-N-descriptive-name`.
