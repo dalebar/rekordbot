@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 from backend.config import Settings
 from backend.models.track import Track
 from backend.services.claude_client import ClaudeClient, ClaudeResponse
-from backend.services.key_notation import key_to_display
 from backend.services.perf import Stage, get_recorder
 from backend.services.prompt_builder import (
     build_batch_message,
@@ -232,15 +231,7 @@ class AiTagger:
                 payload={"batch_number": batch_number, "batch_size": len(batch)},
             ):
                 with recorder.stage(Stage.AI_TAG_BUILD_MESSAGE):
-                    # Build key displays for the batch
-                    key_displays = {}
-                    for track in batch:
-                        if track.key is not None:
-                            display = key_to_display(track.key, self.settings.default_key_notation)
-                            if display:
-                                key_displays[track.id] = display
-
-                    user_message = build_batch_message(batch, key_displays)
+                    user_message = build_batch_message(batch)
 
                 # Call Claude
                 response: ClaudeResponse = await claude_client.tag_batch(

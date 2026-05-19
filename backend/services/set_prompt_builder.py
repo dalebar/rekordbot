@@ -8,7 +8,6 @@ and reorder-mode shuffle, plus result parsing with validation.
 import logging
 from typing import Any
 
-from backend.services.key_notation import key_to_display
 from backend.services.prompt_builder import build_track_summary
 
 logger = logging.getLogger(__name__)
@@ -181,22 +180,20 @@ _REORDER_TOOL_SCHEMA: dict[str, Any] = {
 
 def _build_track_summary_for_set(
     track: Any,
-    key_notation: str = "camelot",
+    key_notation: str = "camelot",  # noqa: ARG001 — dead parameter, retained for soft-retire signature stability
 ) -> str:
     """Build a track summary with set-relevant metadata.
 
     Args:
         track: Track model instance.
-        key_notation: Key display notation preference.
+        key_notation: Unused since Phase 6d.1 (key removed from AI prompt).
+            Retained as a dead parameter to preserve the public signature
+            for callers in set_planner.py (soft-retired but not modified).
 
     Returns:
         Formatted track summary string.
     """
-    key_display = None
-    if track.key is not None:
-        key_display = key_to_display(track.key, key_notation)
-
-    summary = build_track_summary(track, key_display=key_display)
+    summary = build_track_summary(track)
 
     # Add mood and energy if available
     mood = getattr(track, "mood", None)
