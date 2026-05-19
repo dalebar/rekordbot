@@ -2936,3 +2936,174 @@ event, which is undefined in v2) to v2's `onDragDropEvent` from
 `@tauri-apps/api/webview`. Smoke-test against the Josey Rebelle
 corpus in packaged mode before push. Should be a single-commit
 session; opens after `phase-6d.1-complete` is tagged.
+
+
+## Session 35 (close) — 2026-05-19 (evening)
+
+### What was worked on
+
+Phase 6d.1 closed. Commit 6 (re-baseline against
+`Panorama_Bar_Playlist_04_Josey_Rebelle/`) landed at `d4fb648`,
+followed by this phase-close commit covering brief Status bump,
+acceptance-criteria ticks, CLAUDE.md updates, and this SESSIONS.md
+addendum. All work on `feature/scope-reduction` is done; merge to
+`develop` is the next action.
+
+### Summary
+
+Three things happened in this sitting:
+
+1. **Pre-flight and re-baseline run, ~19:11 to ~19:30.**
+   `/Applications/rekordbot.app` install timestamp confirmed at
+   `May 19 19:11` — post-`2826625` (housekeeping commit at
+   `19:04:27`). Pre-run snapshots taken per
+   `docs/perf/README.md` § Reproduction Step 2:
+   `rekordbot.db.pre-baseline-04`, `/tmp/output-dir-pre-baseline-04.txt`,
+   `/tmp/imports-dir-pre-baseline-04.txt`. App launched in packaged
+   mode with `REKORDBOT_PERF_RECORD=1` via direct binary
+   invocation. Full pipeline driven through the UI: Select Folder
+   → Josey Rebelle → ingestion 40/40 → analyse → AI tag → export
+   XML → Cmd-Q. Operator span 19:26:20 → 19:29:42 = 3m 22s.
+   Pipeline span (first to last record) 2m 3s. Reporter run
+   against `run-20260519T192728.jsonl` (494 records).
+
+2. **Corpus-size correction.** The Phase 6d.1 brief and the perf
+   README inferred the Josey Rebelle folder would have ~52 tracks
+   (parity with Martyn). Actual count: **40 audio files** (plus
+   `_index.csv` metadata). No silent ingestion failure; the
+   folder is genuinely smaller. All 40 files ingested cleanly. Per-track
+   numbers remain directly comparable to Martyn; per-stage
+   totals scale to N=40. The corpus correction is documented
+   in the post-scope-reduction report's Corpus section and in
+   the delta.md Caveats section. The README test-corpus list
+   was updated to record the actual N.
+
+3. **Headline result and analysis, ~19:30 to ~22:00.**
+   `analysis_track` mean dropped from **11.87s (Martyn) → 0.61s
+   (Josey)** — a **19.5× speedup** per track. The Phase 6d
+   Decision Point predicted ~25×. The shortfall is explained by
+   `analysis_librosa_load` becoming the new ceiling at 58.5% of
+   post-6d.1 analysis time (max outlier 6.78s on cold-cache I/O
+   from USB-C external storage), where pre-6d.1 it was 1.9% and
+   its outliers were hidden behind key detection's 11s mean. The
+   theoretical floor on warmer storage is ~0.25s/track; the
+   measured 0.61s/track is a conservative lower bound. AI tagging
+   per-batch wall-clock was 28.6s mean (vs Martyn 22.6s), but n=2
+   in this run makes that signal-free — what matters is per-track
+   cost stayed flat at $0.00200 vs Martyn $0.00201, confirming
+   the Commit 4 prompt slimming was cost-neutral. AI quality
+   smoke check on the 40 tagged tracks: no obvious regressions
+   on visual inspection (operator verdict: "looks fine at this
+   stage").
+
+### Key results
+
+- **Confirmed empirically:**
+  - `analysis_detect_key` stage absent from emitted JSONL
+    (Commit 3 verified in packaged binary).
+  - `xml_export_load_crates` and `xml_export_load_sets` stages
+    absent (Commit 2 verified).
+  - AI tagging input tokens per track: 179 → 159 (-11%),
+    confirming the Commit 4 prompt slimming reached the bundled
+    binary.
+  - Per-track analysis-stage speedup: **19.5×**.
+- **AI tagging quality smoke check.** Operator visual
+  inspection of the 40 newly-tagged Josey tracks in the track
+  table. Genres assigned across the corpus reflect the expected
+  mix (deep house, garage, jungle, ambient, soul, broken beat,
+  etc.). No obvious misclassification in the 120–126 BPM band
+  where the removed "minor-key suggests deep/tech house" hint
+  would have disambiguated. Formal labelled-set evaluation is
+  not in 6d.1 scope.
+- **All previously-unticked acceptance criteria now ticked**
+  except the merge-to-develop line, which remains the sole
+  outstanding item.
+
+### Key decisions made
+
+1. **Accept the 19.5× / 25× shortfall as explained, not as a
+   regression to investigate.** The pre-6d.1 prediction was
+   based on subtracting `analysis_detect_key`'s mean from
+   `analysis_track`'s mean and assuming the residual stage
+   distribution would behave as it did pre-6d.1. The actual
+   residual distribution has librosa_load taking over as the
+   dominant variance source — same absolute cost as before, now
+   highly visible because key detection is no longer absorbing
+   it. The 25× prediction was a working estimate, not a target;
+   the measurement is consistent with the model. No diagnostic
+   session needed.
+
+2. **Brief's "Why" section preserved with the 25× prediction
+   intact.** That number is writing-time evidence (the basis on
+   which the phase was scoped), not a retroactive truth claim.
+   Replacing it would be revisionist. The actual 19.5× outcome
+   is recorded in delta.md, in the post-scope-reduction report,
+   and in CLAUDE.md.
+
+3. **Corpus-size correction recorded as a Phase 6d.1 caveat,
+   not as a brief defect.** The brief inferred N=52 from the
+   README "Future runs" wording. The README was wrong-by-
+   inference, not wrong-by-fact. Per-track results are the
+   primary signal and remain directly comparable. The
+   correction is documented in three places (post-scope-
+   reduction report, delta.md, README test-corpus list) so
+   future readers can't be misled.
+
+### Phase 6d.1 close
+
+Status: **Done.** All seven planned commits landed:
+
+| # | Hash | Purpose |
+|---|------|---------|
+| 0 | `282edbd` | Feature brief |
+| 1 | `52d5d0a` | Frontend UI removal |
+| 2 | `3b30064` | Routes deregistered + XML exporter cleanup |
+| 3 | `2f67e90` | Key detection removed from analysis pipeline |
+| 4 | `9389364` | Key removed from AI tagging prompt |
+| 5 | `2826625` | Housekeeping (docs, supersession headers, vestigial UI) |
+| 6 | `d4fb648` | Re-baseline against Josey Rebelle |
+| 7 | (this commit) | Phase close — brief Done bump, CLAUDE.md, SESSIONS.md |
+
+Branch `feature/scope-reduction` is 8 commits ahead of `develop`
+at `fbe6318`. All commits pushed to origin. Working tree clean
+after this commit lands.
+
+### Carry-forward (Path X inventory)
+
+Re-affirmed from the original Session 35 entry — none cleared
+this sitting, none added:
+
+- `analysis.py` module docstring still references "BPM/key
+  detection."
+- `analysis.py` Step 2 comment still says "shared between
+  detectors" (one detector remains).
+- `AnalysisResult` docstring still says "detection results"
+  (plural).
+- Dead code in `TrackTable.tsx`: `getCrate` import, `crateId`
+  prop, `crateTrackIds` state.
+- `revertField` API client `"key"` literal type still in the
+  union.
+- Backend settings `default_key_notation`,
+  `set_track_duration_minutes`, `set_max_tracks` retained on
+  the schema (UI removed, fields persist for old user configs).
+- ESLint config lints `src-tauri/target/**` build artefacts (13
+  spurious errors). Pre-existing; not 6d.1 work.
+- 11 pre-existing mypy errors in Phase 5a/5b dormant code
+  persist (now part of the 15-error baseline).
+- Three retired perf stage constants (`ANALYSIS_DETECT_KEY`,
+  `XML_EXPORT_LOAD_CRATES`, `XML_EXPORT_LOAD_SETS`) remain
+  defined in `perf.py::Stage` to preserve historical JSONL
+  parseability.
+
+All carried forward to Path X (working name for the eventual
+hard-delete pass), not scheduled.
+
+### Next session
+
+`fix/drag-and-drop` — unchanged from the original Session 35
+plan. Frontend-only fix: rewire `frontend/src/DropZone.tsx`
+from Tauri v1's drop-event `file.path` (undefined in v2) to
+v2's `onDragDropEvent` from `@tauri-apps/api/webview`. Smoke-
+test against the Josey Rebelle corpus in packaged mode before
+push. Single-commit session expected. Opens after
+`phase-6d.1-complete` is tagged and pushed.

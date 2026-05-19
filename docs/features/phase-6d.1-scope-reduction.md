@@ -1,6 +1,6 @@
 # Feature: Scope Reduction — Retire Crate Builder, Set Planner, and Key Detection
 **Branch:** `feature/scope-reduction`
-**Status:** Closing — Commit 6 (re-baseline) outstanding.
+**Status:** Done
 **Phase:** 6d.1
 **Depends on:** Phase 6d (complete, merged at `phase-6d-complete` tag)
 
@@ -199,10 +199,10 @@ The phase closes when ALL of the following are true:
 - [x] Pytest suite passes. New test count documented in commit message and SESSIONS.md. Skipped tests (route-deregistration integration tests) are explicitly marked with a reason.
 - [x] mypy: no new errors against develop's baseline (21-error baseline at Phase 6d close holds — Phase 6d.1 should not add errors and ideally clears a few) — currently 15 errors (down 6)
 - [x] Ruff clean, pre-commit hooks all pass
-- [ ] The packaged `.app` boots, completes ingestion of `_04_Josey_Rebelle/`, completes analysis (BPM only), completes AI tagging, completes XML export to a Rekordbox-importable file
-- [ ] `docs/perf/post-scope-reduction-04-josey-rebelle.md` committed
-- [ ] `docs/perf/delta.md` committed showing the analysis-stage speedup
-- [ ] `docs/perf/README.md` Run history table updated
+- [x] The packaged `.app` boots, completes ingestion of `_04_Josey_Rebelle/`, completes analysis (BPM only), completes AI tagging, completes XML export to a Rekordbox-importable file
+- [x] `docs/perf/post-scope-reduction-04-josey-rebelle.md` committed
+- [x] `docs/perf/delta.md` committed showing the analysis-stage speedup
+- [x] `docs/perf/README.md` Run history table updated
 - [x] CLAUDE.md updated (Project Overview, Phased Build Plan, Known Issues)
 - [x] `docs/rekordbot-project-plan.md` updated
 - [x] 5a and 5b briefs have supersession headers
@@ -305,5 +305,6 @@ A `develop` branch where:
 3. `3b30064` — chore(6d.1): deregister Crate Builder and Set Planner routes; remove Tonality, key_notation, and crate/set hooks from XML exporter
 4. `2f67e90` — chore(6d.1): remove key detection from the analysis pipeline
 5. `9389364` — chore(6d.1): remove key from the AI tagging prompt
-6. (this commit) — chore(6d.1): housekeeping — documentation, supersession headers, vestigial UI cleanup
-7. (commit 6, pending) — chore(6d.1): re-baseline analysis perf against Josey Rebelle corpus
+6. `2826625` — chore(6d.1): housekeeping — documentation, supersession headers, vestigial UI cleanup
+7. `d4fb648` — chore(6d.1): re-baseline analysis perf against Josey Rebelle corpus
+8. (this commit) — chore(6d.1): phase close — brief, CLAUDE.md, SESSIONS.md
