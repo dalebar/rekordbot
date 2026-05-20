@@ -13,8 +13,21 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Characters unsafe on macOS and Windows filesystems
-_UNSAFE_CHARS = re.compile(r'[/\\:*?"<>|]')
+# Characters unsafe on macOS and Windows filesystems.
+# Includes path separators, Windows-reserved punctuation, and ASCII control chars.
+_UNSAFE_CHARS = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+
+# Windows reserved device names (illegal as bare filenames even on macOS). A
+# component equal to one of these (case-insensitive) gets a safe suffix appended.
+_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+# Collapses a run of semicolons (and surrounding whitespace) into ", " — used to
+# make multi-artist folder names readable (path layer only, never tags/XML/DB).
+_ARTIST_SEMICOLON = re.compile(r"\s*;[;\s]*")
 
 # Available template variables mapped to Track model attribute names
 TEMPLATE_VARIABLES = {
@@ -230,9 +243,15 @@ def resolve_template(
 
     for segment in segments:
         if segment.type == "separator":
-            # Flush current part
+            # Flush current part — sanitise the assembled string while it is still a
+            # plain string, so any embedded "/" is neutralised before Path() can read
+            # it as a separator and split the component into phantom directories.
             if current_part_pieces:
-                path_parts.append("".join(current_part_pieces))
+                sanitised = sanitise_path_component("".join(current_part_pieces))
+                # An all-unsafe component sanitises to "" — Path() silently drops empty
+                # parts, collapsing structure. Fall back to unknown_fallback so the
+                # component is preserved, same as unresolved metadata.
+                path_parts.append(sanitised or unknown_fallback)
                 current_part_pieces = []
         elif segment.type == "literal":
             current_part_pieces.append(segment.value)
@@ -269,11 +288,18 @@ def resolve_template(
                     unresolved.append(segment.value)
 
             components[segment.value] = resolved_value
-            current_part_pieces.append(resolved_value)
 
-    # Flush remaining
+            # Artist-only: normalise ";" separators to ", " for a readable folder
+            # name. Path layer only — track.artist, tags, and XML are untouched.
+            piece = resolved_value
+            if segment.value == "artist":
+                piece = _ARTIST_SEMICOLON.sub(", ", piece)
+            current_part_pieces.append(piece)
+
+    # Flush remaining — sanitise the assembled string before it reaches Path().
     if current_part_pieces:
-        path_parts.append("".join(current_part_pieces))
+        sanitised = sanitise_path_component("".join(current_part_pieces))
+        path_parts.append(sanitised or unknown_fallback)
 
     # Build path from parts
     path = Path(*path_parts) if path_parts else Path(".")
@@ -326,9 +352,10 @@ def _resolve_variable(
 def sanitise_path_component(component: str) -> str:
     """Clean a single path component for safe filesystem use.
 
-    Removes characters unsafe on macOS/Windows, strips leading/trailing
-    dots and spaces, collapses multiple spaces, and trims to 255 chars.
-    Preserves unicode characters.
+    Removes characters unsafe on macOS/Windows (path separators, reserved
+    punctuation, ASCII control chars), strips leading/trailing dots and spaces,
+    collapses multiple spaces, neutralises Windows reserved device names, and
+    trims to 255 chars. Preserves unicode characters.
 
     Args:
         component: Raw path component string.
@@ -336,7 +363,7 @@ def sanitise_path_component(component: str) -> str:
     Returns:
         Sanitised path component.
     """
-    # Remove unsafe characters
+    # Remove unsafe characters (incl. ASCII control chars)
     result = _UNSAFE_CHARS.sub("", component)
 
     # Strip leading/trailing dots and spaces
@@ -344,6 +371,11 @@ def sanitise_path_component(component: str) -> str:
 
     # Collapse multiple spaces
     result = re.sub(r"\s+", " ", result)
+
+    # Neutralise Windows reserved device names (e.g. CON, NUL, COM1) so output is
+    # cross-platform-safe even though we run on macOS.
+    if result.upper() in _RESERVED_NAMES:
+        result = result + "_"
 
     # Trim to filesystem limit
     if len(result) > 255:

@@ -241,6 +241,32 @@ class TestSanitisePathComponent:
         """Forward slash removed (it's a path separator, not component char)."""
         assert sanitise_path_component("A/B") == "AB"
 
+    def test_control_chars_removed(self):
+        """ASCII control characters (0x00–0x1F) are stripped."""
+        assert sanitise_path_component("Track\x00Name") == "TrackName"
+        assert sanitise_path_component("a\x01\x1fb") == "ab"
+
+    def test_reserved_name_gets_suffix(self):
+        """Windows reserved device names get a safe suffix appended."""
+        assert sanitise_path_component("CON") == "CON_"
+        assert sanitise_path_component("NUL") == "NUL_"
+        assert sanitise_path_component("COM1") == "COM1_"
+        assert sanitise_path_component("LPT9") == "LPT9_"
+
+    def test_reserved_name_case_insensitive(self):
+        """Reserved-name matching is case-insensitive; original case preserved."""
+        assert sanitise_path_component("con") == "con_"
+        assert sanitise_path_component("Aux") == "Aux_"
+
+    def test_reserved_name_substring_unaffected(self):
+        """A name merely containing a reserved word is not modified."""
+        assert sanitise_path_component("CONTROL") == "CONTROL"
+        assert sanitise_path_component("Conjure") == "Conjure"
+
+    def test_ampersand_preserved(self):
+        """Ampersand is safe and must be preserved."""
+        assert sanitise_path_component("Louie Vega & AXEL TOSCA") == "Louie Vega & AXEL TOSCA"
+
 
 # --- build_output_path() ---
 
@@ -387,3 +413,249 @@ class TestValidateTemplate:
         valid, error = validate_template(template)
         assert valid is True, f"Expected accept: {template!r}, got error: {error}"
         assert error == ""
+
+
+# --- Path-construction: embedded slashes & artist semicolons ---
+
+
+class TestPathComponentSlashHandling:
+    """Slash inside a metadata value must NOT split into phantom directories.
+
+    Real fixtures from the live library. Each album value below contains a "/"
+    that, pre-fix, was interpreted by Path() as a directory boundary before
+    per-component sanitisation could see it.
+    """
+
+    def _make_track(self, **kwargs):
+        track = MagicMock()
+        defaults = {
+            "id": 1,
+            "title": None,
+            "artist": None,
+            "album": None,
+            "album_artist": None,
+            "genre": None,
+            "subgenre": None,
+            "year": None,
+            "label": None,
+            "output_format": "aiff",
+            "source_path": None,
+            "file_path": "/music/test.aiff",
+        }
+        defaults.update(kwargs)
+        for k, v in defaults.items():
+            setattr(track, k, v)
+        return track
+
+    @pytest.mark.parametrize(
+        "album,expected_folder",
+        [
+            ("V/A - Hyper Love", "VA - Hyper Love"),
+            ("Taste / Love In London", "Taste Love In London"),
+            ("Quicksand / Getaway", "Quicksand Getaway"),
+        ],
+        ids=["va_hyper_love", "taste_love", "quicksand_getaway"],
+    )
+    def test_album_slash_collapses_to_single_folder(self, album, expected_folder):
+        track = self._make_track(album=album, title="Some Track")
+        result = build_output_path("{album}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        # Exactly two components: the album folder and the filename. No phantom dirs.
+        assert len(rel_parts) == 2, f"phantom dirs created: {rel_parts}"
+        assert rel_parts[0] == expected_folder
+        assert rel_parts[1] == "Some Track.aiff"
+
+    def test_album_slash_with_parenthetical_tail(self):
+        """w/ inside a parenthetical — slash stripped, tail '(wEden...)' acceptable."""
+        track = self._make_track(album="Planet Dance Vol. I (w/Eden Burns Remixes)", title="T")
+        result = build_output_path("{album}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        assert len(rel_parts) == 2
+        assert rel_parts[0] == "Planet Dance Vol. I (wEden Burns Remixes)"
+
+    def test_album_slash_in_compilation_title(self):
+        """'Soul/Disco' must not split; '&' preserved within the same component."""
+        track = self._make_track(
+            album="The P & P Records Soul/Disco Anthology Compiled By Bill Brewster",
+            title="T",
+        )
+        result = build_output_path("{album}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        assert len(rel_parts) == 2
+        assert rel_parts[0] == ("The P & P Records SoulDisco Anthology Compiled By Bill Brewster")
+
+    def test_title_slash_in_filename_collapses(self):
+        """A slash in the title (the filename component) is stripped, not split."""
+        track = self._make_track(artist="A", title="Quicksand / Getaway")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        assert len(rel_parts) == 2
+        assert rel_parts[1] == "Quicksand Getaway.aiff"
+
+
+class TestArtistSemicolonNormalisation:
+    """Artist ';' → ', ' in the folder name ONLY (path layer, never tags/XML/DB)."""
+
+    def _make_track(self, **kwargs):
+        track = MagicMock()
+        defaults = {
+            "id": 1,
+            "title": None,
+            "artist": None,
+            "album": None,
+            "album_artist": None,
+            "genre": None,
+            "subgenre": None,
+            "year": None,
+            "label": None,
+            "output_format": "aiff",
+            "source_path": None,
+            "file_path": "/music/test.aiff",
+        }
+        defaults.update(kwargs)
+        for k, v in defaults.items():
+            setattr(track, k, v)
+        return track
+
+    @pytest.mark.parametrize(
+        "artist,expected_folder",
+        [
+            ("Okyerema Asante;Black Fire", "Okyerema Asante, Black Fire"),
+            ("DEADBEAT;The Mole", "DEADBEAT, The Mole"),
+            ("A;B;C", "A, B, C"),
+        ],
+        ids=["okyerema", "deadbeat", "abc"],
+    )
+    def test_artist_semicolon_becomes_comma_space(self, artist, expected_folder):
+        track = self._make_track(artist=artist, title="Track")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        assert rel_parts[0] == expected_folder
+
+    def test_semicolon_only_applies_to_artist(self):
+        """Album containing ';' is NOT semicolon-normalised (artist-only rule)."""
+        track = self._make_track(artist="X", album="One;Two", title="T")
+        result = build_output_path("{album}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        # ';' is a safe filesystem char and not subject to the artist normalisation.
+        assert rel_parts[0] == "One;Two"
+
+    def test_artist_track_field_untouched(self):
+        """The normalisation is path-only — components reflects the raw resolved value."""
+        track = self._make_track(artist="Okyerema Asante;Black Fire", title="Track")
+        result = resolve_template("{artist}/{title}", track, "Unsorted")
+        # components carries the unmodified resolved artist value.
+        assert result.components["artist"] == "Okyerema Asante;Black Fire"
+
+
+class TestRegressionUnchangedComponents:
+    """Values that are correct today must remain unchanged after the fix."""
+
+    def _make_track(self, **kwargs):
+        track = MagicMock()
+        defaults = {
+            "id": 1,
+            "title": None,
+            "artist": None,
+            "album": None,
+            "album_artist": None,
+            "genre": None,
+            "subgenre": None,
+            "year": None,
+            "label": None,
+            "output_format": "aiff",
+            "source_path": None,
+            "file_path": "/music/test.aiff",
+        }
+        defaults.update(kwargs)
+        for k, v in defaults.items():
+            setattr(track, k, v)
+        return track
+
+    @pytest.mark.parametrize(
+        "artist",
+        ["Louie Vega & AXEL TOSCA", "Michael Campbell & High Volt"],
+        ids=["louie_vega", "michael_campbell"],
+    )
+    def test_ampersand_preserved_in_path(self, artist):
+        track = self._make_track(artist=artist, title="T")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unsorted")
+        assert result.path.relative_to("/library").parts[0] == artist
+
+    @pytest.mark.parametrize(
+        "artist",
+        ["Andrés", "Fünfzehn + 1", "ファイアークラッカー"],
+        ids=["andres", "funfzehn", "firecracker"],
+    )
+    def test_unicode_preserved_in_path(self, artist):
+        track = self._make_track(artist=artist, title="T")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unsorted")
+        assert result.path.relative_to("/library").parts[0] == artist
+
+    def test_title_colon_stripped(self):
+        """Colon strip is intended behaviour: 'Track: Reprise' -> 'Track Reprise'."""
+        track = self._make_track(artist="A", title="Track: Reprise")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unsorted")
+        assert result.path.relative_to("/library").parts[1] == "Track Reprise.aiff"
+
+    def test_acdc_artist_not_dropped(self):
+        """'AC/DC' collapses to a single 'ACDC' component, not dropped or emptied."""
+        track = self._make_track(artist="AC/DC", title="Thunderstruck")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unsorted")
+        rel_parts = result.path.relative_to("/library").parts
+        assert len(rel_parts) == 2
+        assert rel_parts[0] == "ACDC"
+        assert rel_parts[1] == "Thunderstruck.aiff"
+
+
+class TestEmptiedComponentFallback:
+    """A component that sanitises to "" must not collapse the path structure.
+
+    Path() silently drops empty parts, so an all-unsafe value would make a folder
+    vanish (collision one level up) or yield a bare '.aiff' dotfile. Both flush
+    points fall back to unknown_fallback instead.
+    """
+
+    def _make_track(self, **kwargs):
+        track = MagicMock()
+        defaults = {
+            "id": 1,
+            "title": None,
+            "artist": None,
+            "album": None,
+            "album_artist": None,
+            "genre": None,
+            "subgenre": None,
+            "year": None,
+            "label": None,
+            "output_format": "aiff",
+            "source_path": None,
+            "file_path": "/music/test.aiff",
+        }
+        defaults.update(kwargs)
+        for k, v in defaults.items():
+            setattr(track, k, v)
+        return track
+
+    @pytest.mark.parametrize("album", ["???", "/", ":::"], ids=["q", "slash", "colons"])
+    def test_all_unsafe_album_uses_fallback(self, album):
+        """An all-unsafe album folder becomes unknown_fallback, never dropped."""
+        track = self._make_track(artist="Real Artist", album=album, title="Real Title")
+        result = build_output_path("{artist}/{album}/{title}", track, Path("/library"), "Unknown")
+        rel_parts = result.path.relative_to("/library").parts
+        assert len(rel_parts) == 3, f"path collapsed: {rel_parts}"
+        assert rel_parts == ("Real Artist", "Unknown", "Real Title.aiff")
+
+    def test_all_unsafe_title_is_fallback_not_dotfile(self):
+        """An emptied title yields '<fallback>.aiff', never a bare '.aiff' dotfile."""
+        track = self._make_track(artist="Real Artist", title="???")
+        result = build_output_path("{artist}/{title}", track, Path("/library"), "Unknown")
+        rel_parts = result.path.relative_to("/library").parts
+        assert rel_parts[-1] == "Unknown.aiff"
+        assert result.path.name != ".aiff"
+
+    def test_middle_component_emptying_does_not_collapse(self):
+        """A middle component emptying preserves the overall part count."""
+        track = self._make_track(artist="Real Artist", album=":::", title="Real Title")
+        result = build_output_path("{artist}/{album}/{title}", track, Path("/library"), "Unknown")
+        assert len(result.path.relative_to("/library").parts) == 3
