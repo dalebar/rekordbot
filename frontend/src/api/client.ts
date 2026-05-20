@@ -546,6 +546,7 @@ export interface ApproveRequest {
 /** Approve response. */
 export interface ApproveResponse {
   total_moved: number;
+  skipped: number;
   failed: number;
   dirs_cleaned: number;
   message: string;
