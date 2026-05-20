@@ -3261,3 +3261,41 @@ artist+title+duration similarity at ingest time. Will open with a
 proper feature brief and decisions locked before code, matching the
 phase-discipline pattern established in Phases 6a/6b/4b. Opens
 against the clean state established by Session 36's housekeeping.
+
+### Session 36 close — housekeeping executed
+
+Housekeeping went wider than the original three-item plan once the
+real state was inspected:
+
+- `/Volumes/collection/REKORDBOT/` wiped entirely: `imports/` (2.0GB
+  staging debris), `rekordbot_library/` (8.5GB organised tree —
+  deliberately discarded; source FLACs at
+  `/Volumes/collection/music/downloads/soulseek/complete/` are the
+  ground truth), plus older debris discovered during the sweep
+  (`rekordbot_imports/`, `Test Artist/`, `import_test/` 321MB, two
+  `rekordbox.xml` exports). The directory is now empty; `imports/`
+  and `rekordbot_library/` regenerate on next fresh import.
+- Packaged-mode DB deleted (backed up as
+  `rekordbot.db.session-36-close`); five superseded baseline DB
+  snapshots deleted from Application Support. Kept: `config.json`,
+  `perf/`, the session-36-close backup, `rekordbot.log`.
+- Dev DB (`rekordbot_dev.db`, 159KB from the 17:15 dev test run)
+  deleted.
+- Cold-launched the installed `.app` against the now-empty DB:
+  backend connected, zero tracks, Alembic fresh-install migration
+  path created tables cleanly (incidental confirmation of the Phase
+  6b fresh-install path).
+
+### Next session (refined)
+
+Open by dragging the entire
+`/Volumes/collection/music/downloads/soulseek/complete/` directory
+onto the drop zone in the packaged app — this is Dale's real usage
+pattern (whole-directory drop, not folder-by-folder) and exercises
+the full ingest → analyse (BPM) → AI-tag → organise → export pipeline
+on a realistic workload in one run. Doubles as: (a) a real-world
+speed check on the post-6d.1 pipeline, (b) the clean-slate reingest
+that rebuilds the DB, (c) fresh material for the duplicate-detection
+design work. Once a clean library exists, proceed to
+`fix/duplicate-detection` scoping. The `rekordbot.db.session-36-close`
+backup can be deleted once this reingest is confirmed good.
