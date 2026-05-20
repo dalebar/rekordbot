@@ -3107,3 +3107,157 @@ v2's `onDragDropEvent` from `@tauri-apps/api/webview`. Smoke-
 test against the Josey Rebelle corpus in packaged mode before
 push. Single-commit session expected. Opens after
 `phase-6d.1-complete` is tagged and pushed.
+
+---
+
+## Session 36 — 2026-05-20
+
+### What was worked on
+
+`fix/drag-and-drop` — single-commit frontend fix. Rewired
+`frontend/src/DropZone.tsx` from the Tauri v1 drag-drop mechanism
+(reading `file.path` directly off the browser DragEvent, undefined in
+v2) to v2's `onDragDropEvent` from `@tauri-apps/api/webview`. Branch
+opened from `develop` at `27575b8` (the `phase-6d.1-complete` merge),
+single commit at `7637772`, merge to develop and tag pending at the
+time of writing this entry.
+
+### Summary
+
+Three stretches:
+
+1. **Approach and v2 API confirmation, ~17:00.** Read `DropZone.tsx`
+   end-to-end. Confirmed `@tauri-apps/api` version (`^2.10.1`) and
+   verified the v2 drag-drop API surface against upstream docs and
+   the public TypeScript union for `DragDropEvent`. The brief
+   flagged that the webview drag-drop module changed between v2
+   betas; the verification confirmed the stable v2 import path is
+   `getCurrentWebview()` from `@tauri-apps/api/webview` and the
+   payload union has four discriminated types: `enter`, `over`,
+   `drop`, `leave`.
+
+2. **First pass — path delivery only, visual highlight regressed.**
+   The original plan kept the browser-level `dragover`/`dragleave`
+   handlers in place on the `<div>` for the `isDragging` visual
+   feedback, on the assumption they would continue firing
+   harmlessly in Tauri. They did not. **Tauri v2 intercepts OS-level
+   file drags at the webview boundary before the browser sees them,
+   so browser drag handlers don't fire for file drags** (only for
+   intra-DOM drags like text selection). The packaged-mode smoke
+   test surfaced this immediately: no dashed-border highlight on
+   hover, just a silent ingestion-start on release. Path delivery
+   itself worked correctly across all three tests (fresh folder
+   drag, duplicate folder drag, Select Folder…), but the visual
+   feedback regression was unacceptable.
+
+3. **Second pass — single subscription drives both.** Reworked the
+   listener to handle `enter` (set `isDragging=true`), `leave` (clear),
+   and `drop` (clear + ingest). `over` ignored to avoid render churn
+   (fires continuously). Removed both browser handlers and the
+   corresponding JSX bindings on the drop zone div. Retained
+   `onDrop` with a one-line `e.preventDefault()` as a safety net
+   against the rare browser-fallback case. Packaged-mode smoke test
+   then confirmed visual feedback + path delivery + duplicate
+   detection + Select Folder… regression-free.
+
+### Key decisions made
+
+1. **Window-global drop scope and window-global visual highlight,
+   not drop-zone-scoped.** Tauri's `onDragDropEvent` fires at the
+   webview boundary, not at the DOM element. Drop-zone-scoped
+   highlight would have required hit-testing the cursor position
+   against the drop zone's `getBoundingClientRect()` on each `over`
+   event. Two reasons to reject: (a) the upstream issue tracker
+   reports a ~28px y-axis offset on macOS in the reported
+   `position`, making hit-testing flaky by construction; (b) the
+   added state and code is disproportionate to the UX value. The
+   trade-off was explicitly signed off on at session-open after
+   being flagged in the approach outline.
+
+2. **Coexistence of browser and Tauri handlers tried first,
+   reverted.** The original plan kept the browser `dragover`/
+   `dragleave` for visual feedback; this turned out to be based on
+   a wrong assumption about whether browser drag events still fire
+   for file drags in Tauri v2. The architectural lesson — Tauri v2
+   intercepts before the DOM sees the event — is the only
+   knowledge-worth-codifying finding from the session and is the
+   reason the CLAUDE.md "Important behaviours" section gets a new
+   bullet (see Carry-forward).
+
+3. **Housekeeping cleanup folded into the session close, not a
+   separate session.** Three days of test debris (Phase 6d.1
+   baselines, Session 33 stale-build debugging, today's two
+   drag-and-drop test cycles) had accumulated 158 tracks in the
+   packaged-mode library, including byte-different copies of the
+   same source files in `imports/`. Decision: nuke packaged DB,
+   packaged library, and dev DB before opening the next session,
+   to start the duplicate-handling work from a known-clean state.
+   The cleanup is mechanical (a handful of `rm` commands) and
+   doesn't warrant a brief or a commit; folded into Session 36
+   close as the final step.
+
+### Key results
+
+- Drag-and-drop works in packaged mode across all three test
+  scenarios: fresh folder ingest, duplicate-folder skip, Select
+  Folder… regression check.
+- Dashed-border highlight appears on file hover anywhere over the
+  window, text changes to "Drop files here".
+- Duplicate detection correctly identified 40-of-40 Josey Rebelle
+  tracks as duplicates and skipped them without DB changes or file
+  output.
+- Pre-existing lint baseline unchanged (15 errors: 14
+  `src-tauri/target/**` codegen artefacts, 1 `ToastProvider.tsx`
+  fast-refresh). Zero new lint errors. `tsc -b --noEmit` clean.
+
+### Carry-forward
+
+- **CLAUDE.md update needed (handled in this session close):** add
+  a "Tauri v2 drag-drop" bullet to the Important behaviours section
+  noting that v2 intercepts OS-level file drags at the webview
+  boundary, browser `dragover`/`dragleave` do not fire for file
+  drags, and any drag-and-drop affordance must subscribe to
+  `getCurrentWebview().onDragDropEvent`. This is the
+  knowledge-worth-codifying finding from the session.
+- **"Known Open Bugs" entry for drag-and-drop should be removed**
+  from CLAUDE.md if it exists there explicitly (drag-and-drop now
+  works in v2). Verify before the close commit.
+- **Duplicate detection has a known semantic gap: re-encoded
+  source files are not recognised as duplicates of previously
+  ingested files because SHA-256 of source bytes changes when the
+  audio is re-muxed, re-tagged, or re-encoded — even when the
+  underlying audio content is identical.** Visual evidence from
+  the packaged library's `imports/2026-05-20/` folder: two ingests
+  of `01. Casted`, `02. Heaven Gw`, etc. at 17:13 and 17:37 today,
+  both succeeded with `_1`-suffixed output paths because the source
+  bytes differed despite identifying the same audio. This is the
+  subject of the next session ("duplicates session" per Dale's
+  framing) and the cleanup described in §3 of Key Decisions is the
+  precondition for that work.
+
+### Housekeeping (Session 36 close)
+
+After commit `7637772`, before merge to develop:
+
+1. Nuke packaged-mode DB at
+   `~/Library/Application Support/rekordbot/rekordbot.db` (backed
+   up as `rekordbot.db.session-36-close`).
+2. Nuke packaged-mode library at `~/rekordbot/library/` (no backup
+   — source files in `/Volumes/collection/music/` are the ground
+   truth).
+3. Nuke dev-mode DB at `<repo>/rekordbot_dev.db` (no backup — has
+   been scratch state throughout the project).
+4. Launch packaged app cold, confirm zero-track state via the
+   first-run wizard or empty library view.
+
+### Next session
+
+`fix/duplicate-detection` (working name) — design and implement a
+better duplicate-detection strategy that catches semantic duplicates
+across re-encodings. Candidate approaches: audio-content fingerprint
+(librosa-based, or MD5 of the extracted audio stream via ffmpeg
+bypassing container/tag bytes), or soft-duplicate warning on
+artist+title+duration similarity at ingest time. Will open with a
+proper feature brief and decisions locked before code, matching the
+phase-discipline pattern established in Phases 6a/6b/4b. Opens
+against the clean state established by Session 36's housekeeping.
