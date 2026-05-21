@@ -50,12 +50,14 @@ class OrganisationResult:
 
     Attributes:
         total_moved: Number of files moved.
+        skipped: Number of files already in place (no-op moves).
         failed: Number of failures.
         dirs_cleaned: Number of empty directories removed.
         results: Detailed per-file results.
     """
 
     total_moved: int = 0
+    skipped: int = 0
     failed: int = 0
     dirs_cleaned: int = 0
     results: list[Any] = field(default_factory=list)
@@ -295,6 +297,7 @@ class Organiser:
 
         result = OrganisationResult(
             total_moved=batch_result.moved,
+            skipped=batch_result.skipped,
             failed=batch_result.failed,
             dirs_cleaned=batch_result.dirs_cleaned,
             results=batch_result.results,
@@ -306,6 +309,7 @@ class Organiser:
             {
                 "phase": "moving",
                 "files_moved": result.total_moved,
+                "files_skipped": result.skipped,
                 "files_total": len(moves),
                 "files_failed": result.failed,
                 "dirs_cleaned": result.dirs_cleaned,

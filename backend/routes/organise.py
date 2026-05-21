@@ -59,6 +59,7 @@ class ApproveResponse(BaseModel):
     """Response for POST /api/organise/approve."""
 
     total_moved: int
+    skipped: int = 0
     failed: int
     dirs_cleaned: int
     message: str
@@ -310,11 +311,15 @@ async def approve_organisation(request: ApproveRequest) -> ApproveResponse:
         organiser = Organiser(org_settings)
         result = await organiser.execute_organisation(tracks, db_session)
 
+        message = f"Moved {result.total_moved} files"
+        if result.skipped:
+            message += f", {result.skipped} already in place"
         return ApproveResponse(
             total_moved=result.total_moved,
+            skipped=result.skipped,
             failed=result.failed,
             dirs_cleaned=result.dirs_cleaned,
-            message=f"Moved {result.total_moved} files",
+            message=message,
         )
     finally:
         db_session.close()

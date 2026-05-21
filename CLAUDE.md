@@ -421,10 +421,10 @@ All non-2xx responses use: `{"error": "short_error_code", "detail": "Human-reada
 
 ## Current Status
 
-**Phase:** 6d.1 — Scope Reduction (complete; merge to `develop` pending)
-**Branch:** `feature/scope-reduction` (7 commits ahead of develop, all pushed)
-**Tests:** 1201 passing, 24 skipped (Phase 6d.1 deactivated Phase 5a/5b test surface)
-**Next step:** Merge `feature/scope-reduction` to `develop` with `--no-ff` and tag `phase-6d.1-complete`. Then `fix/drag-and-drop` as the immediate next session.
+**Phase:** Real-world dogfooding (post-6d.1) — Leg 1 (Panorama Bar, 232 tracks) complete
+**Branch:** `fix/path-component-sanitisation` (two organiser bug fixes + tests; merge to `develop` pending)
+**Tests:** template_engine / file_mover / organiser / organise_routes suites green; mypy baseline held at 15; frontend `tsc --noEmit` clean.
+**Next step:** Merge `fix/path-component-sanitisation` → `develop` (`--no-ff`, tag), then begin Leg 2 (Night_Bus, 435 files) to observe duplicate-detection behaviour on 4 deliberately-planted duplicates.
 
 ### Phase Summary
 
@@ -471,8 +471,12 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 **Resolved in Session 36 (`fix/drag-and-drop`):**
 - ✅ Drag-and-drop broken since Tauri v2 migration — fixed (`7637772`). Rewired `DropZone.tsx` to subscribe to `getCurrentWebview().onDragDropEvent` from `@tauri-apps/api/webview`. See the Known Issues entry for the architectural finding (Tauri v2 intercepts file drags at the webview boundary).
 
+**Resolved in Session 37 (`fix/path-component-sanitisation`, Leg 1 dogfooding):**
+- ✅ Slash-in-path phantom directories — fixed. Metadata containing `/` (`"V/A - Hyper Love"`, `"Quicksand / Getaway"`, `"Soul/Disco"` compilations, artist `"Tim Reaper & Dev/Null"`) split into phantom intermediate dirs because resolved components hit `Path()` before sanitisation. Now sanitised before `Path()` at both flush points in `template_engine.resolve_template`; unsafe-char set extended to ASCII control chars + Windows reserved device names; artist-only `;` → `, ` normalisation in folder names (path layer only); empty-component fallback to `unknown_fallback`. See Known Issues / patterns below.
+- ✅ Non-idempotent re-organise — fixed. Re-organising already-organised tracks appended `_1` to every unchanged file because `file_mover._resolve_collision` treated dest-exists as a collision without checking dest *is* the source. Now a same-file no-op branch in `move_file` (`old_path.resolve() == destination.resolve()`) returns a new `"skipped"` status, threaded through `BatchMoveResult` / `OrganisationResult` / `ApproveResponse` / `OrganiseControls`.
+
 **Open:**
-*(none currently — all bugs from prior Phase 6c smoke tests are resolved.)*
+*(none currently — all bugs from prior Phase 6c smoke tests and Leg 1 dogfooding are resolved.)*
 
 **Deferred (require dedicated scoping):**
 - **Bitrate column shows source not output value** — Track.bitrate currently stores source bitrate; fix needs schema change (new output_bitrate column?) plus Alembic migration plus backfill logic. Deferred at start of Session 26.
@@ -489,6 +493,11 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - Stacked toasts after invalid settings save then valid settings save — both persist visually until manually dismissed
 - Cancel button (analysis and ingestion) shows no immediate feedback during pending cancellation — current-track finishes its work (~4-5s) before cancellation takes effect, but the button doesn't change state during the wait. Add "Cancelling..." disabled state.
 - Save button drops below the fold in Settings → Advanced when all sections are expanded; no scrollbar. Phase 6e candidate.
+
+**Phase 6e — UI/UX findings (gathered during Leg 1 dogfooding, Session 37):**
+- **"Approve Auto" silently excludes review-needed tracks** with no warning — it stranded 2 tracks this session that needed review and were never surfaced. Needs a nudge (e.g. "2 tracks need review, not included") or to surface review cases more insistently.
+- **Strip-rule produces slightly-ugly joins** — sanitising `/` by deletion yields `"SoulDisco"`, `"(w Eden"`, etc. Acceptable for now but a candidate for the 6e substitution-catalogue (replace rather than strip in selected cases).
+- (Carried forward from earlier 6e notes) column widths; `"Library"` → `"rekordbot"` label; add a Deselect All; cramped auto-approved list; confidence UI self-contradiction; artist-name casing inconsistency; empty Label field.
 
 ## Known Issues / Don't Touch
 
@@ -526,6 +535,16 @@ Captured during Session 25 dogfooding smoke test (`docs/testing/manual-smoke-tes
 - **Crate Builder (Phase 5a) and Set Planner (Phase 5b) are soft-retired as of Phase 6d.1.** UI entry points removed; backend routes deregistered; XML export no longer emits crate/set playlists. The service modules (`crate_assigner.py`, `crate_manager.py`, `set_planner.py`, `set_prompt_builder.py`, `crate_prompt_builder.py`, `bpm_transition.py`, `key_compatibility.py`), data models (`Crate`, `CrateTrack`, `SetPlan`, `SetTrack`, `SetSegment`), DB tables, and tests are preserved as dormant code reachable only by direct call. The frontend component files (`CrateSidebar.tsx`, `CrateCreateDialog.tsx`, `SetPlannerView.tsx`, `SetCreateDialog.tsx`, `SetListPanel.tsx`) remain in the repo but are unimported. Two dead parameters were left in place during the cleanup to preserve dormant-code signatures: `key_notation` on `set_prompt_builder.py:_build_track_summary_for_set` (annotated with `noqa: ARG001`) and the body of `routes/sets.py:export_set_endpoint` (replaced with `raise NotImplementedError`). Backend settings `default_key_notation`, `set_track_duration_minutes`, and `set_max_tracks` remain on the schema and `SettingsResponse` — the Settings UI fields that wrote to them were removed in Phase 6d.1 but the backend fields persist for old user configs. Empirical trial during Session 34 confirmed architectural mismatch with realistic DJ workflow. Do not modify, extend, or fix bugs in this dormant surface area unless working specifically in a future hard-delete phase (working name "Path X") or revival phase.
 - **Concurrent conversion re-enable indefinitely deferred.** The Phase 6d brief named it as a secondary deliverable. Phase 6d closed without action on it: on a post-Phase-6d.1 analysis pipeline running at ~0.5s/track instead of ~11.9s/track, the absolute savings from concurrent conversion become small (single-digit seconds on a 52-track corpus). The architectural fix may still be worth doing eventually — single-worker is a regression from pre-Phase-6c capability — but it now ranks below several other candidates and gets revisited only if profiling against a post-scope-reduction baseline shows it matters.
 - **Pre-existing mypy debt: 15 errors against the develop baseline** (state at Phase 6d.1 close). Down 6 from the 21-error baseline that held at Phase 6d close. The 6 cleared errors fell out incidentally during Phase 6d.1 — primarily through the Commit 2 deletion of `test_xml_crate_integration.py` and `test_xml_set_integration.py` and through dormant-call-site changes in Commits 2 and 4 that made some 5a/5b error paths unreachable to mypy. The remaining 15 errors are still concentrated in (a) Phase 5a/5b dormant code, (b) old XML test code where mypy can't narrow `ElementTree.find()` return type, and (c) `claude_client.py` overload-resolution false positives on `asyncio.to_thread(partial(...))`. The phase-completion checklist's mypy criterion remains **"no new errors against develop's baseline"** rather than "zero errors total." The pre-existing debt won't clear incidentally; it needs a dedicated cleanup pass when scheduled, or it clears naturally as part of a future hard-delete phase. **Do not casually add `type: ignore` comments to silence these.** Each error type has a correct fix; `# type: ignore` should be reserved for the missing-stub cases already documented above in this section, not for working around correctly-flagged Optional access.
+- **Path components must be sanitised BEFORE `Path()` construction** (Session 37, Leg 1). An embedded `/` in a resolved metadata value (album/title/artist) is interpreted by `Path()` as a separator the instant it is constructed, splitting one intended folder into phantom intermediate directories — and the later per-part sanitisation can no longer see the boundary. `template_engine.resolve_template` now sanitises each assembled component while it is still a plain string, at both flush points (separator-triggered and end-of-loop), before any `Path(*parts)` call. The post-`Path()` sanitise loop in `build_output_path` is now a harmless idempotent second pass.
+- **File organisation must be idempotent.** A move whose destination resolves to the source file (`old_path.resolve() == destination.resolve()`) is a no-op, reported as a new `"skipped"` status — NOT a collision. Before Session 37, `file_mover._resolve_collision` saw `destination.exists()` and appended `_1`, renaming every unchanged file on a re-organise. The same-file check lives in `move_file` (after the source-exists guard, before `_resolve_collision`); `_resolve_collision` itself is untouched so a genuine collision (different file, same target name) still gets a `_1` suffix. `"skipped"` is threaded through `BatchMoveResult` / `OrganisationResult` / `ApproveResponse` / `OrganiseControls`.
+- **Cross-platform-safe path character set** includes ASCII control chars (0x00–0x1F) and Windows reserved device names (`CON`/`PRN`/`AUX`/`NUL`/`COM1–9`/`LPT1–9`, case-insensitive — suffixed with `_` when a component equals one exactly), in addition to the existing `/ \ : * ? " < > |`. We strip (delete) unsafe punctuation rather than substitute. An emptied-by-sanitisation component falls back to `unknown_fallback` to avoid silent path-structure loss.
+- **Semicolon → comma normalisation is path-layer-only.** Multi-artist folder names get `;` → `, ` (`"A;B;C"` → `"A, B, C"`), applied ONLY to the artist component and ONLY during path construction in `resolve_template`. `track.artist`, the XML `Artist` attribute, embedded tags, and the DB field all retain the literal `;`. This folder/tag mismatch is intentional and temporary — to be reconciled in Phase 6e.
+
+**Parked design items (no action now; revisit when their phase opens):**
+- **Substitution catalogue** (Phase 6e candidate) — replace selected stripped chars with nicer joins (`/` → ` & ` or `-` rather than deletion, avoiding `"SoulDisco"`/`"(w Eden"`). Mine the real corpus for token frequency first to decide which substitutions earn their keep.
+- **Library-integration approach** — organise-into-master vs. maintain a separate organised tree. Undecided; affects the rsync/import workflow used in Leg 1.
+- **sldl `_index.csv` ingestion** as a future metadata-enrichment source (Soulseek download manifests). Leg 3's 9 album folders have no CSV, which is the case to design against.
+- **`file_mover` post-`Path()` dead-code tidy-up** — the second sanitise pass in `build_output_path` is now redundant given the pre-`Path()` sanitisation in `resolve_template`; harmless but removable in a cleanup pass.
 
 ## Phased Build Plan
 

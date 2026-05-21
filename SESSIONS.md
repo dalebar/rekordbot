@@ -3299,3 +3299,96 @@ that rebuilds the DB, (c) fresh material for the duplicate-detection
 design work. Once a clean library exists, proceed to
 `fix/duplicate-detection` scoping. The `rekordbot.db.session-36-close`
 backup can be deleted once this reingest is confirmed good.
+
+---
+
+## Session 37 — 2026-05-21
+
+### What was worked on
+
+First full real-world workflow run on **Leg 1 — Panorama Bar (232 tracks)**:
+ingest → convert → analyse (BPM) → AI-tag → organise → export → rsync into the
+master library → Rekordbox folder-import → "PBar" playlist creation. The run
+surfaced two organiser bugs, both fixed on branch
+`fix/path-component-sanitisation` (continued from the earlier path-sanitisation
+work on the same branch).
+
+### Summary
+
+The 232-track leg ran end-to-end. Two organiser defects were caught during the
+organise → export → import segment and fixed in-session, then the leg was
+re-driven to a clean finish.
+
+**Bug 1 — slash-in-path creates phantom directories.** Metadata values
+containing a forward slash (`"V/A - Hyper Love"`, `"Quicksand / Getaway"`,
+`"Soul/Disco"` compilations, the artist `"Tim Reaper & Dev/Null"`) were passed
+to `Path()` as resolved template components *before* sanitisation ran. `Path()`
+interprets an embedded `/` as a separator immediately, so the slash became a
+real directory boundary that the later per-component sanitisation could no
+longer see — splitting one intended folder into phantom intermediate
+directories.
+
+Fix in `template_engine.resolve_template`: sanitise each assembled component
+*before* it reaches `Path()`, at both flush points (separator-triggered flush
+and end-of-loop flush). Extended the unsafe-character set to include ASCII
+control characters (0x00–0x1F) and to neutralise Windows reserved device names
+(`CON`/`PRN`/`AUX`/`NUL`/`COM1–9`/`LPT1–9`, case-insensitive, suffixed with
+`_`). Added artist-only `;` → `, ` normalisation in the **folder name only**
+(path layer) — tags, XML, and the DB artist field keep the literal `;`. Added
+an empty-component fallback to `unknown_fallback` at both flush points so a
+component that sanitises away to `""` cannot silently collapse the path
+structure (`Path()` drops empty parts).
+
+**Bug 2 — re-organise is not idempotent.** Re-organising already-organised
+tracks appended `_1` to every unchanged file. `file_mover._resolve_collision`
+saw `destination.exists() == True` and suffixed it, without checking that the
+destination *is* the very file being moved. Fix: a same-file no-op branch in
+`move_file` (`old_path.resolve() == destination.resolve()`) placed after the
+source-exists guard and before `_resolve_collision`. It touches nothing on
+disk, sets `organisation_status="organised"` and `proposed_path=None`, leaves
+`file_path`/`previous_output_path` untouched, and returns a new `"skipped"`
+status. `_resolve_collision` itself is unchanged — a genuine collision
+(different file, same target name) still gets a `_1` suffix. The `"skipped"`
+status is threaded through `BatchMoveResult.skipped` → `OrganisationResult.skipped`
+→ the `organise_move_complete` SSE payload (`files_skipped`) → `ApproveResponse.skipped`
+→ the `OrganiseControls` summary ("N already in place").
+
+### Key decisions made
+
+1. **Recover via re-organise-in-place, not re-ingest.** The audio and tags were
+   correct after the first run; only the on-disk filenames/folders were wrong
+   (the slash bug). Re-organising in place was the cheap, correct recovery —
+   re-ingesting would have re-run conversion, analysis, and AI-tagging
+   needlessly. This is what surfaced the idempotency bug (Bug 2).
+2. **Option A — uniform `unknown_fallback` for emptied components**, rather
+   than a split strategy that falls back to the source filename stem for the
+   final (title) component. Simpler, one rule for all components, and the
+   all-unsafe-component case is rare enough not to justify the special-casing.
+3. **New `"skipped"` status rather than reusing `"moved"`.** A no-op move is not
+   a move; honest reporting ("232 moved" vs "230 moved, 2 already in place")
+   matters for trust in the dry-run/approve workflow.
+
+### Key results
+
+- **232/232 tracks clean**, verified via a full scan of the exported Rekordbox
+  XML (no phantom directories, no `_1`-suffixed re-organise artefacts, slashes
+  and semicolons handled per the new rules).
+- rsync'd the organised tree into the master `ALBUMS` library.
+- Rekordbox folder-import completed; **"PBar" playlist created with 232 tracks**.
+- Bug-fix test coverage added in the prior turns on this branch (template_engine,
+  file_mover, organiser, organise_routes) — full suites green; mypy baseline
+  held at 15; frontend `tsc --noEmit` clean.
+
+### Unresolved / next
+
+- **Leg 2 — Night_Bus (435 files).** 4 known duplicates were deliberately left
+  in to observe duplicate-detection behaviour live:
+  - the Murcof **"Ultimatum"** pair, which SHA-256 should **MISS** (re-encoded
+    source bytes differ — the known semantic-duplicate gap from Session 36);
+  - the cross-leg **Chrome Country** and **Eating Darkness** tracks.
+- **Leg 3 — 9 CSV-less album folders** (no sldl `_index.csv` to enrich from).
+
+### Next step
+
+Merge `fix/path-component-sanitisation` → `develop` (`--no-ff`, tag), then begin
+Leg 2 (Night_Bus) to observe duplicate-detection behaviour on the planted dups.

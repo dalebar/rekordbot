@@ -170,3 +170,21 @@ class TestExecuteOrganisation:
         result = await organiser.execute_organisation([track], MagicMock())
 
         assert result.total_moved == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_propagates_skipped(self, tmp_path):
+        """A track already at its proposed path is reported as skipped, not moved."""
+        settings = _make_settings(output_directory=str(tmp_path))
+        organiser = Organiser(settings)
+
+        track = _make_track(tmp_path)
+        # Proposed path equals the current file path → no-op move.
+        track.proposed_path = track.file_path
+
+        result = await organiser.execute_organisation([track], MagicMock())
+
+        assert result.total_moved == 0
+        assert result.skipped == 1
+        assert result.failed == 0
+        # File untouched at its original location.
+        assert Path(track.file_path).exists()

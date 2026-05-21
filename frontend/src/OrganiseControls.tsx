@@ -183,6 +183,7 @@ export default function OrganiseControls({
         <div className="flex items-center gap-3 text-xs text-gray-500">
           <span>
             Moved: {approveResult.total_moved}
+            {approveResult.skipped > 0 && `, ${approveResult.skipped} already in place`}
             {approveResult.failed > 0 && `, ${approveResult.failed} failed`}
             {approveResult.dirs_cleaned > 0 && `, ${approveResult.dirs_cleaned} empty dirs cleaned`}
           </span>

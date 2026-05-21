@@ -112,6 +112,44 @@ class TestMoveFile:
         assert result.status == "moved"
         assert dest.exists()
 
+    @pytest.mark.asyncio
+    async def test_same_path_is_skipped_not_renamed(self, tmp_path):
+        """Re-organising a track already at its destination is a no-op, not a _1 rename."""
+        track = _make_track(tmp_path)
+        old_path = Path(track.file_path)
+        session = _make_db_session()
+
+        # Destination is identical to the current file path.
+        result = await move_file(track, old_path, session)
+
+        assert result.status == "skipped"
+        assert result.old_path == old_path
+        assert result.new_path == old_path
+        # File untouched at its original location; no _1 sibling created.
+        assert old_path.exists()
+        assert not (old_path.parent / "test_1.aiff").exists()
+        assert list(old_path.parent.iterdir()) == [old_path]
+        # DB updated to organised; proposed cleared; previous_output_path NOT set.
+        assert track.organisation_status == "organised"
+        assert track.proposed_path is None
+        assert track.previous_output_path is None
+        session.flush.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_genuine_collision_still_suffixed(self, tmp_path):
+        """A DIFFERENT file targeting an existing name still gets a _1 suffix."""
+        track = _make_track(tmp_path)
+        dest = tmp_path / "organised" / "Track.aiff"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"a genuinely different existing file")
+
+        result = await move_file(track, dest, _make_db_session())
+
+        # The no-op branch must NOT swallow a real collision.
+        assert result.status == "moved"
+        assert result.new_path == tmp_path / "organised" / "Track_1.aiff"
+        assert result.new_path.exists()
+
 
 # --- move_files_batch() ---
 
@@ -156,6 +194,38 @@ class TestMoveFilesBatch:
 
         assert result.moved == 2
         assert result.failed == 1
+
+    @pytest.mark.asyncio
+    async def test_batch_skipped_bucket(self, tmp_path):
+        """Mixed batch: moved, skipped, and failed each land in their own bucket."""
+        # Moved: real file → new destination.
+        track_moved = _make_track(tmp_path, "moved.aiff", id=1)
+        dest_moved = tmp_path / "organised" / "Moved.aiff"
+
+        # Skipped: destination == current path (no-op).
+        track_skipped = _make_track(tmp_path, "inplace.aiff", id=2)
+        dest_skipped = Path(track_skipped.file_path)
+
+        # Failed: source missing.
+        track_failed = MagicMock()
+        track_failed.id = 3
+        track_failed.file_path = str(tmp_path / "nonexistent.aiff")
+        dest_failed = tmp_path / "organised" / "Failed.aiff"
+
+        moves = [
+            (track_moved, dest_moved),
+            (track_skipped, dest_skipped),
+            (track_failed, dest_failed),
+        ]
+
+        result = await move_files_batch(moves, _make_db_session())
+
+        assert result.total == 3
+        assert result.moved == 1
+        assert result.skipped == 1
+        assert result.failed == 1
+        # The three buckets sum to the total.
+        assert result.moved + result.skipped + result.failed == result.total
 
 
 # --- cleanup_empty_dirs() ---

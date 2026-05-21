@@ -25,14 +25,15 @@ class MoveResult:
 
     Attributes:
         track_id: Database ID of the track.
-        status: "moved" or "failed".
+        status: "moved", "skipped", or "failed". "skipped" means the file was
+            already at its proposed destination — a no-op, not a failure.
         old_path: Original file path.
         new_path: Destination file path.
         error: Error message if failed.
     """
 
     track_id: int
-    status: str  # "moved" or "failed"
+    status: str  # "moved", "skipped", or "failed"
     old_path: Path
     new_path: Path
     error: str | None = None
@@ -45,6 +46,7 @@ class BatchMoveResult:
     Attributes:
         total: Total number of files in the batch.
         moved: Number of successfully moved files.
+        skipped: Number of no-op moves (file already at its destination).
         failed: Number of failed moves.
         results: Individual move results.
         dirs_cleaned: Number of empty directories removed.
@@ -52,6 +54,7 @@ class BatchMoveResult:
 
     total: int = 0
     moved: int = 0
+    skipped: int = 0
     failed: int = 0
     results: list[MoveResult] = field(default_factory=list)
     dirs_cleaned: int = 0
@@ -109,6 +112,21 @@ async def move_file(
             old_path=old_path,
             new_path=destination,
             error=error_msg,
+        )
+
+    # No-op: the file is already at its proposed destination (re-organising an
+    # already-organised track). Don't touch the filesystem — otherwise
+    # _resolve_collision would see the file as a collision and append a _N suffix.
+    if old_path.resolve() == destination.resolve():
+        track.organisation_status = "organised"
+        track.proposed_path = None
+        db_session.flush()
+        logger.info("Skipped track %s: already in place at %s", track_id, old_path)
+        return MoveResult(
+            track_id=track_id,
+            status="skipped",
+            old_path=old_path,
+            new_path=old_path,
         )
 
     # Resolve collision
@@ -187,6 +205,8 @@ async def move_files_batch(
         result.results.append(move_result)
         if move_result.status == "moved":
             result.moved += 1
+        elif move_result.status == "skipped":
+            result.skipped += 1
         else:
             result.failed += 1
 
